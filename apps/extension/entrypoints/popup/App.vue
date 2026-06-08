@@ -11,6 +11,7 @@ const progress = ref<PageTranslationProgress>({
 })
 const busy = ref(false)
 const pageMessage = ref('')
+const extensionApiAvailable = ref(hasExtensionPageApi())
 let pollTimer: number | undefined
 
 const statusLabel = computed(() => {
@@ -26,6 +27,8 @@ const completion = computed(() => {
 })
 
 onMounted(() => {
+  if (!extensionApiAvailable.value) return
+
   void refreshStatus()
   pollTimer = window.setInterval(refreshStatus, 900)
 })
@@ -35,6 +38,8 @@ onUnmounted(() => {
 })
 
 async function translatePage() {
+  if (!extensionApiAvailable.value) return
+
   busy.value = true
   pageMessage.value = ''
 
@@ -51,6 +56,8 @@ async function translatePage() {
 }
 
 async function clearTranslation() {
+  if (!extensionApiAvailable.value) return
+
   busy.value = true
   pageMessage.value = ''
 
@@ -83,7 +90,14 @@ async function refreshStatus() {
 }
 
 async function openSettings() {
-  await chrome.runtime.openOptionsPage()
+  const openOptionsPage = getPreviewSafeChrome().runtime?.openOptionsPage
+
+  if (typeof openOptionsPage === 'function') {
+    await openOptionsPage()
+    return
+  }
+
+  window.location.href = 'options.html'
 }
 
 async function getActiveTab(): Promise<chrome.tabs.Tab & { id: number }> {
@@ -116,6 +130,33 @@ async function sendTabMessage<T>(tabId: number, message: unknown): Promise<T> {
     throw new Error(response?.error?.message ?? 'Page message failed.')
   }
   return response.data
+}
+
+function hasExtensionPageApi() {
+  const chromeApi = getPreviewSafeChrome()
+
+  return Boolean(
+    typeof chromeApi.tabs?.query === 'function' &&
+      typeof chromeApi.tabs.sendMessage === 'function' &&
+      typeof chromeApi.scripting?.executeScript === 'function',
+  )
+}
+
+function getPreviewSafeChrome() {
+  return (globalThis as {
+    chrome?: {
+      runtime?: {
+        openOptionsPage?: () => Promise<void> | void
+      }
+      scripting?: {
+        executeScript?: unknown
+      }
+      tabs?: {
+        query?: unknown
+        sendMessage?: unknown
+      }
+    }
+  }).chrome ?? {}
 }
 </script>
 
