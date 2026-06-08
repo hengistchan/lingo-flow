@@ -8,10 +8,12 @@
     "build": "pnpm --filter @lingoflow/extension build",
     "dev": "pnpm --filter @lingoflow/extension dev",
     "test": "vitest run",
+    "test:e2e": "pnpm build && playwright test",
     "typecheck": "pnpm --filter @lingoflow/extension compile && tsc -p tsconfig.json --noEmit",
     "lint": "pnpm typecheck"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/chrome": "^0.0.326",
     "@vitejs/plugin-vue": "^5.2.4",
     "@vue/compiler-sfc": "^3.5.16",
