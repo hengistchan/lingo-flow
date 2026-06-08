@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { defineConfig } from 'wxt'
 import { fileURLToPath } from 'node:url'
 
@@ -11,6 +13,36 @@ const alias = {
   '@lingoflow/settings': fileURLToPath(new URL('../../packages/settings/src/index.ts', import.meta.url)),
   '@lingoflow/shared': fileURLToPath(new URL('../../packages/shared/src/index.ts', import.meta.url)),
   '@lingoflow/types': fileURLToPath(new URL('../../packages/types/src/index.ts', import.meta.url)),
+}
+
+// Workaround for WXT + Vite 8 (rolldown) emitting raw Unicode noncharacters.
+//
+// WXT sets `esbuild.charset = "ascii"` for Vite 5-7, which makes esbuild emit
+// non-ASCII as \uXXXX escapes. But for Vite 8+ (rolldown/oxc-minify) it skips
+// this, and oxc-minify's constant folding converts `String.fromCharCode(65535)`
+// (used by Dexie) into the raw U+FFFF byte sequence. Chrome's extension script
+// loader rejects files containing Unicode noncharacters.
+//
+// This plugin strips U+FFFF from output .js files after the build completes.
+// See: https://github.com/nicedoc/wxt/issues (charset gap for rolldown)
+const STRIP_NONCHAR = /￿/g
+
+function stripUnicodeNoncharacters() {
+  return {
+    name: 'strip-unicode-noncharacters',
+    closeBundle() {
+      // Vite's outDir is not directly available here; walk the known output path.
+      const outDir = join(fileURLToPath(new URL('.', import.meta.url)), '.output', 'chrome-mv3')
+      for (const entry of readdirSync(outDir)) {
+        if (!entry.endsWith('.js')) continue
+        const filePath = join(outDir, entry)
+        const content = readFileSync(filePath, 'utf-8')
+        if (STRIP_NONCHAR.test(content)) {
+          writeFileSync(filePath, content.replace(STRIP_NONCHAR, ''))
+        }
+      }
+    },
+  }
 }
 
 export default defineConfig({
@@ -29,5 +61,6 @@ export default defineConfig({
     resolve: {
       alias,
     },
+    plugins: [stripUnicodeNoncharacters()],
   }),
 })
