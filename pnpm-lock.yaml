@@ -55,6 +55,9 @@ importers:
       '@vitejs/plugin-vue':
         specifier: ^5.2.4
         version: 5.2.4(vite@8.0.16(@types/node@25.9.2)(esbuild@0.27.7)(jiti@2.7.0))(vue@3.5.35(typescript@5.9.3))
+      '@wxt-dev/module-vue':
+        specifier: ^1.0.3
+        version: 1.0.3(vite@8.0.16(@types/node@25.9.2)(esbuild@0.27.7)(jiti@2.7.0))(vue@3.5.35(typescript@5.9.3))(wxt@0.20.26(@types/node@25.9.2)(jiti@2.7.0)(rolldown@1.0.3)(rollup@4.61.1))
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
@@ -685,6 +688,11 @@ packages:
 
   '@wxt-dev/browser@0.1.43':
     resolution: {integrity: sha512-RMB0zgfe7uuiTp18s9taLeKXoOCLBV418797dnEggiMWmM1JDJekiLtlvrNc6QeZg+amDBy2/KKYuQB2kh/K9A==}
+
+  '@wxt-dev/module-vue@1.0.3':
+    resolution: {integrity: sha512-xUNygcj4w0b1MzQGOQIp5V2ZwFE4y+5AwKPi/IPKyo2aNeFVJTfItIxzWI5vTj7031WCLzHgQrrBRS5C63D5iw==}
+    peerDependencies:
+      wxt: '>=0.19.16'
 
   '@wxt-dev/storage@1.2.8':
     resolution: {integrity: sha512-GWCFKgF5+d7eslOxUDFC70ypA9njupmJb1nQM8uZoX0J3sWT2BO5xJLzb1sYahWAfID9p2BMtnUBN1lkWxPsbQ==}
@@ -2659,6 +2667,14 @@ snapshots:
     dependencies:
       '@types/filesystem': 0.0.36
       '@types/har-format': 1.2.16
+
+  '@wxt-dev/module-vue@1.0.3(vite@8.0.16(@types/node@25.9.2)(esbuild@0.27.7)(jiti@2.7.0))(vue@3.5.35(typescript@5.9.3))(wxt@0.20.26(@types/node@25.9.2)(jiti@2.7.0)(rolldown@1.0.3)(rollup@4.61.1))':
+    dependencies:
+      '@vitejs/plugin-vue': 5.2.4(vite@8.0.16(@types/node@25.9.2)(esbuild@0.27.7)(jiti@2.7.0))(vue@3.5.35(typescript@5.9.3))
+      wxt: 0.20.26(@types/node@25.9.2)(jiti@2.7.0)(rolldown@1.0.3)(rollup@4.61.1)
+    transitivePeerDependencies:
+      - vite
+      - vue
 
   '@wxt-dev/storage@1.2.8':
     dependencies:

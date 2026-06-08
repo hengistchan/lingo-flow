@@ -14,5 +14,6 @@
       "@lingoflow/types": ["../../packages/types/src/index.ts"]
     }
   },
-  "include": ["entrypoints", "wxt.config.ts", ".wxt/**/*.ts", "../../packages/**/*.ts"]
+  "include": ["entrypoints", "wxt.config.ts", ".wxt/**/*.ts", "../../packages/**/*.ts"],
+  "exclude": ["../../packages/**/*.test.ts"]
 }
