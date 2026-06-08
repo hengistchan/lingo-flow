@@ -71,7 +71,14 @@ async function refreshStatus() {
     await ensureContentRuntime(tab.id)
     progress.value = await sendTabMessage<PageTranslationProgress>(tab.id, { type: 'page/status' })
   } catch {
-    progress.value.status = 'idle'
+    pageMessage.value = ''
+    progress.value = {
+      status: 'idle',
+      totalBlocks: 0,
+      translatedBlocks: 0,
+      cacheHits: 0,
+      failedBlocks: 0,
+    }
   }
 }
 

@@ -15,6 +15,7 @@ async function loadSettings() {
   message.value = ''
 
   try {
+    if (!globalThis.chrome?.runtime?.sendMessage) return
     Object.assign(settings, await sendRuntimeMessage<AppSettings>({ type: 'settings/get' }))
   } catch (error) {
     message.value = error instanceof Error ? error.message : String(error)
