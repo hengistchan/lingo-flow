@@ -14,7 +14,7 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   webServer: {
-    command: 'python3 -m http.server 4179 --directory apps/extension/.output/chrome-mv3',
+    command: 'python3 -m http.server 4179 --directory apps/extension/output/chrome-mv3',
     url: 'http://localhost:4179/popup.html',
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,

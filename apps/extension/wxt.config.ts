@@ -32,7 +32,7 @@ function stripUnicodeNoncharacters() {
     name: 'strip-unicode-noncharacters',
     closeBundle() {
       // Vite's outDir is not directly available here; walk the known output path.
-      const outDir = join(fileURLToPath(new URL('.', import.meta.url)), '.output', 'chrome-mv3')
+      const outDir = join(fileURLToPath(new URL('.', import.meta.url)), 'output', 'chrome-mv3')
       for (const entry of readdirSync(outDir)) {
         if (!entry.endsWith('.js')) continue
         const filePath = join(outDir, entry)
@@ -57,6 +57,7 @@ export default defineConfig({
       default_title: 'LingoFlow',
     },
   },
+  outDir: 'output',
   vite: () => ({
     resolve: {
       alias,

@@ -5,7 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
 
-const builtExtensionPath = path.resolve('apps/extension/.output/chrome-mv3')
+const builtExtensionPath = path.resolve('apps/extension/output/chrome-mv3')
 const undefinedError = /Cannot read properties of undefined/
 
 test('installed extension renders popup and options with real extension APIs', async () => {
