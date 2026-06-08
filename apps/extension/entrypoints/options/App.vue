@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, toRaw } from 'vue'
 import { DEFAULT_SETTINGS } from '@lingoflow/settings'
 import type { AppSettings, MessageResponse, ProviderId } from '@lingoflow/types'
 
@@ -29,7 +29,7 @@ async function save() {
   message.value = ''
 
   try {
-    await sendRuntimeMessage({ type: 'settings/save', payload: { settings: structuredClone(settings) } })
+    await sendRuntimeMessage({ type: 'settings/save', payload: { settings: structuredClone(toRaw(settings)) } })
     message.value = 'Settings saved.'
   } catch (error) {
     message.value = error instanceof Error ? error.message : String(error)
