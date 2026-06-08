@@ -1,0 +1,28 @@
+{
+  "name": "lingoflow",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.12.4",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm --filter @lingoflow/extension build",
+    "dev": "pnpm --filter @lingoflow/extension dev",
+    "test": "vitest run",
+    "typecheck": "pnpm --filter @lingoflow/extension compile && tsc -p tsconfig.json --noEmit",
+    "lint": "pnpm typecheck"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.326",
+    "@vitejs/plugin-vue": "^5.2.4",
+    "@vue/compiler-sfc": "^3.5.16",
+    "happy-dom": "^17.6.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.3",
+    "vue-tsc": "^2.2.10",
+    "wxt": "^0.20.7"
+  },
+  "dependencies": {
+    "dexie": "^4.0.11",
+    "vue": "^3.5.16"
+  }
+}

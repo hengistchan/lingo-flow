@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["chrome"],
+    "paths": {
+      "@lingoflow/cache": ["../../packages/cache/src/index.ts"],
+      "@lingoflow/dom": ["../../packages/dom/src/index.ts"],
+      "@lingoflow/providers": ["../../packages/providers/src/index.ts"],
+      "@lingoflow/renderer": ["../../packages/renderer/src/index.ts"],
+      "@lingoflow/runtime": ["../../packages/runtime/src/index.ts"],
+      "@lingoflow/scheduler": ["../../packages/scheduler/src/index.ts"],
+      "@lingoflow/settings": ["../../packages/settings/src/index.ts"],
+      "@lingoflow/shared": ["../../packages/shared/src/index.ts"],
+      "@lingoflow/types": ["../../packages/types/src/index.ts"]
+    }
+  },
+  "include": ["entrypoints", "wxt.config.ts", ".wxt/**/*.ts", "../../packages/**/*.ts"]
+}
