@@ -9,7 +9,7 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:4179',
     browserName: 'chromium',
-    channel: process.env.PLAYWRIGHT_CHANNEL ?? 'chrome',
+    channel: process.env.PLAYWRIGHT_CHANNEL ?? 'chromium',
     screenshot: 'only-on-failure',
     trace: 'on-first-retry',
   },
