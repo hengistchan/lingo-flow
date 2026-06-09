@@ -91,6 +91,12 @@ test('production build manifest does not contain test-only host permissions', ()
   expect(manifest.permissions).not.toContain(expect.stringMatching(/<all_urls>/))
 })
 
+test('production content script contains no Unicode noncharacters', () => {
+  const contentScript = readFileSync(path.join(builtExtensionPath, 'lingoflow-content.js'), 'utf-8')
+
+  expect(contentScript).not.toContain('\uFFFF')
+})
+
 type ExtensionOptions = {
   allowLocalhost?: boolean
 }
@@ -145,12 +151,6 @@ function prepareTestExtensionDir(): string {
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
   manifest.host_permissions.push('http://127.0.0.1:*/*')
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2))
-
-  // Strip Unicode noncharacter U+FFFF from content script.
-  // WXT/Dexie may emit this during minification; Chrome's script loader rejects it.
-  const contentScriptPath = path.join(tmpDir, 'lingoflow-content.js')
-  const content = readFileSync(contentScriptPath, 'utf-8')
-  writeFileSync(contentScriptPath, content.replace(/￿/g, ''))
 
   return tmpDir
 }
