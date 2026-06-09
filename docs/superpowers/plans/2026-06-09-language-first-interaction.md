@@ -78,7 +78,7 @@
 - Modify: `packages/shared/src/index.ts`
 - Modify: `packages/types/src/index.ts`
 
-- [ ] **Step 1: Write failing language catalog tests**
+- [x] **Step 1: Write failing language catalog tests**
 
 Add tests for:
 
@@ -93,7 +93,7 @@ expect(t('zh-Hans', 'popup.translateTo', { language: '日语' })).toBe('翻译�
 expect(t('unsupported', 'popup.translateTo', { language: 'Japanese' })).toBe('Translate to Japanese')
 ```
 
-- [ ] **Step 2: Run tests and verify red**
+- [x] **Step 2: Run tests and verify red**
 
 Run:
 
@@ -103,7 +103,7 @@ pnpm vitest run packages/shared/src/languages.test.ts packages/shared/src/i18n.t
 
 Expected: FAIL because the language helpers do not exist.
 
-- [ ] **Step 3: Implement the language catalog**
+- [x] **Step 3: Implement the language catalog**
 
 Define:
 
@@ -129,7 +129,7 @@ export function resolveSupportedLanguage(code: string, fallback: string): string
 export function resolveUiLocale(browserLanguage?: string): UiLocale
 ```
 
-- [ ] **Step 4: Implement localized interface copy**
+- [x] **Step 4: Implement localized interface copy**
 
 Define a typed initial copy catalog for popup and options:
 
@@ -161,7 +161,7 @@ The initial catalog supports Simplified Chinese and English. Unknown UI locales
 fall back to English. Components must consume this helper instead of duplicating
 visible bilingual strings.
 
-- [ ] **Step 5: Run focused and full unit tests**
+- [x] **Step 5: Run focused and full unit tests**
 
 Run:
 
@@ -173,7 +173,7 @@ pnpm typecheck
 
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/shared/src/languages.ts packages/shared/src/languages.test.ts packages/shared/src/i18n.ts packages/shared/src/i18n.test.ts packages/shared/src/index.ts packages/types/src/index.ts

@@ -1,5 +1,8 @@
 export const NORMALIZE_VERSION = 'v1'
 
+export * from './i18n'
+export * from './languages'
+
 export function normalizeText(text: string): string {
   return text.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim()
 }

@@ -1,5 +1,16 @@
 export type ProviderType = 'machine-translation' | 'llm' | 'custom'
 
+export type UiLocale = 'zh-Hans' | 'en'
+
+export type LanguageOption = {
+  code: string
+  englishName: string
+  nativeName: string
+  simplifiedChineseName: string
+  supportsSource: boolean
+  supportsTarget: boolean
+}
+
 export type ProviderCapability = {
   speed: 'fast' | 'medium' | 'slow'
   quality: 'standard' | 'high'
