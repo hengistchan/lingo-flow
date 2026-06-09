@@ -19,7 +19,10 @@ test('installed extension renders popup and options with real extension APIs', a
 
     await expect(popup).toHaveTitle('LingoFlow')
     await expect(popup.getByRole('heading', { name: 'LingoFlow' })).toBeVisible()
-    await expect(popup.getByText('Ready')).toBeVisible()
+    await expect(popup.getByText('Translation service is not configured')).toBeVisible()
+    await expect(popup.getByLabel('Target language')).toHaveValue('zh-Hans')
+    await expect(popup.getByRole('button', { name: 'Configure translation service' })).toBeVisible()
+    await expect(popup.getByText('Ready')).toHaveCount(0)
     await expect(popup.getByText(undefinedError)).toHaveCount(0)
     expect(popupErrors()).toEqual([])
 

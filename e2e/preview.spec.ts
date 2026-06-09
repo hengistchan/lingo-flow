@@ -2,19 +2,25 @@ import { expect, test, type Page } from '@playwright/test'
 
 const undefinedError = /Cannot read properties of undefined/
 
-test('popup preview renders and buttons do not call missing extension APIs', async ({ page }) => {
+test('popup preview makes the target language clear and avoids fake detection', async ({ page }) => {
   const errors = collectRuntimeErrors(page)
 
   await page.goto(`/popup.html?e2e=${Date.now()}`)
 
   await expect(page).toHaveTitle('LingoFlow')
   await expect(page.getByRole('heading', { name: 'LingoFlow' })).toBeVisible()
-  await expect(page.getByText('Ready')).toBeVisible()
-  await expect(page.getByText('Below original text')).toBeVisible()
+  await expect(page.getByText('Auto-detect page language')).toBeVisible()
+  await expect(page.getByLabel('Target language')).toHaveValue('zh-Hans')
+  await expect(page.getByRole('button', { name: 'Translate to Simplified Chinese' })).toBeVisible()
+  await expect(page.getByText('English detected')).toHaveCount(0)
+  await expect(page.getByText('Configured provider')).toHaveCount(0)
+  await expect(page.getByText('Render mode')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Clear translation' })).toHaveCount(0)
   await expect(page.getByText(undefinedError)).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Translate Page' }).click()
-  await page.getByRole('button', { name: 'Clear Translation' }).click()
+  await page.getByLabel('Target language').selectOption('ja')
+  await expect(page.getByRole('button', { name: 'Translate to Japanese' })).toBeVisible()
+  await page.getByRole('button', { name: 'Translate to Japanese' }).click()
 
   await expect(page.getByText(undefinedError)).toHaveCount(0)
   expect(errors()).toEqual([])
@@ -24,7 +30,7 @@ test('popup preview opens options without chrome.runtime.openOptionsPage', async
   const errors = collectRuntimeErrors(page)
 
   await page.goto(`/popup.html?settings=${Date.now()}`)
-  await page.getByRole('button', { name: 'Open Settings' }).click()
+  await page.getByRole('button', { name: 'Settings' }).click()
 
   await expect(page).toHaveURL(/\/options\.html$/)
   await expect(page).toHaveTitle('LingoFlow Settings')
@@ -59,9 +65,9 @@ test('popup preview stays usable on a mobile-sized viewport', async ({ page }) =
   await page.goto(`/popup.html?mobile=${Date.now()}`)
 
   await expect(page.getByRole('heading', { name: 'LingoFlow' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Translate Page' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Clear Translation' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Open Settings' })).toBeVisible()
+  await expect(page.getByLabel('Target language')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Translate to Simplified Chinese' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible()
   await expect(page.getByText(undefinedError)).toHaveCount(0)
   expect(errors()).toEqual([])
 })

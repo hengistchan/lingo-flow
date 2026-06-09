@@ -1,37 +1,68 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import type { MessageResponse, PageTranslationProgress } from '@lingoflow/types'
+import {
+  getLanguageLabel,
+  getTargetLanguageOptions,
+  resolveUiLocale,
+  t,
+} from '@lingoflow/shared'
+import type {
+  MessageResponse,
+  PageTranslationProgress,
+  SettingsSummary,
+  UiLocale,
+} from '@lingoflow/types'
 
-const progress = ref<PageTranslationProgress>({
-  status: 'idle',
+const extensionApiAvailable = ref(hasExtensionPageApi())
+const uiLocale = ref<UiLocale>(resolveUiLocale(globalThis.navigator?.language))
+const summary = ref<SettingsSummary>({
   sourceLang: 'auto',
   targetLang: 'zh-Hans',
-  totalBlocks: 0,
-  translatedBlocks: 0,
-  cacheHits: 0,
-  failedBlocks: 0,
+  interfaceLocale: 'auto',
+  providerId: 'azure-translator',
+  providerName: 'Azure Translator',
+  providerConfigured: !extensionApiAvailable.value,
 })
+const progress = ref<PageTranslationProgress>(idleProgress())
+const pendingTargetLang = ref(summary.value.targetLang)
 const busy = ref(false)
-const pageMessage = ref('')
-const extensionApiAvailable = ref(hasExtensionPageApi())
+const actionFailed = ref(false)
+const targetLanguages = getTargetLanguageOptions()
 let pollTimer: number | undefined
 
+const targetLanguageName = computed(() => getLanguageLabel(pendingTargetLang.value, uiLocale.value))
+const hasTranslations = computed(() => progress.value.translatedBlocks > 0)
 const statusLabel = computed(() => {
-  if (progress.value.status === 'idle') return 'Ready'
-  if (progress.value.status === 'translating') return 'Translating'
-  if (progress.value.status === 'done') return 'Done'
-  return 'Failed'
+  if (!summary.value.providerConfigured) return copy('popup.providerNotConfigured')
+  if (progress.value.status === 'translating') return copy('popup.translating')
+  if (progress.value.status === 'done') return copy('popup.complete')
+  if (progress.value.status === 'partial') return copy('popup.partial')
+  if (progress.value.status === 'failed') return copy('popup.failed')
+  return copy('popup.ready')
 })
-
+const primaryActionLabel = computed(() => {
+  if (busy.value || progress.value.status === 'translating') {
+    return copy('popup.translatingTo', { language: targetLanguageName.value })
+  }
+  if (hasTranslations.value) {
+    return copy('popup.translateAgain', { language: targetLanguageName.value })
+  }
+  return copy('popup.translateTo', { language: targetLanguageName.value })
+})
 const completion = computed(() => {
   if (progress.value.totalBlocks === 0) return 0
   return Math.round(((progress.value.translatedBlocks + progress.value.failedBlocks) / progress.value.totalBlocks) * 100)
+})
+const userMessage = computed(() => {
+  if (progress.value.messageCode === 'no_readable_text') return copy('popup.noReadableText')
+  if (progress.value.status === 'failed' || actionFailed.value) return copy('popup.genericFailure')
+  return ''
 })
 
 onMounted(() => {
   if (!extensionApiAvailable.value) return
 
-  void refreshStatus()
+  void initialize()
   pollTimer = window.setInterval(refreshStatus, 900)
 })
 
@@ -39,18 +70,41 @@ onUnmounted(() => {
   if (pollTimer) window.clearInterval(pollTimer)
 })
 
+async function initialize() {
+  try {
+    summary.value = await sendRuntimeMessage<SettingsSummary>({ type: 'settings/getSummary' })
+    if (summary.value.interfaceLocale !== 'auto') {
+      uiLocale.value = summary.value.interfaceLocale
+    }
+    pendingTargetLang.value = summary.value.targetLang
+    await refreshStatus()
+    if (progress.value.status !== 'idle') {
+      pendingTargetLang.value = progress.value.targetLang
+    }
+  } catch {
+    actionFailed.value = true
+  }
+}
+
 async function translatePage() {
+  if (!summary.value.providerConfigured) {
+    await openSettings()
+    return
+  }
   if (!extensionApiAvailable.value) return
 
   busy.value = true
-  pageMessage.value = ''
+  actionFailed.value = false
 
   try {
     const tab = await getActiveTab()
     await ensureContentRuntime(tab.id)
-    progress.value = await sendTabMessage<PageTranslationProgress>(tab.id, { type: 'page/translate' })
-  } catch (error) {
-    pageMessage.value = error instanceof Error ? error.message : String(error)
+    progress.value = await sendTabMessage<PageTranslationProgress>(tab.id, {
+      type: 'page/translate',
+      payload: { targetLang: pendingTargetLang.value },
+    })
+  } catch {
+    actionFailed.value = true
     progress.value.status = 'failed'
   } finally {
     busy.value = false
@@ -61,14 +115,14 @@ async function clearTranslation() {
   if (!extensionApiAvailable.value) return
 
   busy.value = true
-  pageMessage.value = ''
+  actionFailed.value = false
 
   try {
     const tab = await getActiveTab()
     await ensureContentRuntime(tab.id)
     progress.value = await sendTabMessage<PageTranslationProgress>(tab.id, { type: 'page/clear' })
-  } catch (error) {
-    pageMessage.value = error instanceof Error ? error.message : String(error)
+  } catch {
+    actionFailed.value = true
   } finally {
     busy.value = false
   }
@@ -80,16 +134,7 @@ async function refreshStatus() {
     await ensureContentRuntime(tab.id)
     progress.value = await sendTabMessage<PageTranslationProgress>(tab.id, { type: 'page/status' })
   } catch {
-    pageMessage.value = ''
-    progress.value = {
-      status: 'idle',
-      sourceLang: 'auto',
-      targetLang: 'zh-Hans',
-      totalBlocks: 0,
-      translatedBlocks: 0,
-      cacheHits: 0,
-      failedBlocks: 0,
-    }
+    progress.value = idleProgress()
   }
 }
 
@@ -128,19 +173,40 @@ async function ensureContentRuntime(tabId: number) {
   }
 }
 
+async function sendRuntimeMessage<T>(message: unknown): Promise<T> {
+  const response = (await chrome.runtime.sendMessage(message)) as MessageResponse<T>
+  if (!response?.ok) throw new Error(response?.error?.message ?? 'Settings message failed.')
+  return response.data
+}
+
 async function sendTabMessage<T>(tabId: number, message: unknown): Promise<T> {
   const response = (await chrome.tabs.sendMessage(tabId, message)) as MessageResponse<T>
-  if (!response?.ok) {
-    throw new Error(response?.error?.message ?? 'Page message failed.')
-  }
+  if (!response?.ok) throw new Error(response?.error?.message ?? 'Page message failed.')
   return response.data
+}
+
+function copy(key: Parameters<typeof t>[1], variables?: Record<string, string | number>) {
+  return t(uiLocale.value, key, variables)
+}
+
+function idleProgress(): PageTranslationProgress {
+  return {
+    status: 'idle',
+    sourceLang: 'auto',
+    targetLang: summary.value?.targetLang ?? 'zh-Hans',
+    totalBlocks: 0,
+    translatedBlocks: 0,
+    cacheHits: 0,
+    failedBlocks: 0,
+  }
 }
 
 function hasExtensionPageApi() {
   const chromeApi = getPreviewSafeChrome()
 
   return Boolean(
-    typeof chromeApi.tabs?.query === 'function' &&
+    typeof chromeApi.runtime?.sendMessage === 'function' &&
+      typeof chromeApi.tabs?.query === 'function' &&
       typeof chromeApi.tabs.sendMessage === 'function' &&
       typeof chromeApi.scripting?.executeScript === 'function',
   )
@@ -151,6 +217,7 @@ function getPreviewSafeChrome() {
     chrome?: {
       runtime?: {
         openOptionsPage?: () => Promise<void> | void
+        sendMessage?: unknown
       }
       scripting?: {
         executeScript?: unknown
@@ -168,59 +235,65 @@ function getPreviewSafeChrome() {
   <main class="popup">
     <header class="header">
       <span class="brand-mark">LF</span>
-      <div>
+      <div class="brand-copy">
         <h1>LingoFlow</h1>
-        <p>{{ statusLabel }}</p>
+        <p aria-live="polite">{{ statusLabel }}</p>
       </div>
-      <span class="status-dot" :data-status="progress.status" />
+      <button class="icon-button" :aria-label="copy('popup.settings')" :title="copy('popup.settings')" @click="openSettings">
+        <span aria-hidden="true">⚙</span>
+      </button>
     </header>
 
-    <section v-if="progress.status !== 'translating'" class="ready-card">
-      <div class="info-row">
-        <span>Source language</span>
-        <strong>English detected</strong>
-      </div>
-      <div class="info-row">
-        <span>Provider</span>
-        <strong>Configured provider</strong>
-      </div>
-      <div class="info-row">
-        <span>Render mode</span>
-        <strong>Below original text</strong>
-      </div>
+    <section class="language-flow" aria-label="Translation language">
+      <p class="source-language">{{ copy('popup.autoDetect') }}</p>
+      <span class="direction" aria-hidden="true">↓</span>
+      <label class="target-language">
+        <span>{{ copy('popup.targetLanguage') }}</span>
+        <select v-model="pendingTargetLang">
+          <option v-for="language in targetLanguages" :key="language.code" :value="language.code">
+            {{ getLanguageLabel(language.code, uiLocale) }}
+          </option>
+        </select>
+      </label>
     </section>
 
-    <section v-else class="translation-card">
-      <h2>Translating page</h2>
+    <section v-if="progress.status === 'translating'" class="progress-panel">
+      <div class="progress-heading">
+        <strong>{{ primaryActionLabel }}</strong>
+        <span>{{ completion }}%</span>
+      </div>
       <div class="progress-track" aria-hidden="true">
         <div class="progress-fill" :style="{ width: `${completion}%` }" />
       </div>
       <dl class="stats">
         <div>
-          <dt>Progress</dt>
+          <dt>{{ copy('popup.progress') }}</dt>
           <dd>{{ progress.translatedBlocks + progress.failedBlocks }}/{{ progress.totalBlocks }}</dd>
         </div>
         <div>
-          <dt>Cache hits</dt>
-          <dd>{{ progress.cacheHits }}</dd>
-        </div>
-        <div>
-          <dt>Failed</dt>
+          <dt>{{ copy('popup.failedBlocks') }}</dt>
           <dd>{{ progress.failedBlocks }}</dd>
         </div>
       </dl>
     </section>
 
-    <p v-if="progress.message || pageMessage" class="message">
-      {{ progress.message || pageMessage }}
-    </p>
+    <section v-else-if="summary.providerConfigured && progress.status !== 'idle'" class="result-summary">
+      <strong>{{ statusLabel }}</strong>
+      <span>{{ progress.translatedBlocks }}/{{ progress.totalBlocks }}</span>
+    </section>
+
+    <p v-if="userMessage" class="message" aria-live="polite">{{ userMessage }}</p>
 
     <div class="actions">
-      <button class="primary" :disabled="busy || progress.status === 'translating'" @click="translatePage">
-        Translate Page
+      <button v-if="summary.providerConfigured" class="primary" :disabled="busy || progress.status === 'translating'" @click="translatePage">
+        {{ primaryActionLabel }}
       </button>
-      <button :disabled="busy" @click="clearTranslation">Clear Translation</button>
-      <button class="link" @click="openSettings">Open Settings</button>
+      <button v-else class="primary" @click="openSettings">
+        {{ copy('popup.configureProvider') }}
+      </button>
+      <button v-if="hasTranslations" :disabled="busy" @click="clearTranslation">
+        {{ copy('popup.clearTranslation') }}
+      </button>
     </div>
   </main>
 </template>
@@ -228,7 +301,7 @@ function getPreviewSafeChrome() {
 <style scoped>
 :global(body) {
   margin: 0;
-  min-width: 292px;
+  min-width: 320px;
   background: #f5f5f5;
   color: #111827;
   font-family:
@@ -236,7 +309,7 @@ function getPreviewSafeChrome() {
 }
 
 .popup {
-  width: 292px;
+  width: 320px;
   box-sizing: border-box;
   padding: 18px;
   background: #ffffff;
@@ -245,93 +318,121 @@ function getPreviewSafeChrome() {
 .header {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
+}
+
+.brand-copy {
+  min-width: 0;
+}
+
+h1,
+p {
+  margin: 0;
 }
 
 h1 {
-  margin: 0;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.2;
   font-weight: 800;
 }
 
-p {
-  margin: 3px 0 0;
-  color: #6b7280;
-  font-size: 11px;
+.brand-copy p {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 12px;
 }
 
 .brand-mark {
   display: grid;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   place-items: center;
+  flex: 0 0 auto;
   border-radius: 6px;
   background: #2563eb;
   color: #ffffff;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
 }
 
-.status-dot {
-  width: 6px;
-  height: 6px;
+.icon-button {
+  width: 34px;
+  min-height: 34px;
   margin-left: auto;
-  flex: 0 0 auto;
-  border-radius: 999px;
-  background: #9ca3af;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: #64748b;
+  font-size: 17px;
 }
 
-.status-dot[data-status="translating"] {
-  background: #2563eb;
-  box-shadow: 0 0 0 4px rgb(37 99 235 / 12%);
+.language-flow {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  margin-top: 18px;
+  padding: 15px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
 }
 
-.status-dot[data-status="done"] {
-  background: #10b981;
+.source-language {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
 }
 
-.status-dot[data-status="failed"] {
-  background: #dc2626;
+.direction {
+  color: #94a3b8;
+  font-size: 15px;
 }
 
-.ready-card,
-.translation-card {
-  margin-top: 16px;
-  padding: 13px;
+.target-language {
+  display: grid;
+  width: 100%;
+  gap: 6px;
+}
+
+.target-language span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+select {
+  min-height: 40px;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  padding: 0 10px;
+  background: #ffffff;
+  color: #111827;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.progress-panel,
+.result-summary {
+  margin-top: 12px;
+  padding: 12px;
   border-radius: 8px;
   background: #f8fafc;
 }
 
-.info-row {
+.progress-heading,
+.result-summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  min-height: 28px;
-  color: #6b7280;
-  font-size: 11px;
-}
-
-.info-row + .info-row {
-  border-top: 1px solid #e5e7eb;
-}
-
-.info-row strong {
-  color: #111827;
-  font-size: 11px;
-  font-weight: 700;
-  text-align: right;
-}
-
-.translation-card h2 {
-  margin: 0 0 10px;
-  font-size: 13px;
+  gap: 10px;
+  font-size: 12px;
 }
 
 .progress-track {
   height: 5px;
-  margin: 0 0 10px;
+  margin: 10px 0;
   overflow: hidden;
   border-radius: 999px;
   background: #dbeafe;
@@ -346,7 +447,7 @@ p {
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 8px;
   margin: 0;
 }
@@ -358,35 +459,38 @@ p {
 }
 
 dt {
-  color: #6b7280;
-  font-size: 10px;
+  color: #64748b;
+  font-size: 12px;
 }
 
 dd {
   margin: 3px 0 0;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
 }
 
 .message {
-  margin: 14px 0 0;
-  color: #92400e;
+  margin-top: 12px;
+  color: #b45309;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .actions {
   display: grid;
   gap: 8px;
-  margin-top: 18px;
+  margin-top: 16px;
 }
 
 button {
-  min-height: 38px;
-  border: 1px solid #e5e7eb;
+  min-height: 40px;
+  border: 1px solid #dbe1ea;
   border-radius: 8px;
+  padding: 0 12px;
   background: #ffffff;
   color: #111827;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -400,11 +504,5 @@ button:disabled {
   border-color: #2563eb;
   background: #2563eb;
   color: #ffffff;
-}
-
-.link {
-  border-color: transparent;
-  background: transparent;
-  color: #2563eb;
 }
 </style>

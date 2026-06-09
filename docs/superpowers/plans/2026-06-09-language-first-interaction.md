@@ -383,7 +383,7 @@ git commit -m "feat: add page language overrides and honest progress"
 - Modify: `apps/extension/entrypoints/popup/App.vue`
 - Modify: `e2e/preview.spec.ts`
 
-- [ ] **Step 1: Update preview E2E expectations first**
+- [x] **Step 1: Update preview E2E expectations first**
 
 Add assertions that the popup:
 
@@ -394,7 +394,7 @@ Add assertions that the popup:
   Japanese;
 - hides `Clear translation` while idle.
 
-- [ ] **Step 2: Run preview E2E and verify red**
+- [x] **Step 2: Run preview E2E and verify red**
 
 Run:
 
@@ -405,7 +405,7 @@ pnpm exec playwright test e2e/preview.spec.ts
 
 Expected: FAIL against the current popup.
 
-- [ ] **Step 3: Rebuild popup state loading**
+- [x] **Step 3: Rebuild popup state loading**
 
 On mount:
 
@@ -414,7 +414,7 @@ On mount:
 - initialize pending target from existing page status, then saved default;
 - fall back to safe preview values when extension APIs are absent.
 
-- [ ] **Step 4: Rebuild popup hierarchy**
+- [x] **Step 4: Rebuild popup hierarchy**
 
 Implement:
 
@@ -429,7 +429,7 @@ Implement:
 
 Remove idle Provider and Render mode rows.
 
-- [ ] **Step 5: Send target override**
+- [x] **Step 5: Send target override**
 
 Translate with:
 
@@ -440,7 +440,7 @@ sendTabMessage(tab.id, {
 })
 ```
 
-- [ ] **Step 6: Verify preview behavior**
+- [x] **Step 6: Verify preview behavior**
 
 Run:
 
@@ -452,7 +452,7 @@ pnpm typecheck
 
 Expected: all pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add apps/extension/entrypoints/popup/App.vue e2e/preview.spec.ts
