@@ -191,7 +191,7 @@ git commit -m "feat: add language and interface catalogs"
 - Create: `packages/settings/src/summary.test.ts`
 - Modify: `apps/extension/entrypoints/background.ts`
 
-- [ ] **Step 1: Write failing settings tests**
+- [x] **Step 1: Write failing settings tests**
 
 Test:
 
@@ -209,7 +209,7 @@ expect(JSON.stringify(getSettingsSummary(configuredSettings))).not.toContain('se
 Also test incomplete Azure and OpenAI configurations return
 `providerConfigured: false`.
 
-- [ ] **Step 2: Run tests and verify red**
+- [x] **Step 2: Run tests and verify red**
 
 Run:
 
@@ -219,7 +219,7 @@ pnpm vitest run packages/settings/src/settings.test.ts packages/settings/src/sum
 
 Expected: FAIL because migration and summary helpers do not exist.
 
-- [ ] **Step 3: Implement schema version and migration**
+- [x] **Step 3: Implement schema version and migration**
 
 Add:
 
@@ -239,7 +239,7 @@ Migration rules:
 - Existing target language and provider configuration remain unchanged.
 - Unsupported language codes fall back through shared language helpers.
 
-- [ ] **Step 4: Implement key-free settings summary**
+- [x] **Step 4: Implement key-free settings summary**
 
 Add:
 
@@ -263,7 +263,7 @@ case 'settings/getSummary':
 
 Do not include provider configuration objects in this response.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -275,7 +275,7 @@ pnpm typecheck
 
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/types/src/index.ts packages/settings/src/index.ts packages/settings/src/settings.test.ts packages/settings/src/summary.test.ts apps/extension/entrypoints/background.ts

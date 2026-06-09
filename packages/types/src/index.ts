@@ -173,6 +173,8 @@ export type OpenAICompatibleConfig = {
 }
 
 export type AppSettings = {
+  version: number
+  interfaceLocale: 'auto' | UiLocale
   targetLang: string
   sourceLang: 'auto' | string
   renderMode: 'below-original'
@@ -184,6 +186,15 @@ export type AppSettings = {
     azure: AzureTranslatorConfig
     openai: OpenAICompatibleConfig
   }
+}
+
+export type SettingsSummary = {
+  sourceLang: 'auto' | string
+  targetLang: string
+  interfaceLocale: 'auto' | UiLocale
+  providerId: ProviderId
+  providerName: string
+  providerConfigured: boolean
 }
 
 export type PublicRuntimeSettings = {
@@ -232,6 +243,10 @@ export type GetRuntimeSettingsMessage = {
   type: 'settings/getRuntime'
 }
 
+export type GetSettingsSummaryMessage = {
+  type: 'settings/getSummary'
+}
+
 export type SaveSettingsMessage = {
   type: 'settings/save'
   payload: {
@@ -267,6 +282,7 @@ export type LingoFlowMessage =
   | TranslateBatchMessage
   | GetSettingsMessage
   | GetRuntimeSettingsMessage
+  | GetSettingsSummaryMessage
   | SaveSettingsMessage
   | ClearCacheByDomainMessage
   | ClearAllCacheMessage

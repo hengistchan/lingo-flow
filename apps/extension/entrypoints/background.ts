@@ -1,7 +1,7 @@
 import { buildTranslationCacheKey, clearAllCache, clearCacheByDomain, pruneCache, resolveTranslationCache, safeSaveTranslationCache } from '@lingoflow/cache'
 import { createDefaultProviderRegistry } from '@lingoflow/providers'
 import { isFallbackEligible, retry, translateBatchWithDegrade } from '@lingoflow/scheduler'
-import { getPublicRuntimeSettings, getSettings, saveSettings } from '@lingoflow/settings'
+import { getPublicRuntimeSettings, getSettings, getSettingsSummary, saveSettings } from '@lingoflow/settings'
 import type { AppSettings, MessageResponse, ProviderId, TranslationResult, TranslationTask } from '@lingoflow/types'
 import { defineBackground } from 'wxt/utils/define-background'
 
@@ -25,6 +25,8 @@ async function handleMessage(message: { type?: string; payload?: unknown }, _sen
       const settings = await getSettings()
       return getPublicRuntimeSettings(settings)
     }
+    case 'settings/getSummary':
+      return getSettingsSummary(await getSettings())
     case 'settings/save':
       await saveSettings((message.payload as { settings: AppSettings }).settings)
       return { saved: true }
