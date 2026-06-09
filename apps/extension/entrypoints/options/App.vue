@@ -8,7 +8,13 @@ import {
   t,
 } from '@lingoflow/shared'
 import { DEFAULT_SETTINGS } from '@lingoflow/settings'
-import type { AppSettings, MessageResponse, UiLocale } from '@lingoflow/types'
+import type {
+  AppSettings,
+  MessageResponse,
+  ProviderConnectionMessageCode,
+  ProviderConnectionResult,
+  UiLocale,
+} from '@lingoflow/types'
 
 type SettingsSection = 'languages' | 'providers' | 'storage' | 'advanced'
 
@@ -17,6 +23,8 @@ const savedSettings = ref<AppSettings>(structuredClone(DEFAULT_SETTINGS))
 const activeSection = ref<SettingsSection>('languages')
 const message = ref('')
 const busy = ref(false)
+const testingConnection = ref(false)
+const connectionResult = ref<ProviderConnectionResult>()
 const browserLocale = resolveUiLocale(globalThis.navigator?.language)
 const sourceLanguages = getSourceLanguageOptions()
 const targetLanguages = getTargetLanguageOptions()
@@ -40,10 +48,16 @@ const selectedProviderConfigured = computed(() => {
       settings.providers.openai.model.trim(),
   )
 })
+const connectionMessage = computed(() =>
+  connectionResult.value ? copy(connectionCopyKey(connectionResult.value.messageCode)) : '',
+)
 
 watch(dirty, hasUnsavedChanges => {
   if (hasUnsavedChanges) message.value = ''
 })
+watch(settings, () => {
+  connectionResult.value = undefined
+}, { deep: true })
 
 onMounted(loadSettings)
 
@@ -99,6 +113,37 @@ async function clearAllCache() {
   }
 }
 
+async function testConnection() {
+  testingConnection.value = true
+  connectionResult.value = undefined
+
+  try {
+    const providerId = settings.defaultProviderId
+    const config =
+      providerId === 'azure-translator'
+        ? structuredClone(toRaw(settings.providers.azure))
+        : structuredClone(toRaw(settings.providers.openai))
+
+    if (!hasRuntimeApi()) {
+      connectionResult.value = { ok: false, providerId, messageCode: 'config_incomplete' }
+      return
+    }
+
+    connectionResult.value = await sendRuntimeMessage<ProviderConnectionResult>({
+      type: 'provider/testConnection',
+      payload: { providerId, config },
+    })
+  } catch {
+    connectionResult.value = {
+      ok: false,
+      providerId: settings.defaultProviderId,
+      messageCode: 'provider_failed',
+    }
+  } finally {
+    testingConnection.value = false
+  }
+}
+
 async function sendRuntimeMessage<T = unknown>(payload: unknown): Promise<T> {
   const response = (await chrome.runtime.sendMessage(payload)) as MessageResponse<T>
   if (!response?.ok) throw new Error(response?.error?.message ?? 'Settings message failed.')
@@ -107,6 +152,17 @@ async function sendRuntimeMessage<T = unknown>(payload: unknown): Promise<T> {
 
 function copy(key: Parameters<typeof t>[1], variables?: Record<string, string | number>) {
   return t(uiLocale.value, key, variables)
+}
+
+function connectionCopyKey(code: ProviderConnectionMessageCode): Parameters<typeof t>[1] {
+  const keys: Record<ProviderConnectionMessageCode, Parameters<typeof t>[1]> = {
+    connection_ok: 'options.connectionOk',
+    config_incomplete: 'options.connectionConfigIncomplete',
+    authentication_failed: 'options.connectionAuthenticationFailed',
+    network_failed: 'options.connectionNetworkFailed',
+    provider_failed: 'options.connectionProviderFailed',
+  }
+  return keys[code]
 }
 
 function hasRuntimeApi() {
@@ -219,6 +275,24 @@ function hasRuntimeApi() {
               <span>{{ copy('options.apiKey') }}</span>
               <input v-model="settings.providers.openai.apiKey" autocomplete="off" type="password" />
             </label>
+          </div>
+
+          <div class="connection-test">
+            <div>
+              <strong>{{ copy('options.testConnection') }}</strong>
+              <p>{{ copy('options.connectionTestDescription') }}</p>
+            </div>
+            <button class="secondary" :disabled="testingConnection" @click="testConnection">
+              {{ testingConnection ? copy('options.testingConnection') : copy('options.testConnection') }}
+            </button>
+            <p
+              v-if="connectionResult"
+              class="connection-result"
+              :data-success="connectionResult.ok"
+              aria-live="polite"
+            >
+              {{ connectionMessage }}
+            </p>
           </div>
         </section>
 
@@ -415,6 +489,32 @@ select {
   border-top: 1px solid #eef2f7;
 }
 
+.connection-test {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 18px;
+  padding-top: 22px;
+  border-top: 1px solid #eef2f7;
+}
+
+.connection-test p {
+  margin-top: 5px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.connection-result {
+  grid-column: 1 / -1;
+  margin-top: 0 !important;
+  color: #b45309 !important;
+  font-weight: 700;
+}
+
+.connection-result[data-success="true"] {
+  color: #047857 !important;
+}
+
 button {
   min-height: 40px;
   display: inline-flex;
@@ -439,6 +539,12 @@ button:disabled {
 .danger {
   border-color: #dc2626;
   background: #dc2626;
+}
+
+.secondary {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
 }
 
 .message {
@@ -469,7 +575,8 @@ button:disabled {
   .save-area,
   .settings-shell,
   .grid,
-  .provider-fields {
+  .provider-fields,
+  .connection-test {
     grid-template-columns: 1fr;
   }
 

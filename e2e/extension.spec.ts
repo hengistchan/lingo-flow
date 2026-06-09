@@ -41,6 +41,13 @@ test('installed extension renders popup and options with real extension APIs', a
     await options.getByLabel('Target language').selectOption('ja')
     await expect(options.getByText('Settings saved')).toHaveCount(0)
     await expect(options.getByRole('button', { name: 'Save settings' })).toBeEnabled()
+
+    await options.getByRole('button', { name: 'Translation service' }).click()
+    await expect(options.getByText('Testing sends one short sample to the selected provider.')).toBeVisible()
+    await expect(options.getByText('Complete the selected provider configuration before testing.')).toHaveCount(0)
+    await options.getByRole('button', { name: 'Test connection' }).click()
+    await expect(options.getByText('Complete the selected provider configuration before testing.')).toBeVisible()
+
     await expect(options.getByText(undefinedError)).toHaveCount(0)
     expect(optionsErrors()).toEqual([])
   } finally {

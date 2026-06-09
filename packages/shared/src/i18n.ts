@@ -30,6 +30,13 @@ export type UiCopyKey =
   | 'options.save'
   | 'options.saved'
   | 'options.testConnection'
+  | 'options.connectionTestDescription'
+  | 'options.testingConnection'
+  | 'options.connectionOk'
+  | 'options.connectionConfigIncomplete'
+  | 'options.connectionAuthenticationFailed'
+  | 'options.connectionNetworkFailed'
+  | 'options.connectionProviderFailed'
   | 'options.targetLanguage'
   | 'options.sourceLanguage'
   | 'options.interfaceLanguage'
@@ -84,6 +91,13 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.save': '保存设置',
     'options.saved': '设置已保存',
     'options.testConnection': '测试连接',
+    'options.connectionTestDescription': '测试时会向所选翻译服务发送一个简短样本。',
+    'options.testingConnection': '正在测试连接',
+    'options.connectionOk': '连接成功',
+    'options.connectionConfigIncomplete': '请先补全所选翻译服务的配置。',
+    'options.connectionAuthenticationFailed': '身份验证失败，请检查 API 密钥和区域。',
+    'options.connectionNetworkFailed': '无法连接到翻译服务，请检查网络与 Endpoint。',
+    'options.connectionProviderFailed': '翻译服务返回异常，请稍后重试。',
     'options.targetLanguage': '默认目标语言',
     'options.sourceLanguage': '默认源语言',
     'options.interfaceLanguage': '界面语言',
@@ -137,6 +151,13 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.save': 'Save settings',
     'options.saved': 'Settings saved',
     'options.testConnection': 'Test connection',
+    'options.connectionTestDescription': 'Testing sends one short sample to the selected provider.',
+    'options.testingConnection': 'Testing connection',
+    'options.connectionOk': 'Connection successful',
+    'options.connectionConfigIncomplete': 'Complete the selected provider configuration before testing.',
+    'options.connectionAuthenticationFailed': 'Authentication failed. Check the API key and region.',
+    'options.connectionNetworkFailed': 'Could not reach the provider. Check the network and endpoint.',
+    'options.connectionProviderFailed': 'The provider returned an unexpected response. Try again.',
     'options.targetLanguage': 'Target language',
     'options.sourceLanguage': 'Source language',
     'options.interfaceLanguage': 'Interface language',

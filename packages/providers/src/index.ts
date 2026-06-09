@@ -1,6 +1,8 @@
 import type {
   AzureTranslatorConfig,
   OpenAICompatibleConfig,
+  ProviderConnectionResult,
+  ProviderId,
   TranslateInput,
   TranslateOutput,
   TranslationProvider,
@@ -176,6 +178,44 @@ export function createDefaultProviderRegistry(): ProviderRegistry {
   registry.register(azureTranslatorProvider)
   registry.register(openAICompatibleProvider)
   return registry
+}
+
+export async function testProviderConnection(
+  providerId: ProviderId,
+  config: AzureTranslatorConfig | OpenAICompatibleConfig,
+): Promise<ProviderConnectionResult> {
+  const provider =
+    providerId === 'azure-translator' ? azureTranslatorProvider : openAICompatibleProvider
+
+  try {
+    await provider.translate(
+      {
+        sourceLang: 'en',
+        targetLang: 'zh-Hans',
+        texts: ['LingoFlow connection test.'],
+      },
+      config,
+    )
+
+    return { ok: true, providerId, messageCode: 'connection_ok' }
+  } catch (error) {
+    return {
+      ok: false,
+      providerId,
+      messageCode: getConnectionFailureCode(error),
+    }
+  }
+}
+
+function getConnectionFailureCode(
+  error: unknown,
+): Exclude<ProviderConnectionResult['messageCode'], 'connection_ok'> {
+  const value = error as { code?: string; status?: number }
+
+  if (value?.code === 'provider_config_invalid') return 'config_incomplete'
+  if (value?.status === 401 || value?.status === 403) return 'authentication_failed'
+  if (error instanceof TypeError) return 'network_failed'
+  return 'provider_failed'
 }
 
 function assertAzureConfig(config: unknown): AzureTranslatorConfig {

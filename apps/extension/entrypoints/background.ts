@@ -1,8 +1,16 @@
 import { buildTranslationCacheKey, clearAllCache, clearCacheByDomain, pruneCache, resolveTranslationCache, safeSaveTranslationCache } from '@lingoflow/cache'
-import { createDefaultProviderRegistry } from '@lingoflow/providers'
+import { createDefaultProviderRegistry, testProviderConnection } from '@lingoflow/providers'
 import { isFallbackEligible, retry, translateBatchWithDegrade } from '@lingoflow/scheduler'
 import { getPublicRuntimeSettings, getSettings, getSettingsSummary, saveSettings } from '@lingoflow/settings'
-import type { AppSettings, MessageResponse, ProviderId, TranslationResult, TranslationTask } from '@lingoflow/types'
+import type {
+  AppSettings,
+  AzureTranslatorConfig,
+  MessageResponse,
+  OpenAICompatibleConfig,
+  ProviderId,
+  TranslationResult,
+  TranslationTask,
+} from '@lingoflow/types'
 import { defineBackground } from 'wxt/utils/define-background'
 
 const registry = createDefaultProviderRegistry()
@@ -30,6 +38,13 @@ async function handleMessage(message: { type?: string; payload?: unknown }, _sen
     case 'settings/save':
       await saveSettings((message.payload as { settings: AppSettings }).settings)
       return { saved: true }
+    case 'provider/testConnection': {
+      const payload = message.payload as {
+        providerId: ProviderId
+        config: AzureTranslatorConfig | OpenAICompatibleConfig
+      }
+      return testProviderConnection(payload.providerId, payload.config)
+    }
     case 'translation-cache/resolve':
       return resolveTranslationCache((message.payload as { tasks: TranslationTask[] }).tasks)
     case 'translation/translateBatch':

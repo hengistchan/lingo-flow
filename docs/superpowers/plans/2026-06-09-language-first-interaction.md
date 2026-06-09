@@ -553,7 +553,7 @@ git commit -m "feat: reorganize language and provider settings"
 - Modify: `apps/extension/entrypoints/options/App.vue`
 - Modify: `e2e/extension.spec.ts`
 
-- [ ] **Step 1: Write failing provider connection tests**
+- [x] **Step 1: Write failing provider connection tests**
 
 Mock `fetch` and verify:
 
@@ -564,7 +564,7 @@ Mock `fetch` and verify:
 - authentication and network failures return normalized actionable errors;
 - no connection test runs automatically when ordinary settings are saved.
 
-- [ ] **Step 2: Run tests and verify red**
+- [x] **Step 2: Run tests and verify red**
 
 Run:
 
@@ -574,7 +574,7 @@ pnpm vitest run packages/providers/src/connection.test.ts
 
 Expected: FAIL because explicit connection tests do not exist.
 
-- [ ] **Step 3: Add an explicit background message**
+- [x] **Step 3: Add an explicit background message**
 
 Add:
 
@@ -591,7 +591,7 @@ type TestProviderConnectionMessage = {
 The request is initiated only by a deliberate options-page action. Never log or
 return the supplied key.
 
-- [ ] **Step 4: Implement provider probes**
+- [x] **Step 4: Implement provider probes**
 
 Use each provider's normal public translation API with one short deterministic
 source string. Validate the response shape and return a key-free result:
@@ -604,14 +604,14 @@ type ProviderConnectionResult = {
 }
 ```
 
-- [ ] **Step 5: Add options interaction**
+- [x] **Step 5: Add options interaction**
 
 - Keep ordinary `Save settings` separate.
 - Add `Test connection` inside the selected provider section.
 - Explain that testing sends a short sample to the provider.
 - Show pending, success, and actionable failure state near the action.
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 Run:
 
@@ -624,7 +624,7 @@ pnpm typecheck
 
 Expected: all pass with mocked provider responses.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add packages/types/src/index.ts packages/providers/src/index.ts packages/providers/src/connection.test.ts apps/extension/entrypoints/background.ts apps/extension/entrypoints/options/App.vue e2e/extension.spec.ts

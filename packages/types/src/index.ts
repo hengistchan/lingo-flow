@@ -197,6 +197,19 @@ export type SettingsSummary = {
   providerConfigured: boolean
 }
 
+export type ProviderConnectionMessageCode =
+  | 'connection_ok'
+  | 'config_incomplete'
+  | 'authentication_failed'
+  | 'network_failed'
+  | 'provider_failed'
+
+export type ProviderConnectionResult = {
+  ok: boolean
+  providerId: ProviderId
+  messageCode: ProviderConnectionMessageCode
+}
+
 export type PublicRuntimeSettings = {
   targetLang: string
   sourceLang: 'auto' | string
@@ -257,6 +270,14 @@ export type SaveSettingsMessage = {
   }
 }
 
+export type TestProviderConnectionMessage = {
+  type: 'provider/testConnection'
+  payload: {
+    providerId: ProviderId
+    config: AzureTranslatorConfig | OpenAICompatibleConfig
+  }
+}
+
 export type ClearCacheByDomainMessage = {
   type: 'cache/clearByDomain'
   payload: {
@@ -291,6 +312,7 @@ export type LingoFlowMessage =
   | GetRuntimeSettingsMessage
   | GetSettingsSummaryMessage
   | SaveSettingsMessage
+  | TestProviderConnectionMessage
   | ClearCacheByDomainMessage
   | ClearAllCacheMessage
   | PageTranslateMessage
