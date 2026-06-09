@@ -291,7 +291,7 @@ git commit -m "feat: add safe settings summary and migration"
 - Modify: `packages/runtime/src/index.ts`
 - Create: `packages/runtime/src/runtime.test.ts`
 
-- [ ] **Step 1: Write failing runtime tests**
+- [x] **Step 1: Write failing runtime tests**
 
 Use a fake document and fake runtime messages to prove:
 
@@ -309,7 +309,7 @@ expect(deriveProgressStatus({ translated: 2, failed: 1, total: 3 })).toBe('parti
 expect(deriveProgressStatus({ translated: 0, failed: 3, total: 3 })).toBe('failed')
 ```
 
-- [ ] **Step 2: Run tests and verify red**
+- [x] **Step 2: Run tests and verify red**
 
 Run:
 
@@ -319,7 +319,7 @@ pnpm vitest run packages/runtime/src/runtime.test.ts
 
 Expected: FAIL because override payload and honest states are not implemented.
 
-- [ ] **Step 3: Extend typed page messages**
+- [x] **Step 3: Extend typed page messages**
 
 Change:
 
@@ -335,7 +335,7 @@ type PageTranslateMessage = {
 
 Extend progress with `sourceLang`, `targetLang`, `partial`, and `messageCode`.
 
-- [ ] **Step 4: Implement current-run overrides**
+- [x] **Step 4: Implement current-run overrides**
 
 The content runtime must:
 
@@ -345,7 +345,7 @@ The content runtime must:
 - keep persisted settings unchanged;
 - retain effective source and target language in page progress.
 
-- [ ] **Step 5: Implement honest terminal states**
+- [x] **Step 5: Implement honest terminal states**
 
 Rules:
 
@@ -356,7 +356,7 @@ if (translatedBlocks > 0 && failedBlocks > 0) -> partial
 if (translatedBlocks === 0 && failedBlocks > 0) -> failed
 ```
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 Run:
 
@@ -368,7 +368,7 @@ pnpm typecheck
 
 Expected: all pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add packages/types/src/index.ts packages/runtime/src/index.ts packages/runtime/src/runtime.test.ts

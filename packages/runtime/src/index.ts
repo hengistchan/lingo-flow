@@ -2,7 +2,7 @@ import { buildTranslationCacheKey } from '@lingoflow/cache'
 import { collectTextBlocks } from '@lingoflow/dom'
 import { clearTranslations, safeRender } from '@lingoflow/renderer'
 import { createBatches } from '@lingoflow/scheduler'
-import { getDomain } from '@lingoflow/shared'
+import { getDomain, getSourceLanguageOptions, getTargetLanguageOptions } from '@lingoflow/shared'
 import type {
   MessageResponse,
   PageTranslationProgress,
@@ -16,15 +16,22 @@ type RuntimeDependencies = {
   chromeRuntime?: typeof chrome.runtime
 }
 
+type PageTranslationOverrides = {
+  sourceLang?: 'auto' | string
+  targetLang?: string
+}
+
 export function createContentRuntime(dependencies: RuntimeDependencies = {}) {
   const root = dependencies.document ?? document
   const runtime = dependencies.chromeRuntime ?? chrome.runtime
   const memoryCache = new Map<string, TranslationResult>()
   let progress: PageTranslationProgress = idleProgress()
 
-  async function translatePage() {
+  async function translatePage(overrides: PageTranslationOverrides = {}) {
     progress = {
       status: 'translating',
+      sourceLang: overrides.sourceLang ?? progress.sourceLang,
+      targetLang: overrides.targetLang ?? progress.targetLang,
       totalBlocks: 0,
       translatedBlocks: 0,
       cacheHits: 0,
@@ -34,19 +41,29 @@ export function createContentRuntime(dependencies: RuntimeDependencies = {}) {
     try {
       clearTranslations(root)
       const settings = await sendRuntimeMessage<PublicRuntimeSettings>(runtime, { type: 'settings/getRuntime' })
+      const sourceLang = resolveLanguage(overrides.sourceLang, settings.sourceLang, getSourceLanguageOptions())
+      const targetLang = resolveLanguage(overrides.targetLang, settings.targetLang, getTargetLanguageOptions())
+      const effectiveSettings = {
+        ...settings,
+        sourceLang,
+        targetLang,
+      }
+      progress.sourceLang = sourceLang
+      progress.targetLang = targetLang
       const pageUrl = root.location.href
       const domain = getDomain(pageUrl)
       const blocks = await collectTextBlocks(root, {
-        sourceLang: settings.sourceLang,
-        targetLang: settings.targetLang,
+        sourceLang,
+        targetLang,
         pageUrl,
         domain,
       })
-      const tasks = blocks.map(block => createTask(block.id, block.text, block.normalizedText, block.textHash, settings, pageUrl, domain))
+      const tasks = blocks.map(block => createTask(block.id, block.text, block.normalizedText, block.textHash, effectiveSettings, pageUrl, domain))
       progress.totalBlocks = tasks.length
 
       if (tasks.length === 0) {
-        progress.status = 'done'
+        progress.status = 'failed'
+        progress.messageCode = 'no_readable_text'
         progress.message = 'No readable text blocks found.'
         return progress
       }
@@ -94,10 +111,15 @@ export function createContentRuntime(dependencies: RuntimeDependencies = {}) {
         }
       }
 
-      progress.status = 'done'
+      progress.status = deriveProgressStatus({
+        translated: progress.translatedBlocks,
+        failed: progress.failedBlocks,
+        total: progress.totalBlocks,
+      })
       return progress
     } catch (error) {
       progress.status = 'failed'
+      progress.messageCode = 'runtime_error'
       progress.message = error instanceof Error ? error.message : String(error)
       return progress
     }
@@ -119,7 +141,7 @@ export function createContentRuntime(dependencies: RuntimeDependencies = {}) {
       }
 
       if (message?.type === 'page/translate') {
-        translatePage()
+        translatePage((message.payload ?? {}) as PageTranslationOverrides)
           .then(result => sendResponse(success(result)))
           .catch(error => sendResponse(failure(error)))
         return true
@@ -161,8 +183,19 @@ export function createContentRuntime(dependencies: RuntimeDependencies = {}) {
 
   return {
     start,
+    translatePage,
     getProgress: () => progress,
   }
+}
+
+export function deriveProgressStatus(input: {
+  translated: number
+  failed: number
+  total: number
+}): PageTranslationProgress['status'] {
+  if (input.total <= 0 || input.translated <= 0) return 'failed'
+  if (input.failed > 0 || input.translated < input.total) return 'partial'
+  return 'done'
 }
 
 function createTask(
@@ -213,11 +246,22 @@ async function sendRuntimeMessage<T>(runtime: typeof chrome.runtime, message: un
 function idleProgress(): PageTranslationProgress {
   return {
     status: 'idle',
+    sourceLang: 'auto',
+    targetLang: 'zh-Hans',
     totalBlocks: 0,
     translatedBlocks: 0,
     cacheHits: 0,
     failedBlocks: 0,
   }
+}
+
+function resolveLanguage(
+  override: string | undefined,
+  fallback: string,
+  options: Array<{ code: string }>,
+): string {
+  if (override && options.some(option => option.code === override)) return override
+  return options.some(option => option.code === fallback) ? fallback : options[0]?.code ?? fallback
 }
 
 function success<T>(data: T): MessageResponse<T> {

@@ -4,6 +4,8 @@ import type { MessageResponse, PageTranslationProgress } from '@lingoflow/types'
 
 const progress = ref<PageTranslationProgress>({
   status: 'idle',
+  sourceLang: 'auto',
+  targetLang: 'zh-Hans',
   totalBlocks: 0,
   translatedBlocks: 0,
   cacheHits: 0,
@@ -81,6 +83,8 @@ async function refreshStatus() {
     pageMessage.value = ''
     progress.value = {
       status: 'idle',
+      sourceLang: 'auto',
+      targetLang: 'zh-Hans',
       totalBlocks: 0,
       translatedBlocks: 0,
       cacheHits: 0,

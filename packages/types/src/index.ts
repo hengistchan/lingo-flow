@@ -210,14 +210,17 @@ export type PublicRuntimeSettings = {
   normalizeVersion: string
 }
 
-export type PageTranslationStatus = 'idle' | 'translating' | 'done' | 'failed'
+export type PageTranslationStatus = 'idle' | 'translating' | 'done' | 'partial' | 'failed'
 
 export type PageTranslationProgress = {
   status: PageTranslationStatus
+  sourceLang: 'auto' | string
+  targetLang: string
   totalBlocks: number
   translatedBlocks: number
   cacheHits: number
   failedBlocks: number
+  messageCode?: 'no_readable_text' | 'runtime_error'
   message?: string
 }
 
@@ -267,6 +270,10 @@ export type ClearAllCacheMessage = {
 
 export type PageTranslateMessage = {
   type: 'page/translate'
+  payload?: {
+    sourceLang?: 'auto' | string
+    targetLang?: string
+  }
 }
 
 export type PageClearMessage = {

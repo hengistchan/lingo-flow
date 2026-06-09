@@ -41,7 +41,7 @@ test('options preview renders settings and cache controls without extension API 
   await expect(page).toHaveTitle('LingoFlow Settings')
   await expect(page.getByRole('heading', { name: 'LingoFlow Settings' })).toBeVisible()
   await expect(page.getByLabel('Target language')).toHaveValue('zh-Hans')
-  await expect(page.getByLabel('Source language')).toHaveValue('en')
+  await expect(page.getByLabel('Source language')).toHaveValue('auto')
   await expect(page.getByLabel('Base URL')).toHaveValue('https://api.openai.com/v1')
   await expect(page.getByText(undefinedError)).toHaveCount(0)
 
