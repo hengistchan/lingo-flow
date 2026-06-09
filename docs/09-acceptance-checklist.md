@@ -4,9 +4,15 @@
 
 - [ ] Popup opens.
 - [ ] Options opens.
+- [ ] Source and target language controls show readable language names instead of language codes.
+- [ ] Source language defaults to Auto-detect.
+- [ ] Popup target language overrides only the current page and does not change the saved default.
+- [ ] Popup shows provider readiness instead of a false Ready state.
+- [ ] Options sidebar navigation changes the visible settings section.
 - [ ] User can save target language.
 - [ ] User can save Azure provider config.
 - [ ] User can save OpenAI-compatible provider config.
+- [ ] Provider connection testing runs only after the user explicitly requests it.
 - [ ] User can click Translate Page.
 - [ ] Current page text blocks are collected.
 - [ ] Code/pre/input/nav/footer/header are skipped.
@@ -39,6 +45,8 @@
 - [ ] Failed batch splits.
 - [ ] Single failed block is marked failed.
 - [ ] Remaining blocks continue.
+- [ ] All failed blocks produce a failed page state.
+- [ ] Mixed successful and failed blocks produce a partial page state.
 - [ ] Renderer failure for one node does not stop all rendering.
 - [ ] Optional fallback provider works when configured.
 

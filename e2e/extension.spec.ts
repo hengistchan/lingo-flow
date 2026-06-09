@@ -76,21 +76,123 @@ test('installed extension injects content runtime into a real page', async () =>
       })
     })
 
-    // Step 2: Send translate request and verify blocks are found.
-    // Without API credentials, individual blocks fail but the overall status is 'done'.
+    // Step 2: A current-page override reaches every task without changing the saved default.
     const result = await extension.worker.evaluate(async () => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
       if (!tab?.id) throw new Error('No active article tab found.')
-      return chrome.tabs.sendMessage(tab.id, { type: 'page/translate' })
+      return chrome.tabs.sendMessage(tab.id, {
+        type: 'page/translate',
+        payload: { targetLang: 'ja' },
+      })
     })
 
-    expect(result).toMatchObject({ ok: true })
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        status: 'failed',
+        targetLang: 'ja',
+        translatedBlocks: 0,
+      },
+    })
     expect(result.data.totalBlocks).toBeGreaterThan(0)
     expect(result.data.failedBlocks).toBeGreaterThan(0)
+
+    const extensionPage = await extension.context.newPage()
+    await extensionPage.goto(extension.url('options.html'))
+    const summary = await extensionPage.evaluate(() =>
+      chrome.runtime.sendMessage({ type: 'settings/getSummary' }),
+    )
+    expect(summary).toMatchObject({
+      ok: true,
+      data: {
+        targetLang: 'zh-Hans',
+        providerConfigured: false,
+      },
+    })
+    expect(summary.data).not.toHaveProperty('providers')
 
     await expect.poll(() => article.locator('[data-lingoflow-block-id]').count()).toBeGreaterThan(0)
     await expect(article.getByText(undefinedError)).toHaveCount(0)
     expect(articleErrors()).toEqual([])
+  } finally {
+    await extension.close()
+    await articleServer.close()
+  }
+})
+
+test('installed extension reports mixed provider results as partial without saving the page override', async () => {
+  const articleServer = await startArticleServer()
+  const extension = await launchExtension({ allowLocalhost: true })
+
+  try {
+    const extensionPage = await extension.context.newPage()
+    await extensionPage.goto(extension.url('options.html'))
+    const saveResponse = await extensionPage.evaluate(async providerBaseUrl => {
+      const current = await chrome.runtime.sendMessage({ type: 'settings/get' })
+      if (!current?.ok) return current
+
+      return chrome.runtime.sendMessage({
+        type: 'settings/save',
+        payload: {
+          settings: {
+            ...current.data,
+            cacheEnabled: false,
+            defaultProviderId: 'openai-compatible',
+            providers: {
+              ...current.data.providers,
+              openai: {
+                baseUrl: providerBaseUrl,
+                apiKey: 'test-only-key',
+                model: 'test-model',
+              },
+            },
+          },
+        },
+      })
+    }, articleServer.providerBaseUrl)
+    expect(saveResponse).toMatchObject({ ok: true })
+
+    const article = await extension.context.newPage()
+    await article.goto(articleServer.url)
+
+    await extension.worker.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (!tab?.id) throw new Error('No active article tab found.')
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['lingoflow-content.js'],
+      })
+    })
+
+    const result = await extension.worker.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (!tab?.id) throw new Error('No active article tab found.')
+      return chrome.tabs.sendMessage(tab.id, {
+        type: 'page/translate',
+        payload: { targetLang: 'ja' },
+      })
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        status: 'partial',
+        targetLang: 'ja',
+      },
+    })
+    expect(result.data.translatedBlocks).toBeGreaterThan(0)
+    expect(result.data.failedBlocks).toBeGreaterThan(0)
+
+    const summary = await extensionPage.evaluate(() =>
+      chrome.runtime.sendMessage({ type: 'settings/getSummary' }),
+    )
+    expect(summary).toMatchObject({
+      ok: true,
+      data: {
+        targetLang: 'zh-Hans',
+        providerConfigured: true,
+      },
+    })
   } finally {
     await extension.close()
     await articleServer.close()
@@ -170,7 +272,32 @@ function prepareTestExtensionDir(): string {
 }
 
 function startArticleServer() {
-  const server = createServer((_, response) => {
+  const server = createServer(async (request, response) => {
+    const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1')
+
+    if (request.method === 'POST' && requestUrl.pathname === '/v1/chat/completions') {
+      const chunks: Uint8Array[] = []
+      for await (const chunk of request) chunks.push(chunk)
+      const requestBody = JSON.parse(Buffer.concat(chunks).toString('utf-8'))
+      const prompt = JSON.parse(requestBody.messages?.[1]?.content ?? '{}')
+      const texts = Array.isArray(prompt.texts) ? prompt.texts.map(String) : []
+      const shouldFail =
+        texts.length > 1 ||
+        texts.some((text: string) => text.includes('avoid touching controls'))
+
+      if (shouldFail) {
+        response.writeHead(500, { 'Content-Type': 'application/json' })
+        response.end(JSON.stringify({ error: { message: 'Intentional mixed-result fixture failure' } }))
+        return
+      }
+
+      response.writeHead(200, { 'Content-Type': 'application/json' })
+      response.end(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify(texts.map((text: string) => `訳: ${text}`)) } }],
+      }))
+      return
+    }
+
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
     response.end(`<!doctype html>
 <html lang="en">
@@ -191,13 +318,15 @@ function startArticleServer() {
 </html>`)
   })
 
-  return new Promise<{ url: string; close: () => Promise<void> }>(resolve => {
+  return new Promise<{ url: string; providerBaseUrl: string; close: () => Promise<void> }>(resolve => {
     server.listen(0, '127.0.0.1', () => {
       const address = server.address()
       if (!address || typeof address === 'string') throw new Error('Article server did not start.')
+      const origin = `http://127.0.0.1:${address.port}`
 
       resolve({
-        url: `http://127.0.0.1:${address.port}/article.html`,
+        url: `${origin}/article.html`,
+        providerBaseUrl: `${origin}/v1`,
         close: () => new Promise<void>(r => server.close(() => r())),
       })
     })

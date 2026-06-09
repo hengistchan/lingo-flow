@@ -639,7 +639,7 @@ git commit -m "feat: add explicit provider connection test"
 - Modify: `e2e/extension.spec.ts`
 - Modify: `docs/09-acceptance-checklist.md`
 
-- [ ] **Step 1: Add installed-extension E2E coverage**
+- [x] **Step 1: Add installed-extension E2E coverage**
 
 Cover:
 
@@ -654,7 +654,7 @@ Cover:
 Use test-only provider routing or deterministic runtime stubs. Do not call real
 provider APIs or store real keys.
 
-- [ ] **Step 2: Run installed E2E and verify red where behavior is missing**
+- [x] **Step 2: Run installed E2E and verify red where behavior is missing**
 
 Run:
 
@@ -665,12 +665,12 @@ pnpm exec playwright test e2e/extension.spec.ts
 
 Expected: new tests identify any remaining contract gaps.
 
-- [ ] **Step 3: Make only the minimal implementation corrections**
+- [x] **Step 3: Make only the minimal implementation corrections**
 
 Update production files only when an installed-extension test exposes a real
 gap. Keep fixes within the language-first spec and commit boundary.
 
-- [ ] **Step 4: Update acceptance checklist**
+- [x] **Step 4: Update acceptance checklist**
 
 Add explicit checklist items for:
 
@@ -680,7 +680,7 @@ Add explicit checklist items for:
 - honest partial/failed states;
 - functional options navigation.
 
-- [ ] **Step 5: Run complete verification**
+- [x] **Step 5: Run complete verification**
 
 Run:
 
@@ -706,7 +706,7 @@ Expected:
 - no `<all_urls>`;
 - production permissions remain low.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add e2e/extension.spec.ts docs/09-acceptance-checklist.md
