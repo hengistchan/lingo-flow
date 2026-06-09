@@ -120,6 +120,72 @@ test('installed extension injects content runtime into a real page', async () =>
   }
 })
 
+test('installed popup keeps the translating target accurate and locks it until completion', async () => {
+  const articleServer = await startArticleServer()
+  const extension = await launchExtension({ allowLocalhost: true })
+
+  try {
+    const extensionPage = await extension.context.newPage()
+    await extensionPage.goto(extension.url('options.html'))
+    const saveResponse = await extensionPage.evaluate(async providerBaseUrl => {
+      const current = await chrome.runtime.sendMessage({ type: 'settings/get' })
+      if (!current?.ok) return current
+
+      return chrome.runtime.sendMessage({
+        type: 'settings/save',
+        payload: {
+          settings: {
+            ...current.data,
+            cacheEnabled: false,
+            defaultProviderId: 'openai-compatible',
+            providers: {
+              ...current.data.providers,
+              openai: {
+                baseUrl: providerBaseUrl,
+                apiKey: 'test-only-key',
+                model: 'test-model',
+              },
+            },
+          },
+        },
+      })
+    }, articleServer.slowProviderBaseUrl)
+    expect(saveResponse).toMatchObject({ ok: true })
+
+    const article = await extension.context.newPage()
+    await article.goto(articleServer.url)
+    await extension.worker.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (!tab?.id) throw new Error('No active article tab found.')
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['lingoflow-content.js'],
+      })
+      void chrome.tabs.sendMessage(tab.id, {
+        type: 'page/translate',
+        payload: { targetLang: 'ja' },
+      })
+    })
+
+    const popup = await extension.context.newPage()
+    await popup.goto(extension.url('popup.html'))
+    await article.bringToFront()
+
+    await expect(popup.locator('.brand-copy p')).toHaveText('Translating')
+    await expect(popup.getByLabel('Target language')).toHaveValue('ja')
+    await expect(popup.getByLabel('Target language')).toBeDisabled()
+    await expect(popup.getByRole('button', { name: 'Translating to Japanese' })).toBeDisabled()
+
+    await expect(popup.locator('.brand-copy p')).toHaveText('Translation complete', { timeout: 8_000 })
+    await expect(popup.getByLabel('Target language')).toBeEnabled()
+    await expect(popup.getByLabel('Target language')).toHaveValue('ja')
+    await expect(popup.getByRole('button', { name: 'Translate again in Japanese' })).toBeVisible()
+  } finally {
+    await extension.close()
+    await articleServer.close()
+  }
+})
+
 test('installed extension reports mixed provider results as partial without saving the page override', async () => {
   const articleServer = await startArticleServer()
   const extension = await launchExtension({ allowLocalhost: true })
@@ -193,6 +259,19 @@ test('installed extension reports mixed provider results as partial without savi
         providerConfigured: true,
       },
     })
+
+    const popup = await extension.context.newPage()
+    await popup.goto(extension.url('popup.html'))
+    await article.bringToFront()
+
+    await expect(popup.locator('.brand-copy p')).toHaveText('Some content could not be translated')
+    await expect(popup.getByLabel('Target language')).toHaveValue('ja')
+    await expect(popup.getByRole('button', { name: 'Translate again in Japanese' })).toBeVisible()
+
+    await popup.getByLabel('Target language').selectOption('fr')
+    await popup.waitForTimeout(1_100)
+    await expect(popup.getByLabel('Target language')).toHaveValue('fr')
+    await expect(popup.getByRole('button', { name: 'Translate again in French' })).toBeVisible()
   } finally {
     await extension.close()
     await articleServer.close()
@@ -275,15 +354,18 @@ function startArticleServer() {
   const server = createServer(async (request, response) => {
     const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1')
 
-    if (request.method === 'POST' && requestUrl.pathname === '/v1/chat/completions') {
+    if (request.method === 'POST' && requestUrl.pathname.endsWith('/v1/chat/completions')) {
       const chunks: Uint8Array[] = []
       for await (const chunk of request) chunks.push(chunk)
       const requestBody = JSON.parse(Buffer.concat(chunks).toString('utf-8'))
       const prompt = JSON.parse(requestBody.messages?.[1]?.content ?? '{}')
       const texts = Array.isArray(prompt.texts) ? prompt.texts.map(String) : []
+      const slow = requestUrl.pathname.startsWith('/slow/')
+      if (slow) await new Promise(resolve => setTimeout(resolve, 4_500))
       const shouldFail =
-        texts.length > 1 ||
-        texts.some((text: string) => text.includes('avoid touching controls'))
+        !slow &&
+        (texts.length > 1 ||
+          texts.some((text: string) => text.includes('avoid touching controls')))
 
       if (shouldFail) {
         response.writeHead(500, { 'Content-Type': 'application/json' })
@@ -318,7 +400,12 @@ function startArticleServer() {
 </html>`)
   })
 
-  return new Promise<{ url: string; providerBaseUrl: string; close: () => Promise<void> }>(resolve => {
+  return new Promise<{
+    url: string
+    providerBaseUrl: string
+    slowProviderBaseUrl: string
+    close: () => Promise<void>
+  }>(resolve => {
     server.listen(0, '127.0.0.1', () => {
       const address = server.address()
       if (!address || typeof address === 'string') throw new Error('Article server did not start.')
@@ -327,6 +414,7 @@ function startArticleServer() {
       resolve({
         url: `${origin}/article.html`,
         providerBaseUrl: `${origin}/v1`,
+        slowProviderBaseUrl: `${origin}/slow/v1`,
         close: () => new Promise<void>(r => server.close(() => r())),
       })
     })

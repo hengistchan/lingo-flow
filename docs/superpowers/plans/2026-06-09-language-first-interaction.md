@@ -721,7 +721,7 @@ git commit -m "test: cover language-first extension flows"
 **Files:**
 - Modify only files required by concrete QA findings.
 
-- [ ] **Step 1: Build and start the current production preview**
+- [x] **Step 1: Build and start the current production preview**
 
 Run:
 
@@ -730,7 +730,7 @@ pnpm build
 python3 -m http.server 4179 --directory apps/extension/output/chrome-mv3
 ```
 
-- [ ] **Step 2: Verify popup states**
+- [x] **Step 2: Verify popup states**
 
 Capture and inspect:
 
@@ -744,7 +744,7 @@ Capture and inspect:
 Check that essential popup text is at least 12px, controls do not overlap, and
 the primary action clearly names the target language.
 
-- [ ] **Step 3: Verify options states**
+- [x] **Step 3: Verify options states**
 
 Check desktop and narrow viewport:
 
@@ -755,11 +755,11 @@ Check desktop and narrow viewport:
 - advanced disclosure;
 - dirty/save state.
 
-- [ ] **Step 4: Fix concrete QA findings**
+- [x] **Step 4: Fix concrete QA findings**
 
 Use the smallest scoped changes. Do not add unrelated redesign elements.
 
-- [ ] **Step 5: Run final verification**
+- [x] **Step 5: Run final verification**
 
 Run:
 
@@ -773,7 +773,7 @@ git status --short
 
 Expected: all pass and only intended QA changes remain.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add <qa files>

@@ -25,6 +25,7 @@ const summary = ref<SettingsSummary>({
 })
 const progress = ref<PageTranslationProgress>(idleProgress())
 const pendingTargetLang = ref(summary.value.targetLang)
+const targetSelectionTouched = ref(false)
 const busy = ref(false)
 const actionFailed = ref(false)
 const targetLanguages = getTargetLanguageOptions()
@@ -77,10 +78,8 @@ async function initialize() {
       uiLocale.value = summary.value.interfaceLocale
     }
     pendingTargetLang.value = summary.value.targetLang
+    targetSelectionTouched.value = false
     await refreshStatus()
-    if (progress.value.status !== 'idle') {
-      pendingTargetLang.value = progress.value.targetLang
-    }
   } catch {
     actionFailed.value = true
   }
@@ -132,7 +131,11 @@ async function refreshStatus() {
   try {
     const tab = await getActiveTab()
     await ensureContentRuntime(tab.id)
-    progress.value = await sendTabMessage<PageTranslationProgress>(tab.id, { type: 'page/status' })
+    const nextProgress = await sendTabMessage<PageTranslationProgress>(tab.id, { type: 'page/status' })
+    progress.value = nextProgress
+    if (!targetSelectionTouched.value && nextProgress.status !== 'idle') {
+      pendingTargetLang.value = nextProgress.targetLang
+    }
   } catch {
     progress.value = idleProgress()
   }
@@ -249,7 +252,11 @@ function getPreviewSafeChrome() {
       <span class="direction" aria-hidden="true">↓</span>
       <label class="target-language">
         <span>{{ copy('popup.targetLanguage') }}</span>
-        <select v-model="pendingTargetLang">
+        <select
+          v-model="pendingTargetLang"
+          :disabled="busy || progress.status === 'translating'"
+          @change="targetSelectionTouched = true"
+        >
           <option v-for="language in targetLanguages" :key="language.code" :value="language.code">
             {{ getLanguageLabel(language.code, uiLocale) }}
           </option>
