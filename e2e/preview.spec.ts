@@ -34,25 +34,37 @@ test('popup preview opens options without chrome.runtime.openOptionsPage', async
 
   await expect(page).toHaveURL(/\/options\.html$/)
   await expect(page).toHaveTitle('LingoFlow Settings')
-  await expect(page.getByRole('heading', { name: 'General Settings' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Languages' })).toBeVisible()
   await expect(page.getByText(undefinedError)).toHaveCount(0)
   expect(errors()).toEqual([])
 })
 
-test('options preview renders settings and cache controls without extension API errors', async ({ page }) => {
+test('options preview uses readable language selectors and functional navigation', async ({ page }) => {
   const errors = collectRuntimeErrors(page)
 
   await page.goto(`/options.html?e2e=${Date.now()}`)
 
   await expect(page).toHaveTitle('LingoFlow Settings')
   await expect(page.getByRole('heading', { name: 'LingoFlow Settings' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Languages' })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByLabel('Target language')).toHaveValue('zh-Hans')
   await expect(page.getByLabel('Source language')).toHaveValue('auto')
-  await expect(page.getByLabel('Base URL')).toHaveValue('https://api.openai.com/v1')
+  await expect(page.getByLabel('Interface language')).toHaveValue('auto')
+  await expect(page.getByLabel('Endpoint')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Save settings' })).toBeDisabled()
   await expect(page.getByText(undefinedError)).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Save Settings' }).click()
-  await page.getByRole('button', { name: 'Clear Site Cache' }).click()
+  await page.getByLabel('Target language').selectOption('ja')
+  await expect(page.getByRole('button', { name: 'Save settings' })).toBeEnabled()
+
+  await page.getByRole('button', { name: 'Translation service' }).click()
+  await expect(page.getByRole('button', { name: 'Translation service' })).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('heading', { name: 'Translation service' })).toBeVisible()
+  await expect(page.getByLabel('Target language')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Storage' }).click()
+  await expect(page.getByRole('button', { name: 'Clear all cache' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Clear site cache' })).toHaveCount(0)
 
   await expect(page.getByText(undefinedError)).toHaveCount(0)
   expect(errors()).toEqual([])

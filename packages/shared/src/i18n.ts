@@ -25,8 +25,34 @@ export type UiCopyKey =
   | 'options.providers'
   | 'options.storage'
   | 'options.advanced'
+  | 'options.title'
+  | 'options.subtitle'
   | 'options.save'
+  | 'options.saved'
   | 'options.testConnection'
+  | 'options.targetLanguage'
+  | 'options.sourceLanguage'
+  | 'options.interfaceLanguage'
+  | 'options.followBrowser'
+  | 'options.autoDetect'
+  | 'options.defaultProvider'
+  | 'options.fallbackProvider'
+  | 'options.none'
+  | 'options.providerConfigured'
+  | 'options.providerIncomplete'
+  | 'options.azure'
+  | 'options.openAI'
+  | 'options.region'
+  | 'options.apiKey'
+  | 'options.cacheEnabled'
+  | 'options.clearAllCache'
+  | 'options.cacheCleared'
+  | 'options.renderMode'
+  | 'options.belowOriginal'
+  | 'options.maxCacheItems'
+  | 'options.azureEndpoint'
+  | 'options.openAIBaseUrl'
+  | 'options.model'
 
 const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
   'zh-Hans': {
@@ -53,8 +79,34 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.providers': '翻译服务',
     'options.storage': '存储',
     'options.advanced': '高级设置',
+    'options.title': 'LingoFlow 设置',
+    'options.subtitle': '管理阅读语言、翻译服务与本地存储。',
     'options.save': '保存设置',
+    'options.saved': '设置已保存',
     'options.testConnection': '测试连接',
+    'options.targetLanguage': '默认目标语言',
+    'options.sourceLanguage': '默认源语言',
+    'options.interfaceLanguage': '界面语言',
+    'options.followBrowser': '跟随浏览器',
+    'options.autoDetect': '自动检测',
+    'options.defaultProvider': '默认翻译服务',
+    'options.fallbackProvider': '备用翻译服务',
+    'options.none': '无',
+    'options.providerConfigured': '已配置',
+    'options.providerIncomplete': '配置不完整',
+    'options.azure': 'Azure Translator',
+    'options.openAI': 'OpenAI-compatible',
+    'options.region': '区域',
+    'options.apiKey': 'API 密钥',
+    'options.cacheEnabled': '启用本地翻译缓存',
+    'options.clearAllCache': '清除全部缓存',
+    'options.cacheCleared': '全部翻译缓存已清除',
+    'options.renderMode': '译文显示方式',
+    'options.belowOriginal': '显示在原文下方',
+    'options.maxCacheItems': '最大缓存条目数',
+    'options.azureEndpoint': 'Azure Endpoint',
+    'options.openAIBaseUrl': 'OpenAI Base URL',
+    'options.model': '模型',
   },
   en: {
     'popup.autoDetect': 'Auto-detect page language',
@@ -80,8 +132,34 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.providers': 'Translation service',
     'options.storage': 'Storage',
     'options.advanced': 'Advanced',
+    'options.title': 'LingoFlow Settings',
+    'options.subtitle': 'Manage reading languages, translation service, and local storage.',
     'options.save': 'Save settings',
+    'options.saved': 'Settings saved',
     'options.testConnection': 'Test connection',
+    'options.targetLanguage': 'Target language',
+    'options.sourceLanguage': 'Source language',
+    'options.interfaceLanguage': 'Interface language',
+    'options.followBrowser': 'Follow browser',
+    'options.autoDetect': 'Auto-detect',
+    'options.defaultProvider': 'Default provider',
+    'options.fallbackProvider': 'Fallback provider',
+    'options.none': 'None',
+    'options.providerConfigured': 'Configured',
+    'options.providerIncomplete': 'Configuration incomplete',
+    'options.azure': 'Azure Translator',
+    'options.openAI': 'OpenAI-compatible',
+    'options.region': 'Region',
+    'options.apiKey': 'API key',
+    'options.cacheEnabled': 'Enable local translation cache',
+    'options.clearAllCache': 'Clear all cache',
+    'options.cacheCleared': 'All translation cache cleared',
+    'options.renderMode': 'Render mode',
+    'options.belowOriginal': 'Below original text',
+    'options.maxCacheItems': 'Max cache items',
+    'options.azureEndpoint': 'Azure endpoint',
+    'options.openAIBaseUrl': 'OpenAI base URL',
+    'options.model': 'Model',
   },
 }
 

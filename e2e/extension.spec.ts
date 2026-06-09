@@ -31,12 +31,16 @@ test('installed extension renders popup and options with real extension APIs', a
 
     await options.goto(extension.url('options.html'))
     await expect(options).toHaveTitle('LingoFlow Settings')
-    await expect(options.getByRole('heading', { name: 'General Settings' })).toBeVisible()
+    await expect(options.getByRole('heading', { name: 'Languages' })).toBeVisible()
 
-    await options.getByLabel('Target language').fill('zh-Hant')
-    await options.getByRole('button', { name: 'Save Settings' }).click()
+    await options.getByLabel('Target language').selectOption('zh-Hant')
+    await expect(options.getByRole('button', { name: 'Save settings' })).toBeEnabled()
+    await options.getByRole('button', { name: 'Save settings' }).click()
 
-    await expect(options.getByText('Settings saved.')).toBeVisible()
+    await expect(options.getByText('Settings saved')).toBeVisible()
+    await options.getByLabel('Target language').selectOption('ja')
+    await expect(options.getByText('Settings saved')).toHaveCount(0)
+    await expect(options.getByRole('button', { name: 'Save settings' })).toBeEnabled()
     await expect(options.getByText(undefinedError)).toHaveCount(0)
     expect(optionsErrors()).toEqual([])
   } finally {

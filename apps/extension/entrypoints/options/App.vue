@@ -1,12 +1,49 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, toRaw } from 'vue'
+import { computed, onMounted, reactive, ref, toRaw, watch } from 'vue'
+import {
+  getLanguageLabel,
+  getSourceLanguageOptions,
+  getTargetLanguageOptions,
+  resolveUiLocale,
+  t,
+} from '@lingoflow/shared'
 import { DEFAULT_SETTINGS } from '@lingoflow/settings'
-import type { AppSettings, MessageResponse, ProviderId } from '@lingoflow/types'
+import type { AppSettings, MessageResponse, UiLocale } from '@lingoflow/types'
+
+type SettingsSection = 'languages' | 'providers' | 'storage' | 'advanced'
 
 const settings = reactive<AppSettings>(structuredClone(DEFAULT_SETTINGS))
-const cacheDomain = ref('')
+const savedSettings = ref<AppSettings>(structuredClone(DEFAULT_SETTINGS))
+const activeSection = ref<SettingsSection>('languages')
 const message = ref('')
 const busy = ref(false)
+const browserLocale = resolveUiLocale(globalThis.navigator?.language)
+const sourceLanguages = getSourceLanguageOptions()
+const targetLanguages = getTargetLanguageOptions()
+
+const uiLocale = computed<UiLocale>(() =>
+  settings.interfaceLocale === 'auto' ? browserLocale : settings.interfaceLocale,
+)
+const dirty = computed(() => JSON.stringify(settings) !== JSON.stringify(savedSettings.value))
+const selectedProviderConfigured = computed(() => {
+  if (settings.defaultProviderId === 'azure-translator') {
+    return Boolean(
+      settings.providers.azure.endpoint.trim() &&
+        settings.providers.azure.key.trim() &&
+        settings.providers.azure.region.trim(),
+    )
+  }
+
+  return Boolean(
+    settings.providers.openai.baseUrl.trim() &&
+      settings.providers.openai.apiKey.trim() &&
+      settings.providers.openai.model.trim(),
+  )
+})
+
+watch(dirty, hasUnsavedChanges => {
+  if (hasUnsavedChanges) message.value = ''
+})
 
 onMounted(loadSettings)
 
@@ -15,8 +52,10 @@ async function loadSettings() {
   message.value = ''
 
   try {
-    if (!globalThis.chrome?.runtime?.sendMessage) return
-    Object.assign(settings, await sendRuntimeMessage<AppSettings>({ type: 'settings/get' }))
+    if (hasRuntimeApi()) {
+      Object.assign(settings, await sendRuntimeMessage<AppSettings>({ type: 'settings/get' }))
+    }
+    savedSettings.value = structuredClone(toRaw(settings))
   } catch (error) {
     message.value = error instanceof Error ? error.message : String(error)
   } finally {
@@ -25,12 +64,18 @@ async function loadSettings() {
 }
 
 async function save() {
+  if (!dirty.value) return
+
   busy.value = true
   message.value = ''
 
   try {
-    await sendRuntimeMessage({ type: 'settings/save', payload: { settings: structuredClone(toRaw(settings)) } })
-    message.value = 'Settings saved.'
+    const value = structuredClone(toRaw(settings))
+    if (hasRuntimeApi()) {
+      await sendRuntimeMessage({ type: 'settings/save', payload: { settings: value } })
+    }
+    savedSettings.value = value
+    message.value = copy('options.saved')
   } catch (error) {
     message.value = error instanceof Error ? error.message : String(error)
   } finally {
@@ -43,30 +88,10 @@ async function clearAllCache() {
   message.value = ''
 
   try {
-    await sendRuntimeMessage({ type: 'cache/clearAll' })
-    message.value = 'All translation cache cleared.'
-  } catch (error) {
-    message.value = error instanceof Error ? error.message : String(error)
-  } finally {
-    busy.value = false
-  }
-}
-
-async function clearDomainCache() {
-  if (!cacheDomain.value.trim()) {
-    message.value = 'Enter a domain first.'
-    return
-  }
-
-  busy.value = true
-  message.value = ''
-
-  try {
-    await sendRuntimeMessage({
-      type: 'cache/clearByDomain',
-      payload: { domain: cacheDomain.value.trim() },
-    })
-    message.value = `Cache cleared for ${cacheDomain.value.trim()}.`
+    if (hasRuntimeApi()) {
+      await sendRuntimeMessage({ type: 'cache/clearAll' })
+    }
+    message.value = copy('options.cacheCleared')
   } catch (error) {
     message.value = error instanceof Error ? error.message : String(error)
   } finally {
@@ -76,10 +101,16 @@ async function clearDomainCache() {
 
 async function sendRuntimeMessage<T = unknown>(payload: unknown): Promise<T> {
   const response = (await chrome.runtime.sendMessage(payload)) as MessageResponse<T>
-  if (!response?.ok) {
-    throw new Error(response?.error?.message ?? 'Settings message failed.')
-  }
+  if (!response?.ok) throw new Error(response?.error?.message ?? 'Settings message failed.')
   return response.data
+}
+
+function copy(key: Parameters<typeof t>[1], variables?: Record<string, string | number>) {
+  return t(uiLocale.value, key, variables)
+}
+
+function hasRuntimeApi() {
+  return typeof globalThis.chrome?.runtime?.sendMessage === 'function'
 }
 </script>
 
@@ -87,113 +118,148 @@ async function sendRuntimeMessage<T = unknown>(payload: unknown): Promise<T> {
   <main class="page">
     <header class="masthead">
       <div>
-        <h1>LingoFlow Settings</h1>
-        <p>Local provider keys, rendering, and cache controls.</p>
+        <h1>{{ copy('options.title') }}</h1>
+        <p>{{ copy('options.subtitle') }}</p>
       </div>
-      <button :disabled="busy" @click="save">Save Settings</button>
+      <div class="save-area">
+        <span v-if="message" class="message" aria-live="polite">{{ message }}</span>
+        <button :disabled="busy || !dirty" @click="save">{{ copy('options.save') }}</button>
+      </div>
     </header>
-
-    <p v-if="message" class="message">{{ message }}</p>
 
     <div class="settings-shell">
       <aside class="settings-nav" aria-label="Settings sections">
-        <button class="nav-item active" type="button">General</button>
-        <button class="nav-item" type="button">Providers</button>
-        <button class="nav-item" type="button">Cache</button>
+        <button
+          v-for="section in (['languages', 'providers', 'storage', 'advanced'] as SettingsSection[])"
+          :key="section"
+          class="nav-item"
+          :class="{ active: activeSection === section }"
+          :aria-current="activeSection === section ? 'page' : undefined"
+          type="button"
+          @click="activeSection = section"
+        >
+          {{ copy(`options.${section}`) }}
+        </button>
       </aside>
 
       <div class="settings-content">
-        <section>
-          <h2>General Settings</h2>
+        <section v-if="activeSection === 'languages'">
+          <h2>{{ copy('options.languages') }}</h2>
+          <p class="section-intro">{{ copy('options.subtitle') }}</p>
           <div class="grid">
             <label>
-              <span>Target language</span>
-              <input v-model="settings.targetLang" placeholder="zh-Hans" />
-            </label>
-            <label>
-              <span>Source language</span>
-              <input v-model="settings.sourceLang" placeholder="en" />
-            </label>
-            <label>
-              <span>Render mode</span>
-              <select v-model="settings.renderMode">
-                <option value="below-original">Below original text</option>
+              <span>{{ copy('options.targetLanguage') }}</span>
+              <select v-model="settings.targetLang">
+                <option v-for="language in targetLanguages" :key="language.code" :value="language.code">
+                  {{ getLanguageLabel(language.code, uiLocale) }}
+                </option>
               </select>
             </label>
             <label>
-              <span>Max cache items</span>
-              <input v-model.number="settings.maxCacheItems" min="1" type="number" />
+              <span>{{ copy('options.sourceLanguage') }}</span>
+              <select v-model="settings.sourceLang">
+                <option v-for="language in sourceLanguages" :key="language.code" :value="language.code">
+                  {{ language.code === 'auto' ? copy('options.autoDetect') : getLanguageLabel(language.code, uiLocale) }}
+                </option>
+              </select>
+            </label>
+            <label>
+              <span>{{ copy('options.interfaceLanguage') }}</span>
+              <select v-model="settings.interfaceLocale">
+                <option value="auto">{{ copy('options.followBrowser') }}</option>
+                <option value="zh-Hans">简体中文</option>
+                <option value="en">English</option>
+              </select>
             </label>
           </div>
-          <label class="check">
-            <input v-model="settings.cacheEnabled" type="checkbox" />
-            <span>Enable IndexedDB local cache</span>
-          </label>
         </section>
 
-        <section>
-          <h2>Translation Providers</h2>
-          <div class="provider-list">
-            <label class="provider-row">
-              <span>Azure Translator</span>
+        <section v-else-if="activeSection === 'providers'">
+          <div class="section-heading">
+            <div>
+              <h2>{{ copy('options.providers') }}</h2>
+              <p class="section-intro">
+                {{ selectedProviderConfigured ? copy('options.providerConfigured') : copy('options.providerIncomplete') }}
+              </p>
+            </div>
+            <span class="status-mark" :data-ready="selectedProviderConfigured" />
+          </div>
+
+          <div class="grid">
+            <label>
+              <span>{{ copy('options.defaultProvider') }}</span>
               <select v-model="settings.defaultProviderId">
-                <option value="azure-translator">Default</option>
-                <option value="openai-compatible">OpenAI default</option>
+                <option value="azure-translator">{{ copy('options.azure') }}</option>
+                <option value="openai-compatible">{{ copy('options.openAI') }}</option>
               </select>
             </label>
-            <label class="provider-row">
-              <span>Fallback provider</span>
+            <label>
+              <span>{{ copy('options.fallbackProvider') }}</span>
               <select v-model="settings.fallbackProviderId">
-                <option value="">None</option>
-                <option value="azure-translator">Azure Translator</option>
-                <option value="openai-compatible">OpenAI-compatible</option>
+                <option value="">{{ copy('options.none') }}</option>
+                <option value="azure-translator">{{ copy('options.azure') }}</option>
+                <option value="openai-compatible">{{ copy('options.openAI') }}</option>
               </select>
             </label>
           </div>
-        </section>
 
-        <section>
-          <h2>Azure Translator</h2>
-          <div class="grid">
+          <div v-if="settings.defaultProviderId === 'azure-translator'" class="provider-fields">
             <label>
-              <span>Endpoint</span>
-              <input v-model="settings.providers.azure.endpoint" />
+              <span>{{ copy('options.region') }}</span>
+              <input v-model="settings.providers.azure.region" autocomplete="off" />
             </label>
             <label>
-              <span>Region</span>
-              <input v-model="settings.providers.azure.region" />
-            </label>
-            <label>
-              <span>API key</span>
+              <span>{{ copy('options.apiKey') }}</span>
               <input v-model="settings.providers.azure.key" autocomplete="off" type="password" />
             </label>
           </div>
-        </section>
 
-        <section>
-          <h2>OpenAI-compatible</h2>
-          <div class="grid">
+          <div v-else class="provider-fields">
             <label>
-              <span>Base URL</span>
-              <input v-model="settings.providers.openai.baseUrl" />
-            </label>
-            <label>
-              <span>Model</span>
-              <input v-model="settings.providers.openai.model" />
-            </label>
-            <label>
-              <span>API key</span>
+              <span>{{ copy('options.apiKey') }}</span>
               <input v-model="settings.providers.openai.apiKey" autocomplete="off" type="password" />
             </label>
           </div>
         </section>
 
-        <section>
-          <h2>Cache Controls</h2>
-          <div class="cache-row">
-            <input v-model="cacheDomain" placeholder="example.com" />
-            <button :disabled="busy" @click="clearDomainCache">Clear Site Cache</button>
-            <button class="danger" :disabled="busy" @click="clearAllCache">Clear All Cache</button>
+        <section v-else-if="activeSection === 'storage'">
+          <h2>{{ copy('options.storage') }}</h2>
+          <label class="check">
+            <input v-model="settings.cacheEnabled" type="checkbox" />
+            <span>{{ copy('options.cacheEnabled') }}</span>
+          </label>
+          <div class="storage-actions">
+            <button class="danger" :disabled="busy" @click="clearAllCache">
+              {{ copy('options.clearAllCache') }}
+            </button>
+          </div>
+        </section>
+
+        <section v-else>
+          <h2>{{ copy('options.advanced') }}</h2>
+          <div class="grid">
+            <label>
+              <span>{{ copy('options.renderMode') }}</span>
+              <select v-model="settings.renderMode">
+                <option value="below-original">{{ copy('options.belowOriginal') }}</option>
+              </select>
+            </label>
+            <label>
+              <span>{{ copy('options.maxCacheItems') }}</span>
+              <input v-model.number="settings.maxCacheItems" min="1" type="number" />
+            </label>
+            <label>
+              <span>{{ copy('options.azureEndpoint') }}</span>
+              <input v-model="settings.providers.azure.endpoint" />
+            </label>
+            <label>
+              <span>{{ copy('options.openAIBaseUrl') }}</span>
+              <input v-model="settings.providers.openai.baseUrl" />
+            </label>
+            <label>
+              <span>{{ copy('options.model') }}</span>
+              <input v-model="settings.providers.openai.model" />
+            </label>
           </div>
         </section>
       </div>
@@ -216,12 +282,21 @@ async function sendRuntimeMessage<T = unknown>(payload: unknown): Promise<T> {
   padding: 36px 0 56px;
 }
 
-.masthead {
+.masthead,
+.section-heading,
+.save-area {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 24px;
+  gap: 18px;
+}
+
+.masthead {
   margin-bottom: 24px;
+}
+
+.save-area {
+  align-items: center;
 }
 
 h1,
@@ -236,21 +311,23 @@ h1 {
 }
 
 h2 {
-  margin-bottom: 16px;
-  font-size: 17px;
+  font-size: 18px;
 }
 
-p {
+.masthead p,
+.section-intro {
   margin-top: 8px;
-  color: #6b7280;
+  color: #64748b;
+  font-size: 13px;
 }
 
 .settings-shell {
   display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
+  grid-template-columns: 190px minmax(0, 1fr);
+  min-height: 520px;
   overflow: hidden;
   border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 18px 45px rgb(15 23 42 / 7%);
 }
@@ -265,10 +342,9 @@ p {
 
 .nav-item {
   justify-content: flex-start;
-  min-height: 34px;
-  border: 0;
+  border-color: transparent;
   background: transparent;
-  color: #6b7280;
+  color: #64748b;
   text-align: left;
 }
 
@@ -278,26 +354,24 @@ p {
 }
 
 .settings-content {
-  padding: 10px 22px 24px;
+  padding: 28px;
 }
 
 section {
-  margin-top: 14px;
-  padding: 18px 0 0;
-  border: 0;
-  border-top: 1px solid #eef2f7;
-  border-radius: 0;
-  background: #ffffff;
+  display: grid;
+  gap: 24px;
 }
 
-section:first-child {
-  border-top: 0;
-}
-
-.grid {
+.grid,
+.provider-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+}
+
+.provider-fields {
+  padding-top: 22px;
+  border-top: 1px solid #eef2f7;
 }
 
 label {
@@ -306,17 +380,17 @@ label {
 }
 
 label span {
-  color: #4b5563;
+  color: #475569;
   font-size: 13px;
   font-weight: 700;
 }
 
 input,
 select {
-  min-height: 38px;
+  min-height: 40px;
   box-sizing: border-box;
   width: 100%;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #dbe1ea;
   border-radius: 7px;
   padding: 0 11px;
   background: #ffffff;
@@ -329,7 +403,6 @@ select {
   display: flex;
   align-items: center;
   gap: 9px;
-  margin-top: 16px;
 }
 
 .check input {
@@ -337,14 +410,13 @@ select {
   min-height: 16px;
 }
 
-.cache-row {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 10px;
+.storage-actions {
+  padding-top: 20px;
+  border-top: 1px solid #eef2f7;
 }
 
 button {
-  min-height: 38px;
+  min-height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -361,7 +433,7 @@ button {
 
 button:disabled {
   cursor: not-allowed;
-  opacity: 0.6;
+  opacity: 0.5;
 }
 
 .danger {
@@ -370,42 +442,48 @@ button:disabled {
 }
 
 .message {
-  padding: 12px 14px;
-  border: 1px solid #dbeafe;
-  border-radius: 8px;
-  background: #eff6ff;
   color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 700;
 }
 
-.provider-list {
-  display: grid;
-  gap: 10px;
+.status-mark {
+  width: 9px;
+  height: 9px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: #f59e0b;
 }
 
-.provider-row {
-  grid-template-columns: minmax(0, 1fr) 180px;
-  align-items: center;
-  min-height: 46px;
-  padding: 0 12px;
-  border: 1px solid #eef2f7;
-  border-radius: 8px;
-  background: #ffffff;
+.status-mark[data-ready="true"] {
+  background: #10b981;
 }
 
 @media (max-width: 720px) {
+  .page {
+    width: min(100% - 24px, 980px);
+    padding-top: 20px;
+  }
+
   .masthead,
-  .cache-row,
+  .save-area,
   .settings-shell,
-  .provider-row {
+  .grid,
+  .provider-fields {
     grid-template-columns: 1fr;
   }
 
-  .masthead {
+  .masthead,
+  .save-area {
     display: grid;
   }
 
-  .grid {
-    grid-template-columns: 1fr;
+  .settings-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-content {
+    padding: 22px 18px;
   }
 }
 </style>

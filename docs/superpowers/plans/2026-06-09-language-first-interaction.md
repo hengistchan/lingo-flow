@@ -468,7 +468,7 @@ git commit -m "feat: make popup language first"
 - Modify: `e2e/preview.spec.ts`
 - Modify: `e2e/extension.spec.ts`
 
-- [ ] **Step 1: Write failing options E2E expectations**
+- [x] **Step 1: Write failing options E2E expectations**
 
 Test that:
 
@@ -479,7 +479,7 @@ Test that:
 - technical Advanced fields are not visible in the Languages section;
 - Save Settings becomes enabled only after a change.
 
-- [ ] **Step 2: Run E2E and verify red**
+- [x] **Step 2: Run E2E and verify red**
 
 Run:
 
@@ -490,7 +490,7 @@ pnpm exec playwright test e2e/preview.spec.ts e2e/extension.spec.ts
 
 Expected: FAIL against the current options page.
 
-- [ ] **Step 3: Implement real section navigation**
+- [x] **Step 3: Implement real section navigation**
 
 Use a local section state:
 
@@ -501,13 +501,13 @@ type SettingsSection = 'languages' | 'providers' | 'storage' | 'advanced'
 Render only the selected section. Mark selected navigation with
 `aria-current="page"`.
 
-- [ ] **Step 4: Replace language code inputs**
+- [x] **Step 4: Replace language code inputs**
 
 Use native `<select>` controls populated from the shared language catalog.
 Visible options use human-readable names; values remain provider language
 codes.
 
-- [ ] **Step 5: Add progressive disclosure**
+- [x] **Step 5: Add progressive disclosure**
 
 - Languages: default source, target, interface language.
 - Providers: readiness and provider setup.
@@ -515,14 +515,14 @@ codes.
 - Advanced: endpoint, model, render mode, maximum cache entries.
 - Remove typed-domain cache clearing.
 
-- [ ] **Step 6: Add dirty save behavior**
+- [x] **Step 6: Add dirty save behavior**
 
 - Keep an immutable loaded snapshot.
 - Enable save only when current settings differ.
 - Reset dirty state after a successful save.
 - Show save result near the save action.
 
-- [ ] **Step 7: Verify**
+- [x] **Step 7: Verify**
 
 Run:
 
@@ -534,7 +534,7 @@ pnpm typecheck
 
 Expected: all pass.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add apps/extension/entrypoints/options/App.vue e2e/preview.spec.ts e2e/extension.spec.ts
