@@ -308,6 +308,83 @@ test('installed extension connects to an explicitly authorized custom OpenAI-com
   }
 })
 
+test('installed extension connects to Azure protocol and uses it as a fallback provider', async () => {
+  const articleServer = await startArticleServer()
+  const extension = await launchExtension({ allowLocalhost: true })
+
+  try {
+    const options = await extension.context.newPage()
+    await options.goto(extension.url('options.html'))
+    await options.getByRole('button', { name: 'Translation service' }).click()
+    await options.getByLabel('Region').fill('test-region')
+    await options.getByLabel('API key').fill('azure-test-key')
+    await options.getByRole('button', { name: 'Advanced' }).click()
+    await options.getByLabel('Azure endpoint').fill(articleServer.azureProviderEndpoint)
+    await options.getByRole('button', { name: 'Translation service' }).click()
+    await options.getByRole('button', { name: 'Test connection' }).click()
+    await expect(options.getByText('Connection successful')).toBeVisible()
+
+    const saveResponse = await options.evaluate(async providerUrls => {
+      const current = await chrome.runtime.sendMessage({ type: 'settings/get' })
+      if (!current?.ok) return current
+
+      return chrome.runtime.sendMessage({
+        type: 'settings/save',
+        payload: {
+          settings: {
+            ...current.data,
+            cacheEnabled: false,
+            defaultProviderId: 'openai-compatible',
+            fallbackProviderId: 'azure-translator',
+            providers: {
+              azure: {
+                endpoint: providerUrls.azure,
+                key: 'azure-test-key',
+                region: 'test-region',
+              },
+              openai: {
+                baseUrl: providerUrls.openai,
+                apiKey: 'openai-test-key',
+                model: 'test-model',
+              },
+            },
+          },
+        },
+      })
+    }, {
+      azure: articleServer.azureProviderEndpoint,
+      openai: articleServer.providerBaseUrl,
+    })
+    expect(saveResponse).toMatchObject({ ok: true })
+
+    const article = await extension.context.newPage()
+    await article.goto(articleServer.url)
+    await extension.worker.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (!tab?.id) throw new Error('No active article tab found.')
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['lingoflow-content.js'],
+      })
+    })
+
+    const result = await extension.worker.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (!tab?.id) throw new Error('No active article tab found.')
+      return chrome.tabs.sendMessage(tab.id, {
+        type: 'page/translate',
+        payload: { targetLang: 'ja' },
+      })
+    })
+
+    expect(result).toMatchObject({ ok: true, data: { status: 'done', failedBlocks: 0 } })
+    await expect(article.locator('[data-lingoflow-translation]').first()).toContainText('AZ:')
+  } finally {
+    await extension.close()
+    await articleServer.close()
+  }
+})
+
 test('installed popup exposes current-site cache cleanup', async () => {
   const extension = await launchExtension()
 
@@ -632,6 +709,18 @@ function startArticleServer() {
       return
     }
 
+    if (request.method === 'POST' && requestUrl.pathname === '/azure/translate') {
+      const chunks: Uint8Array[] = []
+      for await (const chunk of request) chunks.push(chunk)
+      const requestBody = JSON.parse(Buffer.concat(chunks).toString('utf-8')) as Array<{ text?: string }>
+
+      response.writeHead(200, { 'Content-Type': 'application/json' })
+      response.end(JSON.stringify(requestBody.map(item => ({
+        translations: [{ text: `AZ: ${item.text ?? ''}` }],
+      }))))
+      return
+    }
+
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
     response.end(`<!doctype html>
 <html lang="en">
@@ -657,6 +746,7 @@ function startArticleServer() {
     providerBaseUrl: string
     successProviderBaseUrl: string
     slowProviderBaseUrl: string
+    azureProviderEndpoint: string
     providerRequestCount: () => number
     close: () => Promise<void>
   }>(resolve => {
@@ -670,6 +760,7 @@ function startArticleServer() {
         providerBaseUrl: `${origin}/v1`,
         successProviderBaseUrl: `${origin}/success/v1`,
         slowProviderBaseUrl: `${origin}/slow/v1`,
+        azureProviderEndpoint: `${origin}/azure`,
         providerRequestCount: () => providerRequestCount,
         close: () => new Promise<void>(r => server.close(() => r())),
       })
