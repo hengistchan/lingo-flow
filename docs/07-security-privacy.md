@@ -48,11 +48,19 @@ MVP permissions:
   "host_permissions": [
     "https://api.cognitive.microsofttranslator.com/*",
     "https://api.openai.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
   ]
 }
 ```
 
 Do not request `<all_urls>` in MVP.
+
+The optional patterns are not granted at installation. When a user explicitly
+saves or tests a custom provider endpoint, LingoFlow requests only that
+endpoint's exact origin through `chrome.permissions.request`.
 
 ## Future Optional Permissions
 
