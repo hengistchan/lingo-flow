@@ -456,6 +456,8 @@ test('installed extension translates representative public reading pages', async
     { name: 'Wikipedia article', url: 'https://en.wikipedia.org/wiki/Translation' },
     { name: 'MDN documentation', url: 'https://developer.mozilla.org/en-US/docs/Web/API/Document' },
     { name: 'GitHub README', url: 'https://github.com/vuejs/core' },
+    { name: 'News article', url: 'https://www.theguardian.com/world/2026/jun/13/ecuador-fishing-boats-us-strikes' },
+    { name: 'Technical blog', url: 'https://webkit.org/blog/17967/news-from-wwdc26-webkit-in-safari-27-beta/' },
     { name: 'Chinese page', url: 'https://zh.wikipedia.org/wiki/%E7%BF%BB%E8%AF%91' },
     { name: 'Code-heavy page', url: 'https://docs.python.org/3/tutorial/controlflow.html' },
   ]
