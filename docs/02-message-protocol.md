@@ -88,6 +88,8 @@ export type PageClearCacheMessage = {
 
 Clearing the current site's cache removes both the background IndexedDB entries
 for that domain and the active page content runtime's in-memory cache.
+Clearing all cache also broadcasts `page/clearCache` to every injected content
+runtime so an already-open page cannot continue serving stale in-memory results.
 
 ## Standard Response
 

@@ -54,6 +54,7 @@ async function handleMessage(message: { type?: string; payload?: unknown }, _sen
       return { cleared: true }
     case 'cache/clearAll':
       await clearAllCache()
+      await clearAllPageMemoryCaches()
       return { cleared: true }
     default:
       throw new Error(`Unsupported LingoFlow message: ${message?.type ?? 'unknown'}`)
@@ -173,6 +174,16 @@ async function translateWithProvider(
 function getProviderConfig(settings: AppSettings, providerId: ProviderId) {
   if (providerId === 'azure-translator') return settings.providers.azure
   return settings.providers.openai
+}
+
+async function clearAllPageMemoryCaches() {
+  const tabs = await chrome.tabs.query({})
+  const messages = tabs.flatMap(tab =>
+    tab.id === undefined
+      ? []
+      : [chrome.tabs.sendMessage(tab.id, { type: 'page/clearCache' })],
+  )
+  await Promise.allSettled(messages)
 }
 
 function success<T>(data: T): MessageResponse<T> {
