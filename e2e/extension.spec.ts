@@ -278,12 +278,59 @@ test('installed extension reports mixed provider results as partial without savi
   }
 })
 
+test('installed extension requests access to a custom OpenAI-compatible origin from an explicit connection test', async () => {
+  const articleServer = await startArticleServer()
+  const extension = await launchExtension()
+
+  try {
+    const options = await extension.context.newPage()
+    await options.goto(extension.url('options.html'))
+
+    await options.getByRole('button', { name: 'Translation service' }).click()
+    await options.getByLabel('Default provider').selectOption('openai-compatible')
+    await options.getByLabel('API key').fill('test-only-key')
+
+    await options.getByRole('button', { name: 'Advanced' }).click()
+    await options.getByLabel('OpenAI base URL').fill(articleServer.providerBaseUrl)
+    await options.getByLabel('Model').fill('test-model')
+
+    await options.getByRole('button', { name: 'Translation service' }).click()
+    await options.getByRole('button', { name: 'Test connection' }).click()
+
+    await expect(options.getByText('Connection successful')).toBeVisible()
+    const providerOrigin = `${new URL(articleServer.providerBaseUrl).origin}/*`
+    await expect.poll(() =>
+      options.evaluate(origin => chrome.permissions.contains({ origins: [origin] }), providerOrigin),
+    ).toBe(true)
+  } finally {
+    await extension.close()
+    await articleServer.close()
+  }
+})
+
+test('installed popup exposes current-site cache cleanup', async () => {
+  const extension = await launchExtension()
+
+  try {
+    const popup = await extension.context.newPage()
+    await popup.goto(extension.url('popup.html'))
+
+    await expect(popup.getByRole('button', { name: "Clear this site's cache" })).toBeVisible()
+  } finally {
+    await extension.close()
+  }
+})
+
 test('production build manifest does not contain test-only host permissions', () => {
   const manifest = JSON.parse(readFileSync(path.join(builtExtensionPath, 'manifest.json'), 'utf-8'))
 
   expect(manifest.host_permissions).not.toContain(expect.stringMatching(/127\.0\.0\.1/))
   expect(manifest.host_permissions).not.toContain(expect.stringMatching(/<all_urls>/))
   expect(manifest.permissions).not.toContain(expect.stringMatching(/<all_urls>/))
+  expect(manifest.optional_host_permissions).toEqual(
+    expect.arrayContaining(['https://*/*', 'http://*/*']),
+  )
+  expect(manifest.optional_host_permissions).not.toContain(expect.stringMatching(/<all_urls>/))
 })
 
 test('production content script contains no Unicode noncharacters', () => {
