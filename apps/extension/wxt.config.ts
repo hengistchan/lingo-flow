@@ -53,6 +53,7 @@ export default defineConfig({
     description: 'AI-powered Translation for the Open Web',
     permissions: ['activeTab', 'scripting', 'storage'],
     host_permissions: ['https://api.cognitive.microsofttranslator.com/*', 'https://api.openai.com/*'],
+    optional_host_permissions: ['https://*/*', 'http://*/*'],
     action: {
       default_title: 'LingoFlow',
     },

@@ -202,6 +202,7 @@ export type ProviderConnectionMessageCode =
   | 'config_incomplete'
   | 'authentication_failed'
   | 'network_failed'
+  | 'permission_denied'
   | 'provider_failed'
 
 export type ProviderConnectionResult = {

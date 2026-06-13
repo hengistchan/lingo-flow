@@ -16,6 +16,8 @@ export type UiCopyKey =
   | 'popup.configureProvider'
   | 'popup.clearTranslation'
   | 'popup.clearSiteCache'
+  | 'popup.siteCacheCleared'
+  | 'popup.siteCacheFailed'
   | 'popup.settings'
   | 'popup.progress'
   | 'popup.failedBlocks'
@@ -36,6 +38,7 @@ export type UiCopyKey =
   | 'options.connectionConfigIncomplete'
   | 'options.connectionAuthenticationFailed'
   | 'options.connectionNetworkFailed'
+  | 'options.connectionPermissionDenied'
   | 'options.connectionProviderFailed'
   | 'options.targetLanguage'
   | 'options.sourceLanguage'
@@ -77,6 +80,8 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'popup.configureProvider': '配置翻译服务',
     'popup.clearTranslation': '清除译文',
     'popup.clearSiteCache': '清除此网站的缓存',
+    'popup.siteCacheCleared': '已清除此网站的翻译缓存',
+    'popup.siteCacheFailed': '无法清除此网站的缓存',
     'popup.settings': '设置',
     'popup.progress': '进度',
     'popup.failedBlocks': '失败段落',
@@ -97,6 +102,7 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.connectionConfigIncomplete': '请先补全所选翻译服务的配置。',
     'options.connectionAuthenticationFailed': '身份验证失败，请检查 API 密钥和区域。',
     'options.connectionNetworkFailed': '无法连接到翻译服务，请检查网络与 Endpoint。',
+    'options.connectionPermissionDenied': '需要允许访问此翻译服务地址才能继续。',
     'options.connectionProviderFailed': '翻译服务返回异常，请稍后重试。',
     'options.targetLanguage': '默认目标语言',
     'options.sourceLanguage': '默认源语言',
@@ -137,6 +143,8 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'popup.configureProvider': 'Configure translation service',
     'popup.clearTranslation': 'Clear translation',
     'popup.clearSiteCache': "Clear this site's cache",
+    'popup.siteCacheCleared': "This site's translation cache was cleared",
+    'popup.siteCacheFailed': "This site's cache could not be cleared",
     'popup.settings': 'Settings',
     'popup.progress': 'Progress',
     'popup.failedBlocks': 'Failed blocks',
@@ -157,6 +165,7 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.connectionConfigIncomplete': 'Complete the selected provider configuration before testing.',
     'options.connectionAuthenticationFailed': 'Authentication failed. Check the API key and region.',
     'options.connectionNetworkFailed': 'Could not reach the provider. Check the network and endpoint.',
+    'options.connectionPermissionDenied': 'Allow access to this provider address to continue.',
     'options.connectionProviderFailed': 'The provider returned an unexpected response. Try again.',
     'options.targetLanguage': 'Target language',
     'options.sourceLanguage': 'Source language',

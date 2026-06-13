@@ -28,6 +28,7 @@ const pendingTargetLang = ref(summary.value.targetLang)
 const targetSelectionTouched = ref(false)
 const busy = ref(false)
 const actionFailed = ref(false)
+const cacheMessage = ref('')
 const targetLanguages = getTargetLanguageOptions()
 let pollTimer: number | undefined
 
@@ -122,6 +123,25 @@ async function clearTranslation() {
     progress.value = await sendTabMessage<PageTranslationProgress>(tab.id, { type: 'page/clear' })
   } catch {
     actionFailed.value = true
+  } finally {
+    busy.value = false
+  }
+}
+
+async function clearSiteCache() {
+  if (!extensionApiAvailable.value) return
+
+  busy.value = true
+  cacheMessage.value = ''
+
+  try {
+    const tab = await getActiveTab()
+    const domain = tab.url ? new URL(tab.url).hostname : ''
+    if (!domain) throw new Error('No current website is available.')
+    await sendRuntimeMessage({ type: 'cache/clearByDomain', payload: { domain } })
+    cacheMessage.value = copy('popup.siteCacheCleared')
+  } catch {
+    cacheMessage.value = copy('popup.siteCacheFailed')
   } finally {
     busy.value = false
   }
@@ -290,6 +310,7 @@ function getPreviewSafeChrome() {
     </section>
 
     <p v-if="userMessage" class="message" aria-live="polite">{{ userMessage }}</p>
+    <p v-if="cacheMessage" class="message" aria-live="polite">{{ cacheMessage }}</p>
 
     <div class="actions">
       <button v-if="summary.providerConfigured" class="primary" :disabled="busy || progress.status === 'translating'" @click="translatePage">
@@ -300,6 +321,9 @@ function getPreviewSafeChrome() {
       </button>
       <button v-if="hasTranslations" :disabled="busy" @click="clearTranslation">
         {{ copy('popup.clearTranslation') }}
+      </button>
+      <button :disabled="busy" @click="clearSiteCache">
+        {{ copy('popup.clearSiteCache') }}
       </button>
     </div>
   </main>

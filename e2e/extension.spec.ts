@@ -278,9 +278,9 @@ test('installed extension reports mixed provider results as partial without savi
   }
 })
 
-test('installed extension requests access to a custom OpenAI-compatible origin from an explicit connection test', async () => {
+test('installed extension connects to an explicitly authorized custom OpenAI-compatible origin', async () => {
   const articleServer = await startArticleServer()
-  const extension = await launchExtension()
+  const extension = await launchExtension({ allowLocalhost: true })
 
   try {
     const options = await extension.context.newPage()

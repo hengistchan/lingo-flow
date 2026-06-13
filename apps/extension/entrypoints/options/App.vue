@@ -85,6 +85,10 @@ async function save() {
 
   try {
     const value = structuredClone(toRaw(settings))
+    if (!(await requestProviderOriginAccess(value.defaultProviderId, getProviderConfig(value)))) {
+      message.value = copy('options.connectionPermissionDenied')
+      return
+    }
     if (hasRuntimeApi()) {
       await sendRuntimeMessage({ type: 'settings/save', payload: { settings: value } })
     }
@@ -129,6 +133,11 @@ async function testConnection() {
       return
     }
 
+    if (!(await requestProviderOriginAccess(providerId, config))) {
+      connectionResult.value = { ok: false, providerId, messageCode: 'permission_denied' }
+      return
+    }
+
     connectionResult.value = await sendRuntimeMessage<ProviderConnectionResult>({
       type: 'provider/testConnection',
       payload: { providerId, config },
@@ -160,9 +169,43 @@ function connectionCopyKey(code: ProviderConnectionMessageCode): Parameters<type
     config_incomplete: 'options.connectionConfigIncomplete',
     authentication_failed: 'options.connectionAuthenticationFailed',
     network_failed: 'options.connectionNetworkFailed',
+    permission_denied: 'options.connectionPermissionDenied',
     provider_failed: 'options.connectionProviderFailed',
   }
   return keys[code]
+}
+
+function getProviderConfig(value: AppSettings) {
+  return value.defaultProviderId === 'azure-translator'
+    ? value.providers.azure
+    : value.providers.openai
+}
+
+async function requestProviderOriginAccess(
+  providerId: AppSettings['defaultProviderId'],
+  config: AppSettings['providers']['azure'] | AppSettings['providers']['openai'],
+) {
+  const endpoint =
+    providerId === 'azure-translator'
+      ? (config as AppSettings['providers']['azure']).endpoint
+      : (config as AppSettings['providers']['openai']).baseUrl
+  const origin = providerOriginPattern(endpoint)
+
+  if (!origin || !hasRuntimeApi() || typeof globalThis.chrome?.permissions?.request !== 'function') {
+    return Boolean(origin)
+  }
+
+  return chrome.permissions.request({ origins: [origin] })
+}
+
+function providerOriginPattern(endpoint: string) {
+  try {
+    const url = new URL(endpoint)
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return undefined
+    return `${url.origin}/*`
+  } catch {
+    return undefined
+  }
 }
 
 function hasRuntimeApi() {
