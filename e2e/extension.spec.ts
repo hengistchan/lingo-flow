@@ -669,7 +669,7 @@ test('installed extension translates representative public reading pages', async
         const runtimeErrors = collectRuntimeErrors(page)
 
         try {
-          await page.goto(publicPage.url, { waitUntil: 'domcontentloaded', timeout: 45_000 })
+          await gotoPublicPage(page, publicPage.url)
           await extension.worker.evaluate(async () => {
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
             if (!tab?.id) throw new Error('No active public-page tab found.')
@@ -867,6 +867,22 @@ function startArticleServer() {
       })
     })
   })
+}
+
+async function gotoPublicPage(page: Page, url: string) {
+  let lastError: unknown
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 })
+      return
+    } catch (error) {
+      lastError = error
+      if (attempt < 3) await page.waitForTimeout(1_000)
+    }
+  }
+
+  throw lastError
 }
 
 function collectRuntimeErrors(page: Page) {
