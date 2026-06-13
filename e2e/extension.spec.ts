@@ -298,6 +298,18 @@ test('installed extension connects to an explicitly authorized custom OpenAI-com
     await options.getByRole('button', { name: 'Test connection' }).click()
 
     await expect(options.getByText('Connection successful')).toBeVisible()
+    await options.getByRole('button', { name: 'Save settings' }).click()
+    await expect(options.getByText('Settings saved')).toBeVisible()
+    const savedSummary = await options.evaluate(() =>
+      chrome.runtime.sendMessage({ type: 'settings/getSummary' }),
+    )
+    expect(savedSummary).toMatchObject({
+      ok: true,
+      data: {
+        providerId: 'openai-compatible',
+        providerConfigured: true,
+      },
+    })
     const providerOrigin = `${new URL(articleServer.providerBaseUrl).origin}/*`
     await expect.poll(() =>
       options.evaluate(origin => chrome.permissions.contains({ origins: [origin] }), providerOrigin),
@@ -323,6 +335,18 @@ test('installed extension connects to Azure protocol and uses it as a fallback p
     await options.getByRole('button', { name: 'Translation service' }).click()
     await options.getByRole('button', { name: 'Test connection' }).click()
     await expect(options.getByText('Connection successful')).toBeVisible()
+    await options.getByRole('button', { name: 'Save settings' }).click()
+    await expect(options.getByText('Settings saved')).toBeVisible()
+    const savedSummary = await options.evaluate(() =>
+      chrome.runtime.sendMessage({ type: 'settings/getSummary' }),
+    )
+    expect(savedSummary).toMatchObject({
+      ok: true,
+      data: {
+        providerId: 'azure-translator',
+        providerConfigured: true,
+      },
+    })
 
     const saveResponse = await options.evaluate(async providerUrls => {
       const current = await chrome.runtime.sendMessage({ type: 'settings/get' })
