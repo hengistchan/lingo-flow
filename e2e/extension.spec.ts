@@ -355,7 +355,7 @@ test('installed extension reuses cache and current-site cleanup forces a fresh p
 
     const article = await extension.context.newPage()
     await article.goto(articleServer.url)
-    await extension.worker.evaluate(async () => {
+    const injectContentRuntime = () => extension.worker.evaluate(async () => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
       if (!tab?.id) throw new Error('No active article tab found.')
       await chrome.scripting.executeScript({
@@ -363,6 +363,7 @@ test('installed extension reuses cache and current-site cleanup forces a fresh p
         files: ['lingoflow-content.js'],
       })
     })
+    await injectContentRuntime()
 
     const translate = () => extension.worker.evaluate(async () => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -376,6 +377,15 @@ test('installed extension reuses cache and current-site cleanup forces a fresh p
     const first = await translate()
     expect(first).toMatchObject({ ok: true, data: { status: 'done', cacheHits: 0 } })
     expect(articleServer.providerRequestCount()).toBe(1)
+    const originalParagraph = await article.locator('article p').first().textContent()
+    await expect(article.locator('[data-lingoflow-translation]')).toHaveCount(first.data.totalBlocks)
+
+    const popup = await extension.context.newPage()
+    await popup.goto(extension.url('popup.html'))
+    await article.bringToFront()
+    await popup.getByRole('button', { name: 'Clear translation' }).click()
+    await expect(article.locator('[data-lingoflow-translation]')).toHaveCount(0)
+    await expect(article.locator('article p').first()).toHaveText(originalParagraph ?? '')
 
     const second = await translate()
     expect(second).toMatchObject({
@@ -387,8 +397,18 @@ test('installed extension reuses cache and current-site cleanup forces a fresh p
     })
     expect(articleServer.providerRequestCount()).toBe(1)
 
-    const popup = await extension.context.newPage()
-    await popup.goto(extension.url('popup.html'))
+    await article.reload()
+    await injectContentRuntime()
+    const refreshed = await translate()
+    expect(refreshed).toMatchObject({
+      ok: true,
+      data: {
+        status: 'done',
+        cacheHits: first.data.totalBlocks,
+      },
+    })
+    expect(articleServer.providerRequestCount()).toBe(1)
+
     await article.bringToFront()
     await popup.getByRole('button', { name: "Clear this site's cache" }).click()
     await expect(popup.getByText("This site's translation cache was cleared")).toBeVisible()
@@ -396,6 +416,14 @@ test('installed extension reuses cache and current-site cleanup forces a fresh p
     const third = await translate()
     expect(third).toMatchObject({ ok: true, data: { status: 'done', cacheHits: 0 } })
     expect(articleServer.providerRequestCount()).toBe(2)
+
+    await extensionPage.getByRole('button', { name: 'Storage' }).click()
+    await extensionPage.getByRole('button', { name: 'Clear all cache' }).click()
+    await expect(extensionPage.getByText('All translation cache cleared')).toBeVisible()
+
+    const afterClearAll = await translate()
+    expect(afterClearAll).toMatchObject({ ok: true, data: { status: 'done', cacheHits: 0 } })
+    expect(articleServer.providerRequestCount()).toBe(3)
   } finally {
     await extension.close()
     await articleServer.close()
