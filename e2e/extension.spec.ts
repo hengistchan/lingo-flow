@@ -420,13 +420,101 @@ test('production content script contains no Unicode noncharacters', () => {
   expect(contentScript).not.toContain('\uFFFF')
 })
 
+test('installed extension translates representative public reading pages', async () => {
+  test.skip(process.env.LINGOFLOW_PUBLIC_E2E !== '1', 'Set LINGOFLOW_PUBLIC_E2E=1 to run public-page acceptance.')
+  test.setTimeout(180_000)
+
+  const publicPages = [
+    { name: 'Wikipedia article', url: 'https://en.wikipedia.org/wiki/Translation' },
+    { name: 'MDN documentation', url: 'https://developer.mozilla.org/en-US/docs/Web/API/Document' },
+    { name: 'GitHub README', url: 'https://github.com/vuejs/core' },
+    { name: 'Chinese page', url: 'https://zh.wikipedia.org/wiki/%E7%BF%BB%E8%AF%91' },
+    { name: 'Code-heavy page', url: 'https://docs.python.org/3/tutorial/controlflow.html' },
+  ]
+  const articleServer = await startArticleServer()
+  const extension = await launchExtension({
+    allowLocalhost: true,
+    extraHostPermissions: publicPages.map(page => `${new URL(page.url).origin}/*`),
+  })
+
+  try {
+    const extensionPage = await extension.context.newPage()
+    await extensionPage.goto(extension.url('options.html'))
+    const saveResponse = await extensionPage.evaluate(async providerBaseUrl => {
+      const current = await chrome.runtime.sendMessage({ type: 'settings/get' })
+      if (!current?.ok) return current
+
+      return chrome.runtime.sendMessage({
+        type: 'settings/save',
+        payload: {
+          settings: {
+            ...current.data,
+            cacheEnabled: false,
+            defaultProviderId: 'openai-compatible',
+            providers: {
+              ...current.data.providers,
+              openai: {
+                baseUrl: providerBaseUrl,
+                apiKey: 'test-only-key',
+                model: 'test-model',
+              },
+            },
+          },
+        },
+      })
+    }, articleServer.successProviderBaseUrl)
+    expect(saveResponse).toMatchObject({ ok: true })
+
+    for (const publicPage of publicPages) {
+      await test.step(publicPage.name, async () => {
+        const page = await extension.context.newPage()
+        const runtimeErrors = collectRuntimeErrors(page)
+
+        try {
+          await page.goto(publicPage.url, { waitUntil: 'domcontentloaded', timeout: 45_000 })
+          await extension.worker.evaluate(async () => {
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+            if (!tab?.id) throw new Error('No active public-page tab found.')
+            await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              files: ['lingoflow-content.js'],
+            })
+          })
+
+          const result = await extension.worker.evaluate(async () => {
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+            if (!tab?.id) throw new Error('No active public-page tab found.')
+            return chrome.tabs.sendMessage(tab.id, {
+              type: 'page/translate',
+              payload: { targetLang: 'ja' },
+            })
+          })
+
+          expect(result).toMatchObject({ ok: true })
+          expect(result.data.totalBlocks).toBeGreaterThan(0)
+          expect(result.data.translatedBlocks).toBeGreaterThan(0)
+          await expect.poll(() => page.locator('[data-lingoflow-translation]').count()).toBeGreaterThan(0)
+          expect(await page.locator('code [data-lingoflow-translation], pre [data-lingoflow-translation]').count()).toBe(0)
+          expect(runtimeErrors()).toEqual([])
+        } finally {
+          await page.close()
+        }
+      })
+    }
+  } finally {
+    await extension.close()
+    await articleServer.close()
+  }
+})
+
 type ExtensionOptions = {
   allowLocalhost?: boolean
+  extraHostPermissions?: string[]
 }
 
 async function launchExtension(options: ExtensionOptions = {}) {
-  const extensionDir = options.allowLocalhost
-    ? prepareTestExtensionDir()
+  const extensionDir = options.allowLocalhost || options.extraHostPermissions?.length
+    ? prepareTestExtensionDir(options)
     : builtExtensionPath
 
   const userDataDir = await mkdtemp(path.join(os.tmpdir(), 'lingoflow-extension-e2e-'))
@@ -454,7 +542,7 @@ async function launchExtension(options: ExtensionOptions = {}) {
     close: async () => {
       await context.close()
       await rm(userDataDir, { recursive: true, force: true })
-      if (options.allowLocalhost) {
+      if (extensionDir !== builtExtensionPath) {
         rmSync(extensionDir, { recursive: true, force: true })
       }
     },
@@ -464,15 +552,17 @@ async function launchExtension(options: ExtensionOptions = {}) {
 // Creates a temporary extension directory with the production build files
 // and a patched manifest that adds a localhost host permission for content-script injection E2E.
 // The production manifest is never modified.
-function prepareTestExtensionDir(): string {
+function prepareTestExtensionDir(options: ExtensionOptions): string {
   const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'lingoflow-ext-test-'))
 
   cpSync(builtExtensionPath, tmpDir, { recursive: true })
 
-  // Patch manifest: add localhost host permission for content-script injection E2E.
+  // Patch only the temporary E2E copy with the exact hosts needed by the scenario.
   const manifestPath = path.join(tmpDir, 'manifest.json')
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
-  manifest.host_permissions.push('http://127.0.0.1:*/*')
+  if (options.allowLocalhost) manifest.host_permissions.push('http://127.0.0.1:*/*')
+  manifest.host_permissions.push(...(options.extraHostPermissions ?? []))
+  manifest.host_permissions = [...new Set(manifest.host_permissions)]
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2))
 
   return tmpDir
