@@ -409,6 +409,73 @@ test('installed extension connects to Azure protocol and uses it as a fallback p
   }
 })
 
+test('installed extension keeps the page intact when a provider returns invalid output', async () => {
+  const articleServer = await startArticleServer()
+  const extension = await launchExtension({ allowLocalhost: true })
+
+  try {
+    const extensionPage = await extension.context.newPage()
+    await extensionPage.goto(extension.url('options.html'))
+    const saveResponse = await extensionPage.evaluate(async providerBaseUrl => {
+      const current = await chrome.runtime.sendMessage({ type: 'settings/get' })
+      if (!current?.ok) return current
+
+      return chrome.runtime.sendMessage({
+        type: 'settings/save',
+        payload: {
+          settings: {
+            ...current.data,
+            cacheEnabled: false,
+            defaultProviderId: 'openai-compatible',
+            fallbackProviderId: '',
+            providers: {
+              ...current.data.providers,
+              openai: {
+                baseUrl: providerBaseUrl,
+                apiKey: 'test-only-key',
+                model: 'test-model',
+              },
+            },
+          },
+        },
+      })
+    }, articleServer.invalidProviderBaseUrl)
+    expect(saveResponse).toMatchObject({ ok: true })
+
+    const article = await extension.context.newPage()
+    const articleErrors = collectRuntimeErrors(article)
+    await article.goto(articleServer.url)
+    const originalHeading = await article.getByRole('heading', { name: 'A field guide to quiet reading' }).textContent()
+
+    await extension.worker.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (!tab?.id) throw new Error('No active article tab found.')
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['lingoflow-content.js'],
+      })
+    })
+
+    const result = await extension.worker.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (!tab?.id) throw new Error('No active article tab found.')
+      return chrome.tabs.sendMessage(tab.id, {
+        type: 'page/translate',
+        payload: { targetLang: 'ja' },
+      })
+    })
+
+    expect(result).toMatchObject({ ok: true, data: { status: 'failed', translatedBlocks: 0 } })
+    expect(result.data.failedBlocks).toBe(result.data.totalBlocks)
+    await expect(article.locator('[data-lingoflow-translation]')).toHaveCount(0)
+    await expect(article.getByRole('heading', { name: originalHeading ?? '' })).toBeVisible()
+    expect(articleErrors()).toEqual([])
+  } finally {
+    await extension.close()
+    await articleServer.close()
+  }
+})
+
 test('installed popup exposes current-site cache cleanup', async () => {
   const extension = await launchExtension()
 
@@ -713,7 +780,15 @@ function startArticleServer() {
       const texts = Array.isArray(prompt.texts) ? prompt.texts.map(String) : []
       const slow = requestUrl.pathname.startsWith('/slow/')
       const success = requestUrl.pathname.startsWith('/success/')
+      const invalid = requestUrl.pathname.startsWith('/invalid/')
       if (slow) await new Promise(resolve => setTimeout(resolve, 4_500))
+      if (invalid) {
+        response.writeHead(200, { 'Content-Type': 'application/json' })
+        response.end(JSON.stringify({
+          choices: [{ message: { content: 'not valid translation JSON' } }],
+        }))
+        return
+      }
       const shouldFail =
         !slow &&
         !success &&
@@ -769,6 +844,7 @@ function startArticleServer() {
     url: string
     providerBaseUrl: string
     successProviderBaseUrl: string
+    invalidProviderBaseUrl: string
     slowProviderBaseUrl: string
     azureProviderEndpoint: string
     providerRequestCount: () => number
@@ -783,6 +859,7 @@ function startArticleServer() {
         url: `${origin}/article.html`,
         providerBaseUrl: `${origin}/v1`,
         successProviderBaseUrl: `${origin}/success/v1`,
+        invalidProviderBaseUrl: `${origin}/invalid/v1`,
         slowProviderBaseUrl: `${origin}/slow/v1`,
         azureProviderEndpoint: `${origin}/azure`,
         providerRequestCount: () => providerRequestCount,
