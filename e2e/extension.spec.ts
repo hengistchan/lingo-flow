@@ -321,6 +321,87 @@ test('installed popup exposes current-site cache cleanup', async () => {
   }
 })
 
+test('installed extension reuses cache and current-site cleanup forces a fresh provider request', async () => {
+  const articleServer = await startArticleServer()
+  const extension = await launchExtension({ allowLocalhost: true })
+
+  try {
+    const extensionPage = await extension.context.newPage()
+    await extensionPage.goto(extension.url('options.html'))
+    const saveResponse = await extensionPage.evaluate(async providerBaseUrl => {
+      const current = await chrome.runtime.sendMessage({ type: 'settings/get' })
+      if (!current?.ok) return current
+
+      return chrome.runtime.sendMessage({
+        type: 'settings/save',
+        payload: {
+          settings: {
+            ...current.data,
+            cacheEnabled: true,
+            defaultProviderId: 'openai-compatible',
+            providers: {
+              ...current.data.providers,
+              openai: {
+                baseUrl: providerBaseUrl,
+                apiKey: 'test-only-key',
+                model: 'test-model',
+              },
+            },
+          },
+        },
+      })
+    }, articleServer.successProviderBaseUrl)
+    expect(saveResponse).toMatchObject({ ok: true })
+
+    const article = await extension.context.newPage()
+    await article.goto(articleServer.url)
+    await extension.worker.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (!tab?.id) throw new Error('No active article tab found.')
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['lingoflow-content.js'],
+      })
+    })
+
+    const translate = () => extension.worker.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (!tab?.id) throw new Error('No active article tab found.')
+      return chrome.tabs.sendMessage(tab.id, {
+        type: 'page/translate',
+        payload: { targetLang: 'ja' },
+      })
+    })
+
+    const first = await translate()
+    expect(first).toMatchObject({ ok: true, data: { status: 'done', cacheHits: 0 } })
+    expect(articleServer.providerRequestCount()).toBe(1)
+
+    const second = await translate()
+    expect(second).toMatchObject({
+      ok: true,
+      data: {
+        status: 'done',
+        cacheHits: first.data.totalBlocks,
+      },
+    })
+    expect(articleServer.providerRequestCount()).toBe(1)
+
+    const popup = await extension.context.newPage()
+    await popup.goto(extension.url('popup.html'))
+    await article.bringToFront()
+    await popup.getByRole('button', { name: "Clear this site's cache" }).click()
+    await expect(popup.getByText("This site's translation cache was cleared")).toBeVisible()
+
+    const third = await translate()
+    expect(third).toMatchObject({ ok: true, data: { status: 'done', cacheHits: 0 } })
+    expect(articleServer.providerRequestCount()).toBe(2)
+  } finally {
+    await extension.close()
+    await articleServer.close()
+  }
+})
+
 test('production build manifest does not contain test-only host permissions', () => {
   const manifest = JSON.parse(readFileSync(path.join(builtExtensionPath, 'manifest.json'), 'utf-8'))
 
@@ -398,19 +479,23 @@ function prepareTestExtensionDir(): string {
 }
 
 function startArticleServer() {
+  let providerRequestCount = 0
   const server = createServer(async (request, response) => {
     const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1')
 
     if (request.method === 'POST' && requestUrl.pathname.endsWith('/v1/chat/completions')) {
+      providerRequestCount += 1
       const chunks: Uint8Array[] = []
       for await (const chunk of request) chunks.push(chunk)
       const requestBody = JSON.parse(Buffer.concat(chunks).toString('utf-8'))
       const prompt = JSON.parse(requestBody.messages?.[1]?.content ?? '{}')
       const texts = Array.isArray(prompt.texts) ? prompt.texts.map(String) : []
       const slow = requestUrl.pathname.startsWith('/slow/')
+      const success = requestUrl.pathname.startsWith('/success/')
       if (slow) await new Promise(resolve => setTimeout(resolve, 4_500))
       const shouldFail =
         !slow &&
+        !success &&
         (texts.length > 1 ||
           texts.some((text: string) => text.includes('avoid touching controls')))
 
@@ -450,7 +535,9 @@ function startArticleServer() {
   return new Promise<{
     url: string
     providerBaseUrl: string
+    successProviderBaseUrl: string
     slowProviderBaseUrl: string
+    providerRequestCount: () => number
     close: () => Promise<void>
   }>(resolve => {
     server.listen(0, '127.0.0.1', () => {
@@ -461,7 +548,9 @@ function startArticleServer() {
       resolve({
         url: `${origin}/article.html`,
         providerBaseUrl: `${origin}/v1`,
+        successProviderBaseUrl: `${origin}/success/v1`,
         slowProviderBaseUrl: `${origin}/slow/v1`,
+        providerRequestCount: () => providerRequestCount,
         close: () => new Promise<void>(r => server.close(() => r())),
       })
     })
