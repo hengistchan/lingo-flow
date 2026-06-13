@@ -140,6 +140,12 @@ export function createContentRuntime(dependencies: RuntimeDependencies = {}) {
         return false
       }
 
+      if (message?.type === 'page/clearCache') {
+        memoryCache.clear()
+        sendResponse(success({ cleared: true }))
+        return false
+      }
+
       if (message?.type === 'page/translate') {
         translatePage((message.payload ?? {}) as PageTranslationOverrides)
           .then(result => sendResponse(success(result)))

@@ -302,6 +302,10 @@ export type PageClearMessage = {
   type: 'page/clear'
 }
 
+export type PageClearCacheMessage = {
+  type: 'page/clearCache'
+}
+
 export type PageStatusMessage = {
   type: 'page/status'
 }
@@ -318,6 +322,7 @@ export type LingoFlowMessage =
   | ClearAllCacheMessage
   | PageTranslateMessage
   | PageClearMessage
+  | PageClearCacheMessage
   | PageStatusMessage
 
 export type MessageResponse<T> =

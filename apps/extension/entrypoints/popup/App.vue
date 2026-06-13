@@ -139,6 +139,8 @@ async function clearSiteCache() {
     const domain = tab.url ? new URL(tab.url).hostname : ''
     if (!domain) throw new Error('No current website is available.')
     await sendRuntimeMessage({ type: 'cache/clearByDomain', payload: { domain } })
+    await ensureContentRuntime(tab.id)
+    await sendTabMessage(tab.id, { type: 'page/clearCache' })
     cacheMessage.value = copy('popup.siteCacheCleared')
   } catch {
     cacheMessage.value = copy('popup.siteCacheFailed')

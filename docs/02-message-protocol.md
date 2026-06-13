@@ -80,7 +80,14 @@ export type ClearCacheByDomainMessage = {
 export type ClearAllCacheMessage = {
   type: 'cache/clearAll'
 }
+
+export type PageClearCacheMessage = {
+  type: 'page/clearCache'
+}
 ```
+
+Clearing the current site's cache removes both the background IndexedDB entries
+for that domain and the active page content runtime's in-memory cache.
 
 ## Standard Response
 
