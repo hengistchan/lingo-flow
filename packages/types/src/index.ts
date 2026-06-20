@@ -200,6 +200,8 @@ export type AzureTranslatorConfig = {
   region: string
 }
 
+export type GoogleFreeTranslateConfig = Record<string, never>
+
 export type OpenAIReasoningEffort = 'auto' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 
 export type OpenAICompatibleConfig = {

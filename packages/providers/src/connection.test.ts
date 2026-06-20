@@ -1,4 +1,4 @@
-import { testProviderConnection } from './index'
+import { googleFreeTranslateProvider, testProviderConnection } from './index'
 
 const azureValues = {
   endpoint: 'https://api.cognitive.microsofttranslator.com',
@@ -57,6 +57,54 @@ describe('testProviderConnection', () => {
     expect(body.reasoning_effort).toBeUndefined()
     expect(body.enable_thinking).toBeUndefined()
     expect(body.thinking).toBeUndefined()
+  })
+
+  it('sends one no-key Google Free translation request and returns success', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse([[['连接正常', 'LingoFlow connection test.', null, null, 1]], null, 'en']),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await testProviderConnection({ presetId: 'google-free-translate', values: {} })
+
+    expect(result).toEqual({
+      ok: true,
+      providerId: 'google-free-translate',
+      messageCode: 'connection_ok',
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const url = new URL(String(fetchMock.mock.calls[0]?.[0]))
+    expect(`${url.origin}${url.pathname}`).toBe('https://translate.googleapis.com/translate_a/single')
+    expect(url.searchParams.get('client')).toBe('gtx')
+    expect(url.searchParams.get('dt')).toBe('t')
+    expect(url.searchParams.get('sl')).toBe('en')
+    expect(url.searchParams.get('tl')).toBe('zh-CN')
+    expect(url.searchParams.get('q')).toBe('LingoFlow connection test.')
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual({ Accept: 'application/json' })
+  })
+
+  it('translates each Google Free text request and maps project language codes', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([[['你好，', 'Hello,', null, null, 1], ['世界', ' world', null, null, 1]], null, 'en']))
+      .mockResolvedValueOnce(jsonResponse([[['再见', 'Goodbye', null, null, 1]], null, 'en']))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const output = await googleFreeTranslateProvider.translate(
+      {
+        sourceLang: 'auto',
+        targetLang: 'zh-Hant',
+        texts: ['Hello, world', 'Goodbye'],
+      },
+      {},
+    )
+
+    expect(output.texts).toEqual(['你好，世界', '再见'])
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const firstUrl = new URL(String(fetchMock.mock.calls[0]?.[0]))
+    expect(firstUrl.searchParams.get('sl')).toBe('auto')
+    expect(firstUrl.searchParams.get('tl')).toBe('zh-TW')
+    expect(firstUrl.searchParams.get('q')).toBe('Hello, world')
   })
 
   it('adds optional OpenAI-compatible speed controls to request bodies', async () => {

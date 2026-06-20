@@ -1,5 +1,6 @@
 import type {
   AzureTranslatorConfig,
+  GoogleFreeTranslateConfig,
   OpenAICompatibleConfig,
   ProviderConfig,
   ProviderConnectionResult,
@@ -10,6 +11,7 @@ import type {
 } from '@lingoflow/types'
 
 export const REQUEST_TIMEOUT_MS = 30000
+export const GOOGLE_FREE_TRANSLATE_ENDPOINT = 'https://translate.googleapis.com/translate_a/single'
 
 export const OPENAI_PROMPT_VERSION = 'prompt-v1'
 const OPENAI_REASONING_EFFORTS = new Set(['auto', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh'])
@@ -24,6 +26,12 @@ export const BUILT_IN_PRESETS = [
       { key: "key", label: "API Key", type: "password", required: true },
       { key: "region", label: "Region", type: "text", required: true },
     ],
+  },
+  {
+    id: "google-free-translate",
+    name: "Google Translate Free",
+    type: "machine-translation",
+    fields: [],
   },
   {
     id: "openai-compatible",
@@ -43,6 +51,10 @@ export function extractAzureConfig(config: ProviderConfig): AzureTranslatorConfi
     key: config.values.key || "",
     region: config.values.region || "",
   }
+}
+
+export function extractGoogleFreeTranslateConfig(): GoogleFreeTranslateConfig {
+  return {}
 }
 
 export function extractOpenAIConfig(config: ProviderConfig): OpenAICompatibleConfig {
@@ -171,6 +183,30 @@ export const azureTranslatorProvider: TranslationProvider = {
   },
 }
 
+export const googleFreeTranslateProvider: TranslationProvider = {
+  id: 'google-free-translate',
+  name: 'Google Translate Free',
+  type: 'machine-translation',
+  capabilities: {
+    speed: 'fast',
+    quality: 'standard',
+    supportsBatch: true,
+    supportsGlossary: false,
+    supportsStreaming: false,
+    maxItemsPerRequest: 20,
+  },
+  async translate(input: TranslateInput, _config: unknown): Promise<TranslateOutput> {
+    const texts = await Promise.all(input.texts.map(text => translateGoogleFreeText(text, input)))
+    return {
+      texts,
+      usage: { characters: input.texts.join('').length },
+    }
+  },
+  async validateConfig() {
+    return true
+  },
+}
+
 export const openAICompatibleProvider: TranslationProvider = {
   id: 'openai-compatible',
   name: 'OpenAI-compatible',
@@ -234,6 +270,7 @@ export const openAICompatibleProvider: TranslationProvider = {
 export function createDefaultProviderRegistry(): ProviderRegistry {
   const registry = new ProviderRegistry()
   registry.register(azureTranslatorProvider)
+  registry.register(googleFreeTranslateProvider)
   registry.register(openAICompatibleProvider)
   return registry
 }
@@ -243,8 +280,8 @@ export async function testProviderConnection(
 ): Promise<ProviderConnectionResult> {
   const presetId = config.presetId ?? ''
   const providerId = presetId as ProviderId
-  const provider = presetId === 'azure-translator' ? azureTranslatorProvider : openAICompatibleProvider
-  const providerConfig = presetId === 'azure-translator' ? extractAzureConfig(config as ProviderConfig) : extractOpenAIConfig(config as ProviderConfig)
+  const provider = getBuiltInProvider(presetId)
+  const providerConfig = extractBuiltInProviderConfig(config as ProviderConfig)
 
   try {
     await provider.translate(
@@ -264,6 +301,19 @@ export async function testProviderConnection(
       messageCode: getConnectionFailureCode(error),
     }
   }
+}
+
+function getBuiltInProvider(presetId: string): TranslationProvider {
+  if (presetId === 'azure-translator') return azureTranslatorProvider
+  if (presetId === 'google-free-translate') return googleFreeTranslateProvider
+  return openAICompatibleProvider
+}
+
+export function extractBuiltInProviderConfig(config: ProviderConfig): AzureTranslatorConfig | GoogleFreeTranslateConfig | OpenAICompatibleConfig {
+  const presetId = config.presetId ?? config.id
+  if (presetId === 'azure-translator') return extractAzureConfig(config)
+  if (presetId === 'google-free-translate') return extractGoogleFreeTranslateConfig()
+  return extractOpenAIConfig(config)
 }
 
 function getConnectionFailureCode(
@@ -291,6 +341,65 @@ function assertOpenAIConfig(config: unknown): OpenAICompatibleConfig {
     throw providerConfigError('OpenAI-compatible base URL, API key, and model are required')
   }
   return value as OpenAICompatibleConfig
+}
+
+async function translateGoogleFreeText(text: string, input: TranslateInput): Promise<string> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  let response: Response
+  try {
+    response = await fetch(createGoogleFreeTranslateUrl(text, input), {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    })
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Google Translate Free request timed out after 30 seconds')
+    }
+    throw error
+  } finally {
+    clearTimeout(timer)
+  }
+
+  if (!response.ok) {
+    throw providerHttpError(response.status, `Google Translate Free failed with HTTP ${response.status}`)
+  }
+
+  const raw = await response.json()
+  return parseGoogleFreeTranslateResponse(raw)
+}
+
+function createGoogleFreeTranslateUrl(text: string, input: TranslateInput): string {
+  const url = new URL(GOOGLE_FREE_TRANSLATE_ENDPOINT)
+  url.searchParams.set('client', 'gtx')
+  url.searchParams.set('sl', toGoogleLanguageCode(input.sourceLang))
+  url.searchParams.set('tl', toGoogleLanguageCode(input.targetLang))
+  url.searchParams.set('dt', 't')
+  url.searchParams.set('q', text)
+  return url.toString()
+}
+
+function toGoogleLanguageCode(code: string): string {
+  if (code === 'zh-Hans') return 'zh-CN'
+  if (code === 'zh-Hant') return 'zh-TW'
+  return code
+}
+
+function parseGoogleFreeTranslateResponse(raw: unknown): string {
+  if (!Array.isArray(raw) || !Array.isArray(raw[0])) {
+    throw providerInvalidOutputError('Google Translate Free returned an invalid translation payload')
+  }
+
+  const translated = raw[0]
+    .map(segment => Array.isArray(segment) && typeof segment[0] === 'string' ? segment[0] : '')
+    .join('')
+
+  if (!translated) {
+    throw providerInvalidOutputError('Google Translate Free returned an empty translation')
+  }
+
+  return translated
 }
 
 function normalizeReasoningEffort(value: string | undefined): OpenAICompatibleConfig['reasoningEffort'] {
