@@ -1,4 +1,11 @@
-import type { TranslationInsertion } from '@lingoflow/types'
+import type { InsertionPlan, TranslationInsertion } from '@lingoflow/types'
+import { restoreSourceNodes } from './display-mode'
+import { defaultStrategyRegistry } from './registry'
+import { createTranslationElement } from './strategies'
+
+export * from './display-mode'
+export * from './registry'
+export * from './strategies'
 
 export type RenderInput = {
   blockId: string
@@ -54,13 +61,16 @@ export function renderBelowOriginal(input: RenderInput, root: Document = documen
   const existing = root.querySelector(`[data-lingoflow-translation="${input.blockId}"]`)
   if (existing instanceof HTMLElement) {
     existing.textContent = input.translatedText
+    existing.hidden = false
+    if (input.targetLang) existing.lang = input.targetLang
     return
   }
 
   const insertion = input.insertion ?? inferInsertionFromElement(element)
-  const translation = createTranslationElement(root, input, insertion)
+  const strategy = defaultStrategyRegistry.get(insertion) ?? defaultStrategyRegistry.get('after-block')
+  if (!strategy) throw new Error(`Renderer strategy missing for ${insertion}`)
 
-  insertTranslationElement(element, translation, insertion)
+  strategy.apply(createCompatibilityPlan(input, root, element, insertion))
 }
 
 export function safeRender(input: RenderInput, root: Document = document) {
@@ -75,9 +85,18 @@ export function safeRender(input: RenderInput, root: Document = document) {
 }
 
 export function clearTranslations(root: Document = document) {
-  root.querySelectorAll('[data-lingoflow-translation]').forEach(node => node.remove())
-  root.querySelectorAll('[data-lingoflow-translation-break]').forEach(node => node.remove())
-  root.querySelectorAll('[data-lingoflow-translation-spacer]').forEach(node => node.remove())
+  restoreSourceNodes(Array.from(root.querySelectorAll<HTMLElement>('[data-lingoflow-source-hidden="true"]')))
+
+  const generatedNodes = new Set<Node>([
+    ...root.querySelectorAll('[data-lingoflow-generated="true"]'),
+    ...root.querySelectorAll('[data-lingoflow-translation]'),
+    ...root.querySelectorAll('[data-lingoflow-translation-break]'),
+    ...root.querySelectorAll('[data-lingoflow-translation-spacer]'),
+  ])
+
+  for (const node of generatedNodes) {
+    node.parentNode?.removeChild(node)
+  }
 
   root.querySelectorAll('[data-lingoflow-block-id]').forEach(node => {
     if (node instanceof HTMLElement) {
@@ -85,6 +104,29 @@ export function clearTranslations(root: Document = document) {
       node.removeAttribute('data-lingoflow-block-id')
     }
   })
+}
+
+function createCompatibilityPlan(
+  input: RenderInput,
+  root: Document,
+  element: HTMLElement,
+  insertion: TranslationInsertion,
+): InsertionPlan {
+  const inline = insertion === 'inline-inside' || insertion === 'linebreak-inside'
+  const translationElement = createTranslationElement({
+    id: input.blockId,
+    translatedText: input.translatedText,
+    targetLang: input.targetLang ?? '',
+  }, root, inline)
+
+  return {
+    blockId: input.blockId,
+    mode: 'dual',
+    target: element,
+    translationElement,
+    placement: insertion,
+    sourceNodesToHide: [],
+  }
 }
 
 function findAllShadowRoots(root: Element | Document): ShadowRoot[] {
@@ -112,126 +154,10 @@ function findBlockElement(blockId: string, root: Document): HTMLElement | null {
   return null
 }
 
-function createTranslationElement(
-  root: Document,
-  input: RenderInput,
-  insertion: TranslationInsertion,
-): HTMLElement {
-  const isInline = insertion === 'inline-inside' || insertion === 'linebreak-inside'
-  const translation = root.createElement(isInline ? 'span' : 'div')
-  translation.className = [
-    'notranslate',
-    'lingoflow-translation',
-    isInline ? 'lingoflow-translation-inline' : 'lingoflow-translation-block',
-  ].join(' ')
-  translation.dataset.lingoflowTranslation = input.blockId
-  if (input.targetLang) translation.lang = input.targetLang
-  translation.textContent = input.translatedText ?? ''
-  return translation
-}
-
-function insertTranslationElement(
-  source: HTMLElement,
-  translation: HTMLElement,
-  insertion: TranslationInsertion,
-) {
-  if (insertion === 'linebreak-inside') {
-    insertLinebreakInsideTranslation(source, translation)
-    return
-  }
-
-  if (insertion === 'inline-inside') {
-    insertInlineInsideTranslation(source, translation)
-    return
-  }
-
-  if (insertion === 'before-nested-structure') {
-    insertListItemTranslation(source, translation)
-    return
-  }
-
-  if (insertion === 'inside-container') {
-    source.appendChild(translation)
-    return
-  }
-
-  const placement = resolvePlacement(source)
-
-  if (placement.mode === 'inside') {
-    placement.target.appendChild(translation)
-    return
-  }
-
-  placement.target.insertAdjacentElement('afterend', translation)
-}
-
-function insertLinebreakInsideTranslation(source: HTMLElement, translation: HTMLElement) {
-  const br = source.ownerDocument.createElement('br')
-  br.dataset.lingoflowTranslationBreak = translation.dataset.lingoflowTranslation ?? ''
-  source.appendChild(br)
-  source.appendChild(translation)
-}
-
-function insertInlineInsideTranslation(source: HTMLElement, translation: HTMLElement) {
-  const spacer = source.ownerDocument.createElement('span')
-  spacer.dataset.lingoflowTranslationSpacer = translation.dataset.lingoflowTranslation ?? ''
-  spacer.className = 'notranslate'
-  spacer.textContent = '  '
-  source.appendChild(spacer)
-  source.appendChild(translation)
-}
-
-function insertListItemTranslation(source: HTMLElement, translation: HTMLElement) {
-  const nestedList = Array.from(source.children).find(child => {
-    const tagName = child.tagName.toLowerCase()
-    return tagName === 'ul' || tagName === 'ol'
-  })
-
-  if (nestedList) {
-    source.insertBefore(translation, nestedList)
-    return
-  }
-
-  source.appendChild(translation)
-}
-
-function resolvePlacement(source: HTMLElement): {
-  mode: 'after' | 'inside'
-  target: HTMLElement
-} {
-  const tagName = source.tagName.toLowerCase()
-
-  if (tagName === 'li' || tagName === 'td' || tagName === 'th') {
-    return { mode: 'inside', target: source }
-  }
-
-  if (isInlineElement(source)) {
-    return { mode: 'after', target: findNearestBlockAncestor(source) ?? source }
-  }
-
-  return { mode: 'after', target: source }
-}
-
-function findNearestBlockAncestor(source: HTMLElement): HTMLElement | null {
-  let current = source.parentElement
-
-  while (current && current !== source.ownerDocument.body) {
-    if (!isInlineElement(current)) return current
-    current = current.parentElement
-  }
-
-  return null
-}
-
-function isInlineElement(element: HTMLElement): boolean {
-  const tagName = element.tagName.toLowerCase()
-  return !BLOCK_TAGS.has(tagName)
-}
-
 function inferInsertionFromElement(source: HTMLElement): TranslationInsertion {
   const tagName = source.tagName.toLowerCase()
   if (tagName === 'li') return hasNestedList(source) ? 'before-nested-structure' : 'inside-container'
-  if (tagName === 'td' || tagName === 'th') return 'inside-container'
+  if (tagName === 'td' || tagName === 'th' || tagName === 'figcaption') return 'inside-container'
   return 'after-block'
 }
 
@@ -241,41 +167,3 @@ function hasNestedList(source: HTMLElement): boolean {
     return tagName === 'ul' || tagName === 'ol'
   })
 }
-
-const BLOCK_TAGS = new Set([
-  'address',
-  'article',
-  'aside',
-  'blockquote',
-  'dd',
-  'div',
-  'dl',
-  'dt',
-  'figcaption',
-  'figure',
-  'footer',
-  'form',
-  'h1',
-  'h2',
-  'h3',
-  'h4',
-  'h5',
-  'h6',
-  'header',
-  'hr',
-  'li',
-  'main',
-  'nav',
-  'ol',
-  'p',
-  'pre',
-  'section',
-  'table',
-  'tbody',
-  'td',
-  'tfoot',
-  'th',
-  'thead',
-  'tr',
-  'ul',
-])

@@ -1,4 +1,18 @@
+import type { InsertionPlan, PageDisplayMode, TranslationInsertion } from '@lingoflow/types'
+import {
+  applyDisplayMode,
+  hideSourceNodes,
+  restoreSourceNodes,
+} from './display-mode'
 import { clearTranslations, injectLingoFlowStyles, renderBelowOriginal, safeRender } from './index'
+import { StrategyRegistry } from './registry'
+import {
+  AfterBlockStrategy,
+  BeforeNestedStructureStrategy,
+  InlineInsideStrategy,
+  InsideContainerStrategy,
+  LinebreakInsideStrategy,
+} from './strategies'
 
 describe('renderer', () => {
   beforeEach(() => {
@@ -171,3 +185,232 @@ describe('renderer', () => {
     expect(document.querySelectorAll('#lingoflow-style')).toHaveLength(1)
   })
 })
+
+describe('renderer insertion strategies', () => {
+  beforeEach(() => {
+    document.head.innerHTML = ''
+    document.body.innerHTML = ''
+  })
+
+  it('registers built-in strategies in priority order', () => {
+    const registry = StrategyRegistry.withBuiltIns()
+
+    expect(registry.names()).toEqual([
+      'linebreak-inside',
+      'inline-inside',
+      'inside-container',
+      'before-nested-structure',
+      'after-block',
+    ])
+  })
+
+  it('linebreak-inside inserts a generated break and inline wrapper inside the carrier', () => {
+    document.body.innerHTML = '<p>Original paragraph.</p>'
+    const carrier = document.querySelector('p') as HTMLElement
+    const translation = createTranslationElement('block_linebreak', '段落译文')
+
+    const result = new LinebreakInsideStrategy().apply(createPlan({
+      blockId: 'block_linebreak',
+      target: carrier,
+      translationElement: translation,
+      placement: 'linebreak-inside',
+    }))
+
+    expect(result.insertedNodes).toEqual([expect.any(HTMLBRElement), translation])
+    expect(carrier.lastElementChild).toBe(translation)
+    expect(translation.tagName.toLowerCase()).toBe('span')
+    expect(translation.classList.contains('lingoflow-translation-inline')).toBe(true)
+    expect(translation.textContent).toBe('段落译文')
+    expectGeneratedNodes(result, 'block_linebreak')
+  })
+
+  it('inline-inside inserts a generated spacer and inline wrapper inside the carrier', () => {
+    document.body.innerHTML = '<h2>What</h2>'
+    const heading = document.querySelector('h2') as HTMLElement
+    const translation = createTranslationElement('block_inline', '什么')
+
+    const result = new InlineInsideStrategy().apply(createPlan({
+      blockId: 'block_inline',
+      target: heading,
+      translationElement: translation,
+      placement: 'inline-inside',
+    }))
+
+    const [spacer] = result.insertedNodes
+    expect(spacer.textContent).toBe('  ')
+    expect(heading.lastElementChild).toBe(translation)
+    expect(translation.tagName.toLowerCase()).toBe('span')
+    expect(translation.classList.contains('lingoflow-translation-inline')).toBe(true)
+    expectGeneratedNodes(result, 'block_inline')
+  })
+
+  it.each([
+    ['li', '<ul><li>Original list item.</li></ul>'],
+    ['td', '<table><tbody><tr><td>Original cell.</td></tr></tbody></table>'],
+    ['th', '<table><tbody><tr><th>Original header.</th></tr></tbody></table>'],
+    ['figcaption', '<figure><figcaption>Original caption.</figcaption></figure>'],
+  ])('inside-container appends inside %s carriers', (tagName, html) => {
+    document.body.innerHTML = html
+    const carrier = document.querySelector(tagName) as HTMLElement
+    const translation = createTranslationElement(`block_${tagName}`, '容器译文', 'div')
+
+    const result = new InsideContainerStrategy().apply(createPlan({
+      blockId: `block_${tagName}`,
+      target: carrier,
+      translationElement: translation,
+      placement: 'inside-container',
+    }))
+
+    expect(translation.parentElement).toBe(carrier)
+    expect(carrier.lastElementChild).toBe(translation)
+    expectGeneratedNodes(result, `block_${tagName}`)
+  })
+
+  it.each(['ul', 'ol'])('before-nested-structure inserts before nested %s elements', nestedTag => {
+    document.body.innerHTML = `
+      <ul>
+        <li>
+          <p>Parent summary.</p>
+          <${nestedTag}><li>Nested item.</li></${nestedTag}>
+        </li>
+      </ul>
+    `
+    const carrier = document.querySelector('li') as HTMLElement
+    const nested = carrier.querySelector(nestedTag) as HTMLElement
+    const translation = createTranslationElement(`block_nested_${nestedTag}`, '父级译文', 'div')
+
+    const result = new BeforeNestedStructureStrategy().apply(createPlan({
+      blockId: `block_nested_${nestedTag}`,
+      target: carrier,
+      translationElement: translation,
+      placement: 'before-nested-structure',
+    }))
+
+    expect(translation.parentElement).toBe(carrier)
+    expect(translation.nextElementSibling).toBe(nested)
+    expectGeneratedNodes(result, `block_nested_${nestedTag}`)
+  })
+
+  it('after-block inserts after the safe block ancestor', () => {
+    document.body.innerHTML = '<p>Read <span>this phrase</span> before continuing.</p>'
+    const inlineSource = document.querySelector('span') as HTMLElement
+    const paragraph = document.querySelector('p') as HTMLElement
+    const translation = createTranslationElement('block_after', '行内短语译文', 'div')
+
+    const result = new AfterBlockStrategy().apply(createPlan({
+      blockId: 'block_after',
+      target: inlineSource,
+      translationElement: translation,
+      placement: 'after-block',
+    }))
+
+    expect(translation.parentElement).toBe(document.body)
+    expect(translation.previousElementSibling).toBe(paragraph)
+    expectGeneratedNodes(result, 'block_after')
+  })
+
+  it('strategy revert removes inserted nodes and restores hidden source nodes', () => {
+    document.body.innerHTML = '<p>Original paragraph.</p>'
+    const source = document.querySelector('p') as HTMLElement
+    const translation = createTranslationElement('block_revert', '译文', 'div')
+    const strategy = new AfterBlockStrategy()
+    const result = strategy.apply(createPlan({
+      blockId: 'block_revert',
+      mode: 'translation',
+      target: source,
+      translationElement: translation,
+      placement: 'after-block',
+      sourceNodesToHide: [source],
+    }))
+
+    expect(source.hidden).toBe(true)
+
+    strategy.revert(result)
+
+    expect(document.querySelector('[data-lingoflow-translation="block_revert"]')).toBeNull()
+    expect(source.hidden).toBe(false)
+    expect(source.dataset.lingoflowSourceHidden).toBeUndefined()
+  })
+})
+
+describe('renderer display modes', () => {
+  beforeEach(() => {
+    document.head.innerHTML = ''
+    document.body.innerHTML = ''
+  })
+
+  it('hides and restores source nodes in translation mode without removing them', () => {
+    document.body.innerHTML = '<p data-lingoflow-block-id="block_1">Original source text.</p>'
+    const source = document.querySelector('p') as HTMLElement
+
+    const hidden = hideSourceNodes([source])
+    expect(source.dataset.lingoflowSourceHidden).toBe('true')
+    expect(source.hidden).toBe(true)
+
+    restoreSourceNodes(hidden)
+    expect(source.hidden).toBe(false)
+    expect(source.dataset.lingoflowSourceHidden).toBeUndefined()
+  })
+
+  it.each([
+    ['original', false, true],
+    ['dual', false, false],
+    ['translation', true, false],
+  ] satisfies Array<[PageDisplayMode, boolean, boolean]>)(
+    'applies %s display mode without provider work',
+    (mode, sourceHidden, translationHidden) => {
+      document.body.innerHTML = `
+        <p data-lingoflow-block-id="block_mode">Original source text.</p>
+        <div data-lingoflow-translation="block_mode">译文</div>
+      `
+      const source = document.querySelector('p') as HTMLElement
+      const translation = document.querySelector('[data-lingoflow-translation]') as HTMLElement
+
+      const result = applyDisplayMode({
+        mode,
+        sourceNodes: [source],
+        insertedNodes: [translation],
+      })
+
+      expect(source.hidden).toBe(sourceHidden)
+      expect(translation.hidden).toBe(translationHidden)
+      expect(result.hiddenSourceNodes).toEqual(sourceHidden ? [source] : [])
+    },
+  )
+})
+
+function createPlan(overrides: {
+  blockId: string
+  mode?: PageDisplayMode
+  target: HTMLElement
+  translationElement: HTMLElement
+  placement: TranslationInsertion
+  sourceNodesToHide?: HTMLElement[]
+}): InsertionPlan {
+  return {
+    mode: overrides.mode ?? 'dual',
+    sourceNodesToHide: overrides.sourceNodesToHide ?? [],
+    ...overrides,
+  }
+}
+
+function createTranslationElement(blockId: string, text: string, tagName = 'span') {
+  const translation = document.createElement(tagName)
+  translation.dataset.lingoflowTranslation = blockId
+  translation.textContent = text
+  return translation
+}
+
+function expectGeneratedNodes(result: { insertedNodes: Node[] }, blockId: string) {
+  for (const node of result.insertedNodes) {
+    expect(node).toBeInstanceOf(HTMLElement)
+    const element = node as HTMLElement
+    expect(element.classList.contains('notranslate')).toBe(true)
+    expect(element.dataset.lingoflowGenerated).toBe('true')
+    expect(
+      element.dataset.lingoflowTranslation ??
+        element.dataset.lingoflowTranslationBreak ??
+        element.dataset.lingoflowTranslationSpacer
+    ).toBe(blockId)
+  }
+}
