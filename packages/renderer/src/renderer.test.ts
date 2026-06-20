@@ -20,6 +20,62 @@ describe('renderer', () => {
     expect(translation.querySelector('strong')).toBeNull()
   })
 
+  it('renders linebreak-inside translations inside paragraphs', () => {
+    document.body.innerHTML = '<p data-lingoflow-block-id="block_para">Original paragraph.</p>'
+
+    renderBelowOriginal({
+      blockId: 'block_para',
+      translatedText: '段落译文',
+      insertion: 'linebreak-inside',
+    })
+
+    const paragraph = document.querySelector('p') as HTMLElement
+    const translation = document.querySelector('[data-lingoflow-translation="block_para"]') as HTMLElement
+    expect(translation.parentElement).toBe(paragraph)
+    expect(translation.tagName.toLowerCase()).toBe('span')
+    expect(translation.classList.contains('notranslate')).toBe(true)
+    expect(translation.previousSibling?.nodeName).toBe('BR')
+  })
+
+  it('renders inline-inside translations inside compact headings', () => {
+    document.body.innerHTML = '<h2 data-lingoflow-block-id="block_heading">What</h2>'
+
+    renderBelowOriginal({
+      blockId: 'block_heading',
+      translatedText: '什么',
+      insertion: 'inline-inside',
+    })
+
+    const heading = document.querySelector('h2') as HTMLElement
+    const translation = document.querySelector('[data-lingoflow-translation="block_heading"]') as HTMLElement
+    expect(translation.parentElement).toBe(heading)
+    expect(translation.tagName.toLowerCase()).toBe('span')
+    expect(translation.previousSibling?.textContent).toBe('  ')
+  })
+
+  it('keeps primary title link translations inside the source anchor', () => {
+    document.body.innerHTML = `
+      <h3>
+        <a data-lingoflow-block-id="block_link" href="/repo/pull/208">
+          docs(readme): align the homepage status banner
+          <span>#208</span>
+        </a>
+      </h3>
+    `
+
+    renderBelowOriginal({
+      blockId: 'block_link',
+      translatedText: '文档（自述文件）：将首页状态横幅对齐 #208',
+      insertion: 'linebreak-inside',
+    })
+
+    const anchor = document.querySelector('a') as HTMLElement
+    const translation = document.querySelector('[data-lingoflow-translation="block_link"]') as HTMLElement
+    expect(translation.parentElement).toBe(anchor)
+    expect(anchor.nextElementSibling).toBeNull()
+    expect(translation.previousSibling?.nodeName).toBe('BR')
+  })
+
   it('renders list item translations inside the source list item', () => {
     document.body.innerHTML = `
       <ul>
@@ -94,6 +150,17 @@ describe('renderer', () => {
     expect(document.querySelector('[data-lingoflow-translation]')).toBeNull()
     expect(document.querySelector('p')?.textContent).toBe('Original paragraph.')
     expect(document.querySelector('p')?.getAttribute('data-lingoflow-block-id')).toBeNull()
+  })
+
+  it('clears linebreak-inside wrappers and generated breaks', () => {
+    document.body.innerHTML = '<p data-lingoflow-block-id="block_1">Original paragraph.</p>'
+    renderBelowOriginal({ blockId: 'block_1', translatedText: '中文译文', insertion: 'linebreak-inside' })
+
+    clearTranslations()
+
+    expect(document.querySelector('[data-lingoflow-translation]')).toBeNull()
+    expect(document.querySelector('[data-lingoflow-translation-break]')).toBeNull()
+    expect(document.querySelector('p')?.innerHTML).toBe('Original paragraph.')
   })
 
   it('injects styles once and safeRender skips missing nodes', () => {
