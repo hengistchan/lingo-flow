@@ -200,10 +200,14 @@ export type AzureTranslatorConfig = {
   region: string
 }
 
+export type OpenAIReasoningEffort = 'auto' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+
 export type OpenAICompatibleConfig = {
   baseUrl: string
   apiKey: string
   model: string
+  reasoningEffort?: OpenAIReasoningEffort
+  disableThinking?: boolean
 }
 
 export type AppSettings = {

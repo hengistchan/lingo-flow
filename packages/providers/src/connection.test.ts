@@ -53,6 +53,37 @@ describe('testProviderConnection', () => {
       messageCode: 'connection_ok',
     })
     expect(fetchMock).toHaveBeenCalledTimes(1)
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
+    expect(body.reasoning_effort).toBeUndefined()
+    expect(body.enable_thinking).toBeUndefined()
+    expect(body.thinking).toBeUndefined()
+  })
+
+  it('adds optional OpenAI-compatible speed controls to request bodies', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        choices: [{ message: { content: '["连接正常"]' } }],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(testProviderConnection({
+      presetId: 'openai-compatible',
+      values: {
+        ...openAIValues,
+        reasoningEffort: 'minimal',
+        disableThinking: 'true',
+      },
+    })).resolves.toEqual({
+      ok: true,
+      providerId: 'openai-compatible',
+      messageCode: 'connection_ok',
+    })
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
+    expect(body.reasoning_effort).toBe('minimal')
+    expect(body.enable_thinking).toBe(false)
+    expect(body.thinking).toEqual({ type: 'disabled' })
   })
 
   it('returns config incomplete without making a request', async () => {

@@ -12,6 +12,7 @@ import type {
 export const REQUEST_TIMEOUT_MS = 30000
 
 export const OPENAI_PROMPT_VERSION = 'prompt-v1'
+const OPENAI_REASONING_EFFORTS = new Set(['auto', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh'])
 
 export const BUILT_IN_PRESETS = [
   {
@@ -49,6 +50,8 @@ export function extractOpenAIConfig(config: ProviderConfig): OpenAICompatibleCon
     baseUrl: config.values.baseUrl || "https://api.openai.com/v1",
     apiKey: config.values.apiKey || "",
     model: config.values.model || "gpt-4o-mini",
+    reasoningEffort: normalizeReasoningEffort(config.values.reasoningEffort),
+    disableThinking: config.values.disableThinking === 'true',
   }
 }
 
@@ -193,26 +196,7 @@ export const openAICompatibleProvider: TranslationProvider = {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${providerConfig.apiKey}`,
         },
-        body: JSON.stringify({
-          model: providerConfig.model,
-          temperature: 0.2,
-          messages: [
-            {
-              role: 'system',
-              content:
-                'Translate each input string into the requested target language. Return only a JSON array of translated strings, preserving order and length.',
-            },
-            {
-              role: 'user',
-              content: JSON.stringify({
-                sourceLang: input.sourceLang,
-                targetLang: input.targetLang,
-                texts: input.texts,
-                context: input.context,
-              }),
-            },
-          ],
-        }),
+        body: JSON.stringify(createOpenAICompatibleRequestBody(input, providerConfig)),
         signal: controller.signal,
       })
     } catch (error: unknown) {
@@ -307,6 +291,48 @@ function assertOpenAIConfig(config: unknown): OpenAICompatibleConfig {
     throw providerConfigError('OpenAI-compatible base URL, API key, and model are required')
   }
   return value as OpenAICompatibleConfig
+}
+
+function normalizeReasoningEffort(value: string | undefined): OpenAICompatibleConfig['reasoningEffort'] {
+  if (!value || !OPENAI_REASONING_EFFORTS.has(value)) return undefined
+  return value as OpenAICompatibleConfig['reasoningEffort']
+}
+
+function createOpenAICompatibleRequestBody(
+  input: TranslateInput,
+  providerConfig: OpenAICompatibleConfig,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    model: providerConfig.model,
+    temperature: 0.2,
+    messages: [
+      {
+        role: 'system',
+        content:
+          'Translate each input string into the requested target language. Return only a JSON array of translated strings, preserving order and length.',
+      },
+      {
+        role: 'user',
+        content: JSON.stringify({
+          sourceLang: input.sourceLang,
+          targetLang: input.targetLang,
+          texts: input.texts,
+          context: input.context,
+        }),
+      },
+    ],
+  }
+
+  if (providerConfig.reasoningEffort && providerConfig.reasoningEffort !== 'auto') {
+    body.reasoning_effort = providerConfig.reasoningEffort
+  }
+
+  if (providerConfig.disableThinking) {
+    body.enable_thinking = false
+    body.thinking = { type: 'disabled' }
+  }
+
+  return body
 }
 
 export function providerHttpError(status: number, message: string): Error & { status: number } {
