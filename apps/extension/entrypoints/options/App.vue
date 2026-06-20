@@ -687,7 +687,7 @@ section {
 }
 
 .status-mark[data-ready="true"] {
-  color: #4a7c59;
+  color: var(--lf-success);
 }
 
 .form-grid {
@@ -799,7 +799,7 @@ section {
 }
 
 .connection-result[data-success="true"] {
-  color: #4a7c59;
+  color: var(--lf-success);
 }
 
 .storage-actions {

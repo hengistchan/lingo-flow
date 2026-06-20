@@ -10,6 +10,7 @@
   --lf-whisper: #b8b2a6;
   --lf-rule: #e0dbd3;
   --lf-ghost: #6b6560;
+  --lf-success: #4a7c59;
 
   /* ── Typography ── */
   --lf-font-serif: Georgia, "Noto Serif", "Source Han Serif SC", "Songti SC", serif;
@@ -35,6 +36,7 @@
     --lf-whisper: #7a756b;
     --lf-rule: #3a3830;
     --lf-ghost: #9e978c;
+    --lf-success: #5a9c69;
   }
 }
 
