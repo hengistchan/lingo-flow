@@ -1,5 +1,5 @@
 import { buildTranslationCacheKey, clearAllCache, clearCacheByDomain, pruneCache, resolveTranslationCache, safeSaveTranslationCache } from '@lingoflow/cache'
-import { createDefaultProviderRegistry, extractAzureConfig, extractOpenAIConfig, testProviderConnection } from '@lingoflow/providers'
+import { createDefaultProviderRegistry, extractBuiltInProviderConfig, testProviderConnection } from '@lingoflow/providers'
 import { isFallbackEligible, retry, translateBatchWithDegrade } from '@lingoflow/scheduler'
 import { getPublicRuntimeSettings, getSettings, getSettingsSummary, saveSettings } from '@lingoflow/settings'
 import { failure, restoreInlineTokens, success } from '@lingoflow/shared'
@@ -121,9 +121,7 @@ async function translateWithProvider(
   if (!providerConfig) throw new Error("Provider config not found: " + providerId)
   const presetId = providerConfig.presetId ?? providerId
   const provider = registry.get(presetId)
-  const config = presetId === "azure-translator"
-    ? extractAzureConfig(providerConfig)
-    : extractOpenAIConfig(providerConfig)
+  const config = extractBuiltInProviderConfig(providerConfig)
   const model = providerConfig.values.model || undefined
   const promptVersion = presetId === "openai-compatible" ? "prompt-v1" : undefined
   const output = await provider.translate(

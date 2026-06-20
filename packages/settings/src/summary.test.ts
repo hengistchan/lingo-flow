@@ -39,4 +39,18 @@ describe('key-free settings summary', () => {
       }).providerConfigured,
     ).toBe(false)
   })
+
+  it('reports Google Free Translate as configured without provider keys', () => {
+    const summary = getSettingsSummary({
+      ...DEFAULT_SETTINGS,
+      defaultProviderId: 'google-free-translate',
+    })
+
+    expect(summary).toMatchObject({
+      providerId: 'google-free-translate',
+      providerName: 'Google Translate Free',
+      providerConfigured: true,
+    })
+    expect(JSON.stringify(summary)).not.toContain('key')
+  })
 })

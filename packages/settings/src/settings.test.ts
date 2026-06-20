@@ -7,6 +7,12 @@ describe('settings', () => {
     expect(DEFAULT_SETTINGS.renderMode).toBe('below-original')
     expect(DEFAULT_SETTINGS.defaultProviderId).toBe('azure-translator')
     expect(DEFAULT_SETTINGS.translationConcurrency).toBe(3)
+    expect(DEFAULT_SETTINGS.providers['google-free-translate']).toMatchObject({
+      id: 'google-free-translate',
+      presetId: 'google-free-translate',
+      name: 'Google Translate Free',
+      values: {},
+    })
   })
 
   it('migrates the legacy unversioned English source default to auto-detect', () => {

@@ -9,7 +9,7 @@ import type {
 import { isProviderConfigured } from '@lingoflow/providers'
 
 const SETTINGS_KEY = 'lingoflow:settings'
-const CURRENT_SETTINGS_VERSION = 3
+const CURRENT_SETTINGS_VERSION = 4
 const DEFAULT_TRANSLATION_CONCURRENCY = 3
 const MIN_TRANSLATION_CONCURRENCY = 1
 const MAX_TRANSLATION_CONCURRENCY = 6
@@ -41,6 +41,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
         key: '',
         region: '',
       },
+    },
+    'google-free-translate': {
+      id: 'google-free-translate',
+      presetId: 'google-free-translate',
+      name: 'Google Translate Free',
+      values: {},
     },
     'openai-compatible': {
       id: 'openai-compatible',
