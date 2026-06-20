@@ -1,35 +1,26 @@
-import { normalizeText, sha256 } from '@lingoflow/shared'
-import type { InlineToken, InlineTokenType, TextBlock, TextBlockType, TranslationInsertion } from '@lingoflow/types'
-
-export const CANDIDATE_SELECTORS = [
-  'article h1',
-  'article h2',
-  'article h3',
-  'article p',
-  'article li',
-  'main h1',
-  'main h2',
-  'main h3',
-  'main p',
-  'main li',
-  'section p',
-  'section li',
-  'blockquote',
-  'td',
-  'th',
-]
-
-export const CONTENT_ROOT_SELECTORS = [
-  '.markdown-body',
-  '.prose',
-  'article',
-  'main',
-  '[role="main"]',
-  '#content',
-  '#mw-content-text',
-  '.mw-parser-output',
-  '.md-content',
-]
+import { sha256 } from '@lingoflow/shared'
+import type {
+  BlockBindingDraft,
+  ContentRootKind,
+  InlineToken,
+  TextBlock,
+  TextBlockType,
+  TranslationBlock,
+  TranslationInsertion,
+} from '@lingoflow/types'
+import { ScanResult } from '@lingoflow/types'
+import { discoverContentRoots } from './content-root'
+import { extractInlineText } from './inline-tokenization'
+import { findAllShadowRoots } from './page-adapters'
+import {
+  IGNORE_SELECTORS,
+  isGeneratedByLingoFlow,
+  isInsideUIExclusion,
+  isTranslatableElement,
+  isTranslatableTableCell,
+  hasTooManyInteractiveElements,
+  isVisible,
+} from './filters'
 
 export const BLOCK_SELECTORS = [
   'h1',
@@ -47,25 +38,6 @@ export const BLOCK_SELECTORS = [
   'figcaption',
 ]
 
-export const IGNORE_SELECTORS = [
-  'script',
-  'style',
-  'code',
-  'pre',
-  'textarea',
-  'input',
-  'button',
-  'select',
-  'nav',
-  'footer',
-  'header',
-  'svg',
-  'canvas',
-  '[contenteditable="true"]',
-  '[data-lingoflow-ignore]',
-  '[data-lingoflow-translation]',
-]
-
 export type CollectTextBlockOptions = {
   sourceLang: 'auto' | string
   targetLang: string
@@ -73,7 +45,15 @@ export type CollectTextBlockOptions = {
   domain: string
 }
 
-export async function collectTextBlocks(root: Document, options: CollectTextBlockOptions): Promise<TextBlock[]> {
+export type CollectScanResultOptions = CollectTextBlockOptions & {
+  runId: string
+  rootGeneration: number
+}
+
+export async function collectScanResults(
+  root: Document,
+  options: CollectScanResultOptions,
+): Promise<ScanResult[]> {
   const contentRoots = discoverContentRoots(root)
   let candidates = uniqueElements(
     contentRoots.flatMap(contentRoot =>
@@ -82,7 +62,7 @@ export async function collectTextBlocks(root: Document, options: CollectTextBloc
     )
   )
 
-  const shadowRoots = contentRoots.flatMap(root => findAllShadowRoots(root))
+  const shadowRoots = contentRoots.flatMap(r => findAllShadowRoots(r))
   for (const shadowRoot of shadowRoots) {
     const shadowCandidates = Array.from(shadowRoot.querySelectorAll(BLOCK_SELECTORS.join(',')))
       .filter((element): element is HTMLElement => element instanceof HTMLElement)
@@ -90,11 +70,15 @@ export async function collectTextBlocks(root: Document, options: CollectTextBloc
   }
   candidates = uniqueElements(candidates)
 
-  const blocks: TextBlock[] = []
+  const results: ScanResult[] = []
   const acceptedElements: HTMLElement[] = []
 
   for (const element of candidates) {
     if (isInsideAcceptedStructuralBoundary(element, acceptedElements)) continue
+    if (isGeneratedByLingoFlow(element)) continue
+    if (isInsideUIExclusion(element)) continue
+    if (!isTranslatableTableCell(element)) continue
+    if (hasTooManyInteractiveElements(element)) continue
     if (!isTranslatableElement(element)) continue
 
     const carrier = resolveTextCarrier(element)
@@ -102,24 +86,23 @@ export async function collectTextBlocks(root: Document, options: CollectTextBloc
     const text = inlineText.text
     const normalizedText = text
     const textHash = await sha256(normalizedText)
-    const id = `block_${blocks.length + 1}_${textHash.slice(0, 8)}`
+    const id = `block_${results.length + 1}_${textHash.slice(0, 8)}`
     const blockType = detectBlockType(element)
+    const rootKind = resolveRootKind(element, contentRoots, shadowRoots)
 
     carrier.dataset.lingoflowBlockId = id
     acceptedElements.push(carrier)
 
-    blocks.push({
+    const block: TranslationBlock = {
       id,
-      elementRefId: id,
+      revision: 1,
+      runId: options.runId,
       text,
-      requestText: inlineText.requestText,
       normalizedText,
       textHash,
+      requestText: inlineText.requestText,
       inlineTokens: inlineText.inlineTokens,
-      sourceLang: options.sourceLang,
-      targetLang: options.targetLang,
-      pageUrl: options.pageUrl,
-      domain: options.domain,
+      state: 'pending',
       meta: {
         tagName: carrier.tagName.toLowerCase(),
         depth: getElementDepth(carrier),
@@ -128,74 +111,85 @@ export async function collectTextBlocks(root: Document, options: CollectTextBloc
         blockType,
         insertion: resolveInsertion(element, carrier, blockType, normalizedText),
         carrierTagName: carrier.tagName.toLowerCase(),
+        rootKind,
       },
-    })
+      sourceLang: options.sourceLang,
+      targetLang: options.targetLang,
+      pageUrl: options.pageUrl,
+      domain: options.domain,
+    }
+
+    const binding: BlockBindingDraft = {
+      blockId: id,
+      carrierElement: carrier,
+      sourceNodes: [carrier],
+      commonAncestor: carrier,
+      sourceSignature: buildSourceSignature(carrier),
+    }
+
+    results.push({ block, binding })
   }
 
-  return blocks
+  return results
 }
 
-export function discoverContentRoots(root: Document): HTMLElement[] {
-  const explicitRoots = uniqueElements(
-    Array.from(root.querySelectorAll(CONTENT_ROOT_SELECTORS.join(',')))
-      .filter((element): element is HTMLElement => element instanceof HTMLElement)
-      .filter(element => isVisible(element))
-      .filter(element => !element.closest(IGNORE_SELECTORS.join(',')))
-  )
-
-  if (explicitRoots.length > 0) return explicitRoots
-
-  const scoredRoots = scoreGenericContentRoots(root)
-  if (scoredRoots.length > 0) return scoredRoots
-
-  if (root.body) return [root.body]
-  return root.documentElement instanceof HTMLElement ? [root.documentElement] : []
+export async function collectTextBlocks(root: Document, options: CollectTextBlockOptions): Promise<TextBlock[]> {
+  const results = await collectScanResults(root, {
+    ...options,
+    runId: 'legacy-run',
+    rootGeneration: 1,
+  })
+  return results.map(result => toLegacyTextBlock(result.block))
 }
 
-export function isTranslatableElement(element: HTMLElement): boolean {
-  if (!isVisible(element)) return false
-  if (element.closest(IGNORE_SELECTORS.join(','))) return false
-  if (element.dataset.lingoflowBlockId) return false
-
-  const text = normalizeText(getElementText(element))
-  const blockType = detectBlockType(element)
-  if (blockType === 'heading') return text.length > 0
-  if (blockType === 'table') return text.length >= 20
-  if (text.length < 20) return false
-
-  const childTextLength = Array.from(element.children)
-    .map(child => normalizeText(getElementText(child as HTMLElement)).length)
-    .reduce((sum, length) => sum + length, 0)
-
-  if (blockType !== 'list' && element.children.length > 0 && childTextLength > text.length * 0.8) {
-    return false
+function toLegacyTextBlock(block: TranslationBlock): TextBlock {
+  return {
+    id: block.id,
+    elementRefId: block.id,
+    text: block.text,
+    requestText: block.requestText,
+    normalizedText: block.normalizedText,
+    textHash: block.textHash,
+    inlineTokens: block.inlineTokens,
+    sourceLang: block.sourceLang,
+    targetLang: block.targetLang,
+    pageUrl: block.pageUrl,
+    domain: block.domain,
+    meta: {
+      tagName: block.meta.tagName,
+      depth: block.meta.depth,
+      visible: block.meta.visible,
+      textLength: block.meta.textLength,
+      blockType: block.meta.blockType,
+      insertion: block.meta.insertion,
+      carrierTagName: block.meta.carrierTagName,
+    },
   }
-
-  return true
-}
-
-export function isVisible(element: HTMLElement): boolean {
-  if (element.hidden || element.getAttribute('aria-hidden') === 'true') return false
-
-  const style = element.ownerDocument.defaultView?.getComputedStyle(element)
-  if (style && (style.display === 'none' || style.visibility === 'hidden')) return false
-
-  return true
-}
-
-function findAllShadowRoots(root: Element | Document): ShadowRoot[] {
-  const shadows: ShadowRoot[] = []
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
-  let node: Node | null = walker.currentNode
-  while (node) {
-    if (node instanceof Element && node.shadowRoot) shadows.push(node.shadowRoot)
-    node = walker.nextNode()
-  }
-  return shadows
 }
 
 function uniqueElements(elements: HTMLElement[]): HTMLElement[] {
   return [...new Set(elements)]
+}
+
+function resolveRootKind(
+  element: HTMLElement,
+  contentRoots: HTMLElement[],
+  shadowRoots: ShadowRoot[],
+): ContentRootKind {
+  for (const shadow of shadowRoots) {
+    if (shadow.contains(element)) return 'shadow'
+  }
+  for (const root of contentRoots) {
+    if (root.contains(element)) return 'html'
+  }
+  return 'html'
+}
+
+function buildSourceSignature(carrier: HTMLElement): string {
+  const tagName = carrier.tagName.toLowerCase()
+  const depth = getElementDepth(carrier)
+  const text = (carrier.textContent || '').slice(0, 80)
+  return `${tagName}:${depth}:${text}`
 }
 
 function isInsideAcceptedStructuralBoundary(element: HTMLElement, acceptedElements: HTMLElement[]): boolean {
@@ -212,85 +206,6 @@ function isSameListItemParagraphWrapper(element: HTMLElement, listItem: HTMLElem
   return element.tagName.toLowerCase() === 'p' && element.closest('li') === listItem
 }
 
-function scoreGenericContentRoots(root: Document): HTMLElement[] {
-  const candidates = Array.from(root.querySelectorAll('section, div'))
-    .filter((element): element is HTMLElement => element instanceof HTMLElement)
-    .filter(element => isVisible(element))
-    .filter(element => !element.closest(IGNORE_SELECTORS.join(',')))
-    .map(element => {
-      const text = normalizeText(getElementText(element))
-      const paragraphs = element.querySelectorAll('p, li').length
-      const linkText = Array.from(element.querySelectorAll('a'))
-        .map(link => normalizeText(getElementText(link as HTMLElement)).length)
-        .reduce((sum, length) => sum + length, 0)
-      const linkDensity = text.length === 0 ? 0 : linkText / text.length
-      return {
-        element,
-        score: text.length + paragraphs * 120 - linkDensity * 400,
-        textLength: text.length,
-        paragraphs,
-      }
-    })
-    .filter(candidate => candidate.textLength >= 80 && candidate.paragraphs > 0)
-    .sort((a, b) => b.score - a.score)
-
-  return candidates[0] ? [candidates[0].element] : []
-}
-
-function getElementText(element: HTMLElement): string {
-  if (element.tagName.toLowerCase() === 'li') return getListItemOwnText(element)
-  return element.innerText || element.textContent || ''
-}
-
-function getListItemOwnText(element: HTMLElement): string {
-  return getElementTextFromPreparedClone(element)
-}
-
-function extractInlineText(element: HTMLElement): {
-  text: string
-  requestText: string
-  inlineTokens: InlineToken[]
-} {
-  const text = normalizeText(getElementText(element))
-  const clone = prepareTextClone(element)
-  const inlineTokens: InlineToken[] = []
-
-  clone.querySelectorAll('code, kbd, a').forEach(node => {
-    if (!(node instanceof HTMLElement)) return
-    const tokenText = normalizeText(node.innerText || node.textContent || '')
-    if (!tokenText) return
-
-    const type = getInlineTokenType(node)
-    const token = createInlineToken(type, tokenText, inlineTokens.length)
-    inlineTokens.push(token)
-    node.textContent = token.id
-  })
-
-  const requestText = protectInlineTextPatterns(
-    normalizeText(clone.innerText || clone.textContent || ''),
-    inlineTokens,
-  )
-
-  return {
-    text,
-    requestText,
-    inlineTokens,
-  }
-}
-
-function prepareTextClone(element: HTMLElement): HTMLElement {
-  const clone = element.cloneNode(true) as HTMLElement
-  if (element.tagName.toLowerCase() === 'li') {
-    clone.querySelectorAll('ul, ol').forEach(node => node.remove())
-  }
-  return clone
-}
-
-function getElementTextFromPreparedClone(element: HTMLElement): string {
-  const clone = prepareTextClone(element)
-  return clone.innerText || clone.textContent || ''
-}
-
 function resolveTextCarrier(element: HTMLElement): HTMLElement {
   const primaryAnchor = findPrimaryTextAnchor(element)
   return primaryAnchor ?? element
@@ -300,16 +215,16 @@ function findPrimaryTextAnchor(element: HTMLElement): HTMLElement | null {
   const tagName = element.tagName.toLowerCase()
   if (!/^h[1-6]$/.test(tagName)) return null
 
-  const text = normalizeText(getElementText(element))
+  const text = (element.innerText || element.textContent || '').trim()
   if (text.length < 20) return null
 
   const anchors = Array.from(element.querySelectorAll('a'))
-    .filter(node => normalizeText(getElementText(node)).length >= 20)
+    .filter(node => ((node as HTMLElement).innerText || node.textContent || '').trim().length >= 20)
 
   if (anchors.length !== 1) return null
 
-  const anchor = anchors[0]
-  const anchorText = normalizeText(getElementText(anchor))
+  const anchor = anchors[0] as HTMLElement
+  const anchorText = (anchor.innerText || anchor.textContent || '').trim()
   if (anchorText.length / text.length < 0.8) return null
 
   return anchor
@@ -327,6 +242,7 @@ function resolveInsertion(
   if (blockType === 'list') return hasNestedList(source) ? 'before-nested-structure' : 'inside-container'
   if (blockType === 'heading') return text.length <= 32 ? 'inline-inside' : 'linebreak-inside'
   if (blockType === 'paragraph' || blockType === 'quote') return 'linebreak-inside'
+  if (blockType === 'caption' || blockType === 'description') return 'linebreak-inside'
   return 'after-block'
 }
 
@@ -335,36 +251,6 @@ function hasNestedList(element: HTMLElement): boolean {
     const tagName = child.tagName.toLowerCase()
     return tagName === 'ul' || tagName === 'ol'
   })
-}
-
-function getInlineTokenType(element: HTMLElement): InlineTokenType {
-  const tagName = element.tagName.toLowerCase()
-  if (tagName === 'a') return 'link'
-  if (tagName === 'kbd') return 'keyboard'
-  return 'code'
-}
-
-function protectInlineTextPatterns(text: string, inlineTokens: InlineToken[]): string {
-  return [
-    /https?:\/\/[^\s)]+/g,
-    /@[a-zA-Z0-9][\w.-]*\/[a-zA-Z0-9][\w.-]*/g,
-    /\b[0-9a-f]{7,40}\b/gi,
-  ].reduce((value, pattern) =>
-    value.replace(pattern, match => {
-      const token = createInlineToken('reference', match, inlineTokens.length)
-      inlineTokens.push(token)
-      return token.id
-    }),
-    text,
-  )
-}
-
-function createInlineToken(type: InlineTokenType, text: string, index: number): InlineToken {
-  return {
-    id: `⟦LF:${index}⟧`,
-    type,
-    text,
-  }
 }
 
 function getElementDepth(element: HTMLElement): number {
@@ -387,5 +273,10 @@ export function detectBlockType(element: HTMLElement): TextBlockType {
   if (tagName === 'li') return 'list'
   if (tagName === 'blockquote') return 'quote'
   if (tagName === 'td' || tagName === 'th') return 'table'
+  if (tagName === 'figcaption') return 'caption'
+  if (tagName === 'dd') return 'description'
   return 'unknown'
 }
+
+export { isTranslatableElement, isVisible } from './filters'
+export { discoverContentRoots } from './content-root'

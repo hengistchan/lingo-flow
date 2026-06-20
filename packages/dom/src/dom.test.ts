@@ -1,4 +1,5 @@
-import { collectTextBlocks, detectBlockType, isTranslatableElement, isVisible } from './index'
+import { collectScanResults, collectTextBlocks, detectBlockType, isTranslatableElement, isVisible } from './index'
+import type { ScanResult } from '@lingoflow/types'
 
 describe('DOM collector', () => {
   beforeEach(() => {
@@ -481,5 +482,276 @@ describe('collectTextBlocks', () => {
     expect(block.inlineTokens).toEqual([
       { id: '⟦LF:0⟧', type: 'link', text: 'a285a52' },
     ])
+  })
+})
+
+const scanOptions = {
+  sourceLang: 'en' as const,
+  targetLang: 'zh-Hans',
+  pageUrl: 'https://example.com/article',
+  domain: 'example.com',
+  runId: 'run_test_1',
+  rootGeneration: 1,
+}
+
+describe('collectScanResults', () => {
+  beforeEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('returns serializable blocks and separate DOM binding drafts', async () => {
+    document.body.innerHTML = '<main><p>Readable source paragraph long enough for translation.</p></main>'
+
+    const results = await collectScanResults(document, scanOptions)
+
+    expect(results).toHaveLength(1)
+    const { block, binding } = results[0]
+
+    expect(JSON.stringify(block)).toContain('Readable source paragraph')
+    expect(binding.carrierElement.tagName.toLowerCase()).toBe('p')
+    expect(binding.sourceNodes.length).toBeGreaterThan(0)
+    expect(binding.commonAncestor).toBeInstanceOf(HTMLElement)
+    expect(typeof binding.sourceSignature).toBe('string')
+  })
+
+  it('block is serializable and has no DOM references', async () => {
+    document.body.innerHTML = '<main><p>This block must be pure data with no DOM references at all.</p></main>'
+
+    const results = await collectScanResults(document, scanOptions)
+    const block = results[0].block
+    const serialized = JSON.parse(JSON.stringify(block))
+
+    expect(serialized.id).toBe(block.id)
+    expect(serialized.text).toContain('pure data')
+    expect(serialized.state).toBe('pending')
+    expect(serialized.revision).toBe(1)
+    expect(serialized.runId).toBe('run_test_1')
+    expect(serialized.meta.rootKind).toBe('html')
+  })
+
+  it('does not call provider, enqueue work, or render', async () => {
+    document.body.innerHTML = '<main><p>The scanner must not call any provider or rendering APIs at all.</p></main>'
+
+    const results = await collectScanResults(document, scanOptions)
+
+    expect(results[0].block.state).toBe('pending')
+    expect(results[0].block.translatedText).toBeUndefined()
+    expect(document.querySelector('[data-lingoflow-translation]')).toBeNull()
+  })
+
+  it('supports figcaption block type', async () => {
+    document.body.innerHTML = `
+      <main>
+        <figure>
+          <img src="photo.jpg" alt="photo">
+          <figcaption>This caption text is long enough to be collected as a block.</figcaption>
+        </figure>
+      </main>
+    `
+
+    const results = await collectScanResults(document, scanOptions)
+
+    const captionResult = results.find(r => r.block.meta.blockType === 'caption')
+    expect(captionResult).toBeDefined()
+    expect(captionResult!.block.meta.tagName).toBe('figcaption')
+    expect(captionResult!.binding.carrierElement.tagName.toLowerCase()).toBe('figcaption')
+  })
+
+  it('supports dd block type', async () => {
+    document.body.innerHTML = `
+      <main>
+        <dl>
+          <dt>Term</dt>
+          <dd>This description text is definitely long enough to be collected as a translation block.</dd>
+        </dl>
+      </main>
+    `
+
+    const results = await collectScanResults(document, scanOptions)
+
+    const ddResult = results.find(r => r.block.meta.tagName === 'dd')
+    expect(ddResult).toBeDefined()
+    expect(ddResult!.block.meta.blockType).toBe('description')
+    expect(ddResult!.binding.carrierElement.tagName.toLowerCase()).toBe('dd')
+  })
+
+  it('scans content inside open ShadowRoots', async () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const shadow = host.attachShadow({ mode: 'open' })
+    shadow.innerHTML = '<p>This paragraph lives inside an open shadow root and should be found.</p>'
+
+    document.body.innerHTML = '<main></main>'
+    document.querySelector('main')!.appendChild(host)
+
+    const results = await collectScanResults(document, scanOptions)
+
+    expect(results.length).toBeGreaterThanOrEqual(1)
+    const shadowResult = results.find(r => r.block.text.includes('shadow root'))
+    expect(shadowResult).toBeDefined()
+    expect(shadowResult!.block.meta.rootKind).toBe('shadow')
+  })
+})
+
+describe('UI exclusion filtering', () => {
+  beforeEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('skips content inside buttons', async () => {
+    document.body.innerHTML = `
+      <main>
+        <button><span>This button text is long enough to trigger translation but should be skipped.</span></button>
+        <p>This paragraph outside buttons is long enough to be collected by the scanner.</p>
+      </main>
+    `
+
+    const results = await collectScanResults(document, scanOptions)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].block.text).toContain('outside buttons')
+  })
+
+  it('skips content inside menus and toolbars', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div role="menu"><p>This menu item text is long enough to be collected but must be skipped.</p></div>
+        <div role="toolbar"><p>This toolbar text is also long enough but must be skipped entirely.</p></div>
+        <p>This content paragraph is long enough to pass all scanner filtering rules.</p>
+      </main>
+    `
+
+    const results = await collectScanResults(document, scanOptions)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].block.text).toContain('pass all scanner')
+  })
+
+  it('skips content inside tablist and dialog', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div role="tablist"><p>This tab list content is long enough but should not be collected.</p></div>
+        <div role="dialog"><p>This dialog content is long enough but should not be collected either.</p></div>
+        <p>This regular paragraph is long enough to pass the filtering and be collected.</p>
+      </main>
+    `
+
+    const results = await collectScanResults(document, scanOptions)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].block.text).toContain('pass the filtering')
+  })
+
+  it('skips content inside nav, form, and status', async () => {
+    document.body.innerHTML = `
+      <main>
+        <nav><p>This navigation text is long enough but must be skipped by the scanner.</p></nav>
+        <form><p>This form text content is long enough but must be skipped by the scanner.</p></form>
+        <div role="status"><p>This status message is long enough but should also be skipped.</p></div>
+        <p>This regular content paragraph is long enough to pass all filtering rules applied.</p>
+      </main>
+    `
+
+    const results = await collectScanResults(document, scanOptions)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].block.text).toContain('pass all filtering')
+  })
+
+  it('skips elements with badge or action roles', async () => {
+    document.body.innerHTML = `
+      <main>
+        <span role="status">This status badge text is long enough but should be skipped entirely.</span>
+        <div role="button"><p>This action button text is long enough but must be skipped too.</p></div>
+        <p>This main content paragraph is long enough to be accepted by the scanner filter.</p>
+      </main>
+    `
+
+    const results = await collectScanResults(document, scanOptions)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].block.text).toContain('accepted by the scanner')
+  })
+
+  it('skips table cells with many interactive children', async () => {
+    document.body.innerHTML = `
+      <main>
+        <table>
+          <tbody>
+            <tr>
+              <td>
+                <button>Action 1</button>
+                <button>Action 2</button>
+                <button>Action 3</button>
+                <a href="#">Link 1</a>
+                <a href="#">Link 2</a>
+                This cell has too many interactive controls inside it.
+              </td>
+              <td>This table cell has normal text that is long enough to collect.</td>
+            </tr>
+          </tbody>
+        </table>
+      </main>
+    `
+
+    const results = await collectScanResults(document, scanOptions)
+
+    const cellResults = results.filter(r => r.block.meta.blockType === 'table')
+    expect(cellResults.length).toBeGreaterThanOrEqual(1)
+    expect(cellResults.some(r => r.block.text.includes('normal text'))).toBe(true)
+  })
+
+  it('skips elements with high interactive density', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div>
+          <a href="#">First link in high density area</a>
+          <a href="#">Second link in high density area</a>
+          <a href="#">Third link in high density area</a>
+          <a href="#">Fourth link in high density area</a>
+          <a href="#">Fifth link in high density area</a>
+          <a href="#">Sixth link in high density area</a>
+          <a href="#">Seventh link in high density area</a>
+          <a href="#">Eighth link in high density area</a>
+        </div>
+        <p>This paragraph has normal text density and should be collected as a block.</p>
+      </main>
+    `
+
+    const results = await collectScanResults(document, scanOptions)
+
+    expect(results.some(r => r.block.text.includes('normal text density'))).toBe(true)
+  })
+
+  it('skips generated LingoFlow nodes and nodes inside them', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div data-lingoflow-generated="true">
+          <p>This text is inside a generated LingoFlow node and should be skipped.</p>
+        </div>
+        <p>This text is outside generated nodes and should be collected by the scanner.</p>
+      </main>
+    `
+
+    const results = await collectScanResults(document, scanOptions)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].block.text).toContain('outside generated nodes')
+  })
+
+  it('skips elements with data-lingoflow-translation attribute', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div data-lingoflow-translation="block_1">
+          <p>This text is inside a translation element and must be skipped by scanner.</p>
+        </div>
+        <p>This text is outside translation elements and must be collected by the scanner.</p>
+      </main>
+    `
+
+    const results = await collectScanResults(document, scanOptions)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].block.text).toContain('outside translation elements')
   })
 })
