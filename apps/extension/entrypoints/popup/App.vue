@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import LfButton from '../../src/ui/LfButton.vue'
+import LfLanguagePair from '../../src/ui/LfLanguagePair.vue'
 import {
   getLanguageLabel,
-  getTargetLanguageOptions,
   resolveUiLocale,
   t,
   sendChromeMessage,
@@ -32,7 +33,6 @@ const actionFailed = ref(false)
 const contentInjected = ref(false)
 const cacheMessage = ref('')
 let pollTimer: number | undefined
-const targetLanguages = getTargetLanguageOptions()
 
 const targetLanguageName = computed(() => getLanguageLabel(pendingTargetLang.value, uiLocale.value))
 const hasTranslations = computed(() => progress.value.translatedBlocks > 0)
@@ -245,6 +245,11 @@ function copy(key: Parameters<typeof t>[1], variables?: Record<string, string | 
   return t(uiLocale.value, key, variables)
 }
 
+function onTargetChange(value: string) {
+  pendingTargetLang.value = value
+  targetSelectionTouched.value = true
+}
+
 function idleProgress(): PageTranslationProgress {
   return {
     status: 'idle',
@@ -290,59 +295,44 @@ function getPreviewSafeChrome() {
 <template>
   <main class="popup">
     <header class="header">
-      <span class="brand-mark">LF</span>
-      <div class="brand-copy">
-        <h1>LingoFlow</h1>
-        <p aria-live="polite">{{ statusLabel }}</p>
-      </div>
-      <button class="icon-button" :aria-label="copy('popup.settings')" :title="copy('popup.settings')" @click="openSettings">
-        <span aria-hidden="true">⚙</span>
+      <h1>LingoFlow</h1>
+      <button
+        class="icon-button"
+        :aria-label="copy('popup.settings')"
+        :title="copy('popup.settings')"
+        @click="openSettings"
+      >
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="10" cy="10" r="3" />
+          <path d="M10 1.5v2M10 16.5v2M1.5 10h2M16.5 10h2M3.4 3.4l1.4 1.4M15.2 15.2l1.4 1.4M3.4 16.6l1.4-1.4M15.2 4.8l1.4-1.4" />
+        </svg>
       </button>
     </header>
+
+    <p class="status" aria-live="polite">{{ statusLabel }}</p>
 
     <section v-if="loading" class="loading-indicator">
       <p>{{ copy("popup.loading") }}</p>
     </section>
 
-    <section class="language-flow" aria-label="Translation language">
-      <p class="source-language">{{ copy('popup.autoDetect') }}</p>
-      <span class="direction" aria-hidden="true">↓</span>
-      <label class="target-language">
-        <span>{{ copy('popup.targetLanguage') }}</span>
-        <select
-          v-model="pendingTargetLang"
-          :disabled="busy || progress.status === 'translating'"
-          @change="targetSelectionTouched = true"
-        >
-          <option v-for="language in targetLanguages" :key="language.code" :value="language.code">
-            {{ getLanguageLabel(language.code, uiLocale) }}
-          </option>
-        </select>
-      </label>
-    </section>
+    <lf-language-pair
+      :source-label="copy('popup.autoDetect')"
+      :target-label="targetLanguageName"
+      :disabled="busy || progress.status === 'translating'"
+      @update:target="onTargetChange"
+    />
 
-    <section v-if="progress.status === 'translating'" class="progress-panel">
-      <div class="progress-heading">
-        <strong>{{ primaryActionLabel }}</strong>
-        <span>{{ completion }}%</span>
-      </div>
-      <div class="progress-track" aria-hidden="true">
-        <div class="progress-fill" :style="{ width: `${completion}%` }" />
-      </div>
-      <dl class="stats">
-        <div>
-          <dt>{{ copy('popup.progress') }}</dt>
-          <dd>{{ progress.translatedBlocks + progress.failedBlocks }}/{{ progress.totalBlocks }}</dd>
-        </div>
-        <div>
-          <dt>{{ copy('popup.failedBlocks') }}</dt>
-          <dd>{{ progress.failedBlocks }}</dd>
-        </div>
-      </dl>
-    </section>
+    <div v-if="progress.status === 'translating'" class="progress-line">
+      <div class="progress-fill" :style="{ width: `${completion}%` }" />
+    </div>
+
+    <div class="progress-stats" v-if="progress.status === 'translating'">
+      <span>{{ copy('popup.progress') }} {{ progress.translatedBlocks + progress.failedBlocks }}/{{ progress.totalBlocks }}</span>
+      <span>{{ completion }}%</span>
+    </div>
 
     <section v-else-if="summary.providerConfigured && progress.status !== 'idle'" class="result-summary">
-      <strong>{{ statusLabel }}</strong>
+      <span>{{ statusLabel }}</span>
       <span>{{ progress.translatedBlocks }}/{{ progress.totalBlocks }}</span>
     </section>
 
@@ -350,308 +340,135 @@ function getPreviewSafeChrome() {
     <p v-if="cacheMessage" class="message" aria-live="polite">{{ cacheMessage }}</p>
 
     <div class="actions">
-      <button v-if="summary.providerConfigured" class="primary" :disabled="busy || progress.status === 'translating'" @click="translatePage">
-        {{ primaryActionLabel }}
-      </button>
-      <button v-else class="primary" @click="openSettings">
-        {{ copy('popup.configureProvider') }}
-      </button>
-      <button v-if="hasTranslations" :disabled="busy" @click="clearTranslation">
-        {{ copy('popup.clearTranslation') }}
-      </button>
-      <button :disabled="busy" @click="clearSiteCache">
-        {{ copy('popup.clearSiteCache') }}
-      </button>
+      <lf-button
+        v-if="summary.providerConfigured"
+        variant="primary"
+        :label="primaryActionLabel"
+        :disabled="busy || progress.status === 'translating'"
+        @click="translatePage"
+      />
+      <lf-button
+        v-else
+        variant="primary"
+        :label="copy('popup.configureProvider')"
+        @click="openSettings"
+      />
+      <div v-if="hasTranslations" class="secondary-actions">
+        <lf-button
+          variant="ghost"
+          :label="copy('popup.clearTranslation')"
+          :disabled="busy"
+          @click="clearTranslation"
+        />
+        <lf-button
+          variant="ghost"
+          :label="copy('popup.clearSiteCache')"
+          :disabled="busy"
+          @click="clearSiteCache"
+        />
+      </div>
     </div>
   </main>
 </template>
 
 <style scoped>
-:global(body) {
-  margin: 0;
-  min-width: 320px;
-  background: #f5f5f5;
-  color: #111827;
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
 .popup {
   width: 320px;
   box-sizing: border-box;
-  padding: 18px;
-  background: #ffffff;
+  padding: 20px;
+  background: var(--lf-paper);
 }
 
 .header {
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-
-.brand-copy {
-  min-width: 0;
-}
-
-h1,
-p {
-  margin: 0;
+  justify-content: space-between;
+  margin-bottom: 4px;
 }
 
 h1 {
-  font-size: 14px;
+  margin: 0;
+  font-family: var(--lf-font-serif);
+  font-size: 16px;
+  font-weight: 400;
   line-height: 1.2;
-  font-weight: 800;
 }
 
-.brand-copy p {
-  margin-top: 3px;
-  color: #64748b;
+.status {
+  margin: 0 0 20px;
+  color: var(--lf-whisper);
   font-size: 12px;
-}
-
-.brand-mark {
-  display: grid;
-  width: 24px;
-  height: 24px;
-  place-items: center;
-  flex: 0 0 auto;
-  border-radius: 6px;
-  background: #2563eb;
-  color: #ffffff;
-  font-size: 10px;
-  font-weight: 800;
 }
 
 .icon-button {
   width: 34px;
   min-height: 34px;
-  margin-left: auto;
   padding: 0;
-  border-color: transparent;
+  border: none;
   background: transparent;
-  color: #64748b;
-  font-size: 17px;
+  color: var(--lf-whisper);
+  cursor: pointer;
+  transition: color 0.15s;
 }
 
-.language-flow {
-  display: grid;
-  justify-items: center;
-  gap: 7px;
-  margin-top: 18px;
-  padding: 15px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+.icon-button:hover {
+  color: var(--lf-ghost);
 }
 
-.source-language {
-  color: #475569;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.direction {
-  color: #94a3b8;
-  font-size: 15px;
-}
-
-.target-language {
-  display: grid;
-  width: 100%;
-  gap: 6px;
-}
-
-.target-language span {
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-select {
-  min-height: 40px;
-  width: 100%;
-  box-sizing: border-box;
-  border: 1px solid #cbd5e1;
-  border-radius: 7px;
-  padding: 0 10px;
-  background: #ffffff;
-  color: #111827;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.progress-panel,
-.result-summary {
-  margin-top: 12px;
-  padding: 12px;
-  border-radius: 8px;
-  background: #f8fafc;
-}
-
-.progress-heading,
-.result-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 12px;
-}
-
-.progress-track {
-  height: 5px;
-  margin: 10px 0;
+.progress-line {
+  height: 2px;
+  margin-top: 20px;
+  background: var(--lf-rule);
   overflow: hidden;
-  border-radius: 999px;
-  background: #dbeafe;
 }
 
 .progress-fill {
   height: 100%;
-  border-radius: inherit;
-  background: #2563eb;
-  transition: width 180ms ease;
+  background: var(--lf-accent);
+  transition: width 0.3s ease;
 }
 
-.stats {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  margin: 0;
-}
-
-.stats div {
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-
-dt {
-  color: #64748b;
+.progress-stats {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  color: var(--lf-whisper);
   font-size: 12px;
 }
 
-dd {
-  margin: 3px 0 0;
+.result-summary {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+  padding: 12px 0;
+  border-top: 1px solid var(--lf-rule);
+  border-bottom: 1px solid var(--lf-rule);
   font-size: 12px;
-  font-weight: 800;
+  color: var(--lf-ghost);
 }
 
 .message {
   margin-top: 12px;
-  color: #b45309;
+  color: var(--lf-accent);
   font-size: 12px;
   line-height: 1.45;
 }
 
 .actions {
-  display: grid;
-  gap: 8px;
-  margin-top: 16px;
+  margin-top: 20px;
 }
 
-button {
-  min-height: 40px;
-  border: 1px solid #dbe1ea;
-  border-radius: 8px;
-  padding: 0 12px;
-  background: #ffffff;
-  color: #111827;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.primary {
-  border-color: #2563eb;
-  background: #2563eb;
-  color: #ffffff;
+.secondary-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
 }
 
 .loading-indicator {
   margin-top: 12px;
   padding: 12px;
   text-align: center;
-  color: #64748b;
+  color: var(--lf-ghost);
   font-size: 13px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :global(body) {
-    background: #1a1a2e;
-    color: #e2e8f0;
-  }
-
-  .popup {
-    background: #16213e;
-  }
-
-  .brand-copy p {
-    color: #94a3b8;
-  }
-
-  .brand-mark {
-    background: #3b82f6;
-  }
-
-  .icon-button {
-    color: #94a3b8;
-  }
-
-  .language-flow {
-    border-color: #334155;
-  }
-
-  .source-language {
-    color: #cbd5e1;
-  }
-
-  .target-language span {
-    color: #94a3b8;
-  }
-
-  select {
-    border-color: #475569;
-    background: #1e293b;
-    color: #e2e8f0;
-  }
-
-  .progress-panel,
-  .result-summary {
-    background: #1e293b;
-  }
-
-  .progress-track {
-    background: #1e3a5f;
-  }
-
-  .progress-fill {
-    background: #3b82f6;
-  }
-
-  dt {
-    color: #94a3b8;
-  }
-
-  .message {
-    color: #fbbf24;
-  }
-
-  button {
-    border-color: #1e293b;
-    background: #1e293b;
-    color: #e2e8f0;
-  }
-
-  .primary {
-    background: #3b82f6;
-    color: #ffffff;
-  }
 }
 </style>
