@@ -92,13 +92,15 @@ export function isTranslatableElement(element: HTMLElement): boolean {
   if (element.dataset.lingoflowBlockId) return false
 
   const text = normalizeText(getElementText(element))
+  const blockType = detectBlockType(element)
+  if (blockType === 'heading') return text.length > 0
   if (text.length < 20) return false
 
   const childTextLength = Array.from(element.children)
     .map(child => normalizeText(getElementText(child as HTMLElement)).length)
     .reduce((sum, length) => sum + length, 0)
 
-  if (element.children.length > 1 && childTextLength > text.length * 0.8) {
+  if (element.children.length > 0 && childTextLength > text.length * 0.8) {
     return false
   }
 

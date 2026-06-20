@@ -254,4 +254,40 @@ describe('collectTextBlocks', () => {
       expect(el).not.toBeNull()
     }
   })
+
+  it('Collects GitHub Markdown headings and avoids duplicate blockquote paragraph translations', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div class="comment-body markdown-body js-comment-body">
+          <h2 dir="auto">What</h2>
+          <p dir="auto">The top-level <code class="notranslate">README.md</code> carried a terser banner:</p>
+          <blockquote>
+            <p dir="auto"><strong>Public beta</strong> - the <code class="notranslate">@vue-tui/runtime</code> API is stabilizing, and we're now seeking public feedback to lock it down before 1.0.</p>
+          </blockquote>
+          <h2 dir="auto">Why</h2>
+          <p dir="auto">The homepage is the first thing people see, but it was missing the public-feedback framing.</p>
+          <h2 dir="auto">Notes</h2>
+          <p dir="auto">Docs-only, single-line change. No code or behavior affected.</p>
+          <pre><code>const shouldNotTranslate = true</code></pre>
+        </div>
+      </main>
+    `
+
+    const blocks = await collectTextBlocks(document, {
+      ...defaultOptions,
+      pageUrl: 'https://github.com/vuejs-ai/vue-tui/pull/1',
+      domain: 'github.com',
+    })
+
+    expect(blocks.map(block => block.text)).toEqual(expect.arrayContaining(['What', 'Why', 'Notes']))
+
+    const publicBetaBlocks = blocks.filter(block => block.text.includes('Public beta'))
+    expect(publicBetaBlocks).toHaveLength(1)
+    expect(publicBetaBlocks[0].meta.tagName).toBe('p')
+    expect(document.querySelector('blockquote')?.getAttribute('data-lingoflow-block-id')).toBeNull()
+
+    const intro = blocks.find(block => block.text.includes('README.md'))
+    expect(intro?.text).toContain('README.md')
+    expect(blocks.some(block => block.text.includes('shouldNotTranslate'))).toBe(false)
+  })
 })
