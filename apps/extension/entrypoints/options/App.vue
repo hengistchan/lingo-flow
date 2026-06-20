@@ -9,7 +9,7 @@ import {
   sendChromeMessage,
 } from '@lingoflow/shared'
 import { DEFAULT_SETTINGS } from '@lingoflow/settings'
-import { BUILT_IN_PRESETS, isProviderConfigured } from '@lingoflow/providers'
+import { BUILT_IN_PRESETS, GOOGLE_FREE_TRANSLATE_ENDPOINT, isProviderConfigured } from '@lingoflow/providers'
 import type {
   AppSettings,
   ProviderConfig,
@@ -112,7 +112,7 @@ async function save() {
       return
     }
     const value = structuredClone(toRaw(settings))
-    if (!(await requestProviderOriginAccess(value.defaultProviderId, getProviderEndpoint(getProviderConfig(value))))) {
+    if (!(await requestProviderOriginAccess(getProviderEndpoint(getProviderConfig(value))))) {
       message.value = copy('options.connectionPermissionDenied')
       return
     }
@@ -158,7 +158,7 @@ async function testConnection() {
     }
 
     const endpoint = getProviderEndpoint(config)
-    if (!(await requestProviderOriginAccess(providerId, endpoint))) {
+    if (!(await requestProviderOriginAccess(endpoint))) {
       connectionResult.value = { ok: false, providerId, messageCode: 'permission_denied' }
       return
     }
@@ -242,6 +242,7 @@ function confirmCustomProvider() {
 }
 
 function getProviderEndpoint(config: ProviderConfig): string {
+  if (config.presetId === 'google-free-translate') return GOOGLE_FREE_TRANSLATE_ENDPOINT
   return config.values.endpoint || config.values.baseUrl || ''
 }
 
@@ -277,14 +278,16 @@ function reasoningEffortCopyKey(effort: typeof reasoningEffortOptions[number]): 
   return keys[effort]
 }
 
-async function requestProviderOriginAccess(
-  providerId: string,
-  endpoint: string,
-) {
+async function requestProviderOriginAccess(endpoint: string) {
   const origin = providerOriginPattern(endpoint)
 
   if (!origin || !hasRuntimeApi() || typeof globalThis.chrome?.permissions?.request !== 'function') {
     return Boolean(origin)
+  }
+
+  if (typeof globalThis.chrome.permissions.contains === 'function') {
+    const alreadyAllowed = await chrome.permissions.contains({ origins: [origin] })
+    if (alreadyAllowed) return true
   }
 
   return chrome.permissions.request({ origins: [origin] })

@@ -55,6 +55,41 @@ test('installed extension renders popup and options with real extension APIs', a
   }
 })
 
+test('installed extension saves Google Translate Free without asking for provider host permission', async () => {
+  const extension = await launchExtension()
+
+  try {
+    const options = await extension.context.newPage()
+    const optionsErrors = collectRuntimeErrors(options)
+
+    await options.goto(extension.url('options.html'))
+    await options.getByRole('button', { name: 'Translation service' }).click()
+    await options.getByLabel('Default provider').selectOption('google-free-translate')
+    await expect(options.getByRole('button', { name: 'Save settings' })).toBeEnabled()
+
+    await options.getByRole('button', { name: 'Save settings' }).click()
+
+    await expect(options.getByText('Settings saved')).toBeVisible()
+    await expect(options.getByText('Allow access to this provider address to continue.')).toHaveCount(0)
+    const savedSummary = await options.evaluate(() =>
+      chrome.runtime.sendMessage({ type: 'settings/getSummary' }),
+    )
+    expect(savedSummary).toMatchObject({
+      ok: true,
+      data: {
+        providerId: 'google-free-translate',
+        providerConfigured: true,
+      },
+    })
+    await expect.poll(() =>
+      options.evaluate(origin => chrome.permissions.contains({ origins: [origin] }), 'https://translate.googleapis.com/*'),
+    ).toBe(true)
+    expect(optionsErrors()).toEqual([])
+  } finally {
+    await extension.close()
+  }
+})
+
 test('installed extension injects content runtime into a real page', async () => {
   const articleServer = await startArticleServer()
   const extension = await launchExtension({ allowLocalhost: true })
