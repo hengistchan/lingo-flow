@@ -6,6 +6,7 @@ describe('settings', () => {
     expect(DEFAULT_SETTINGS.targetLang).toBe('zh-Hans')
     expect(DEFAULT_SETTINGS.renderMode).toBe('below-original')
     expect(DEFAULT_SETTINGS.defaultProviderId).toBe('azure-translator')
+    expect(DEFAULT_SETTINGS.translationConcurrency).toBe(3)
   })
 
   it('migrates the legacy unversioned English source default to auto-detect', () => {
@@ -81,5 +82,12 @@ describe('settings', () => {
 
     expect(JSON.stringify(runtime)).not.toContain('secret')
     expect(runtime.providerId).toBe('azure-translator')
+    expect(runtime.translationConcurrency).toBe(3)
+  })
+
+  it('clamps translation concurrency to a safe range', () => {
+    expect(migrateSettings({ translationConcurrency: 0 }).translationConcurrency).toBe(1)
+    expect(migrateSettings({ translationConcurrency: 20 }).translationConcurrency).toBe(6)
+    expect(migrateSettings({ translationConcurrency: 4 }).translationConcurrency).toBe(4)
   })
 })

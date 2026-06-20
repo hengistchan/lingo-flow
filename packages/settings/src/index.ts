@@ -9,7 +9,10 @@ import type {
 import { isProviderConfigured } from '@lingoflow/providers'
 
 const SETTINGS_KEY = 'lingoflow:settings'
-const CURRENT_SETTINGS_VERSION = 2
+const CURRENT_SETTINGS_VERSION = 3
+const DEFAULT_TRANSLATION_CONCURRENCY = 3
+const MIN_TRANSLATION_CONCURRENCY = 1
+const MAX_TRANSLATION_CONCURRENCY = 6
 
 type ChromeStorageArea = Pick<typeof chrome.storage.local, 'get' | 'set'>
 
@@ -25,6 +28,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   renderMode: 'below-original',
   cacheEnabled: true,
   maxCacheItems: 50000,
+  translationConcurrency: DEFAULT_TRANSLATION_CONCURRENCY,
   defaultProviderId: 'azure-translator',
   fallbackProviderId: '',
   providers: {
@@ -109,6 +113,7 @@ export function migrateSettings(input?: SettingsInput): AppSettings {
   merged.sourceLang = resolveSupportedLanguage(merged.sourceLang, DEFAULT_SETTINGS.sourceLang)
   merged.targetLang = resolveSupportedLanguage(merged.targetLang, DEFAULT_SETTINGS.targetLang)
   merged.interfaceLocale = resolveInterfaceLocale(merged.interfaceLocale)
+  merged.translationConcurrency = clampTranslationConcurrency(merged.translationConcurrency)
   return merged
 }
 
@@ -138,6 +143,7 @@ export function getPublicRuntimeSettings(settings: AppSettings): PublicRuntimeSe
     renderMode: settings.renderMode,
     cacheEnabled: settings.cacheEnabled,
     maxCacheItems: settings.maxCacheItems,
+    translationConcurrency: settings.translationConcurrency,
     providerId,
     fallbackProviderId: settings.fallbackProviderId || undefined,
     model,
@@ -162,4 +168,11 @@ export function getSettingsSummary(settings: AppSettings): SettingsSummary {
 
 function resolveInterfaceLocale(locale?: 'auto' | UiLocale): 'auto' | UiLocale {
   return locale === 'zh-Hans' || locale === 'en' ? locale : 'auto'
+}
+
+function clampTranslationConcurrency(value: unknown): number {
+  const numeric = typeof value === 'number' && Number.isFinite(value)
+    ? Math.floor(value)
+    : DEFAULT_TRANSLATION_CONCURRENCY
+  return Math.min(MAX_TRANSLATION_CONCURRENCY, Math.max(MIN_TRANSLATION_CONCURRENCY, numeric))
 }

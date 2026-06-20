@@ -214,6 +214,7 @@ export type AppSettings = {
   renderMode: 'below-original'
   cacheEnabled: boolean
   maxCacheItems: number
+  translationConcurrency: number
   defaultProviderId: ProviderId
   fallbackProviderId?: ProviderId | ''
   providers: Record<string, ProviderConfig>
@@ -248,6 +249,7 @@ export type PublicRuntimeSettings = {
   renderMode: 'below-original'
   cacheEnabled: boolean
   maxCacheItems: number
+  translationConcurrency: number
   providerId: ProviderId
   fallbackProviderId?: ProviderId
   model?: string
