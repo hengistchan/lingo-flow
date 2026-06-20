@@ -1,9 +1,23 @@
 {
   "name": "lingoflow",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
+  "description": "AI-powered bilingual web reading browser extension",
+  "license": "MIT",
   "packageManager": "pnpm@10.12.4",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "browser-extension",
+    "translation",
+    "bilingual",
+    "chrome-extension",
+    "azure-translator",
+    "openai",
+    "bilingual-reading"
+  ],
   "scripts": {
     "build": "pnpm --filter @lingoflow/extension build",
     "dev": "pnpm --filter @lingoflow/extension dev",
