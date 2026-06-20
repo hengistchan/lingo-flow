@@ -78,6 +78,12 @@ export type InlineToken = {
 
 export type ContentRootKind = 'html' | 'shadow' | 'pdf' | 'unknown'
 
+export type ContentRootMetadata = {
+  rootKind: ContentRootKind
+  rootGeneration: number
+  rootId: string
+}
+
 export type BlockState =
   | 'pending'
   | 'queued'
@@ -213,7 +219,7 @@ export type RuntimeEvent =
   | { type: 'render:skipped'; blockId: string; revision: number; reason: RenderSkipReason }
   | { type: 'binding:disconnected'; blockId: string; revision: number }
   | { type: 'binding:rebound'; blockId: string; fromRevision: number; toRevision: number }
-  | { type: 'observer:newContent'; root: HTMLElement; cause: MutationCause }
+  | ({ type: 'observer:newContent'; cause: MutationCause } & ContentRootMetadata)
   | { type: 'observer:viewportEnter'; blockId: string }
   | { type: 'observer:viewportExit'; blockId: string }
   | { type: 'page:runStateChanged'; from: PageRunState; to: PageRunState }

@@ -1,4 +1,37 @@
-import type { BlockBinding, BlockBindingDraft, TranslationBlock } from './index'
+import type { BlockBinding, BlockBindingDraft, BlockEvent, PageAdapter, RuntimeEvent, TranslationBlock } from './index'
+
+type DomReference = Node
+
+type ContainsDomReference<T> = true extends ContainsDomReferenceMember<T, never> ? true : false
+
+type ContainsDomReferenceMember<T, Seen> = [T] extends [Seen]
+  ? false
+  : T extends DomReference
+    ? true
+    : T extends (...args: infer Args) => infer Return
+      ? ContainsDomReference<Args[number] | Return>
+      : T extends readonly (infer Item)[]
+        ? ContainsDomReferenceMember<Item, Seen | T>
+        : T extends object
+          ? true extends { [K in keyof T]-?: ContainsDomReferenceMember<T[K], Seen | T> }[keyof T]
+            ? true
+            : false
+          : false
+
+type ExpectTrue<T extends true> = T
+type ExpectFalse<T extends false> = T
+
+type RuntimeContractsStayDomFree = [
+  ExpectFalse<ContainsDomReference<TranslationBlock>>,
+  ExpectFalse<ContainsDomReference<BlockEvent>>,
+  ExpectFalse<ContainsDomReference<RuntimeEvent>>,
+]
+
+type DomBearingContractsStayExplicit = [
+  ExpectTrue<ContainsDomReference<BlockBindingDraft>>,
+  ExpectTrue<ContainsDomReference<BlockBinding>>,
+  ExpectTrue<ContainsDomReference<PageAdapter>>,
+]
 
 describe('translation runtime contracts', () => {
   it('keeps TranslationBlock serializable and DOM-free', () => {
@@ -32,6 +65,19 @@ describe('translation runtime contracts', () => {
       id: 'block_1',
       state: 'pending',
     })
+  })
+
+  it('keeps RuntimeEvent serializable and DOM-free', () => {
+    const event: RuntimeEvent = {
+      type: 'observer:newContent',
+      cause: 'child-list',
+      rootKind: 'html',
+      rootGeneration: 2,
+      rootId: 'document:main',
+    }
+
+    expect(JSON.parse(JSON.stringify(event))).toEqual(event)
+    expect('root' in event).toBe(false)
   })
 
   it('keeps DOM references in binding drafts', () => {
