@@ -97,9 +97,9 @@ describe('detectBlockType', () => {
     expect(detectBlockType(th)).toBe('table')
   })
 
-  it('Classifies div as unknown', () => {
+  it('Classifies div as paragraph', () => {
     const el = document.createElement('div')
-    expect(detectBlockType(el)).toBe('unknown')
+    expect(detectBlockType(el)).toBe('paragraph')
   })
 })
 
@@ -590,6 +590,58 @@ describe('collectScanResults', () => {
     const shadowResult = results.find(r => r.block.text.includes('shadow root'))
     expect(shadowResult).toBeDefined()
     expect(shadowResult!.block.meta.rootKind).toBe('shadow')
+  })
+
+  it('collects text-bearing divs without block-level children', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div>OpenTUI is a library for building terminal user interfaces (TUIs)</div>
+      </main>
+    `
+
+    const results = await collectScanResults(document, scanOptions)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].block.text).toContain('OpenTUI')
+    expect(results[0].block.meta.blockType).toBe('paragraph')
+  })
+
+  it('skips divs that contain block-level children', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div>
+          <p>This paragraph inside a container div should be collected directly.</p>
+        </div>
+      </main>
+    `
+
+    const results = await collectScanResults(document, scanOptions)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].block.text).toContain('paragraph inside a container')
+    expect(results[0].binding.carrierElement.tagName.toLowerCase()).toBe('p')
+  })
+
+  it('collects div descriptions from GitHub feed cards alongside paragraphs', async () => {
+    document.body.innerHTML = `
+      <main>
+        <section>
+          <div class="color-bg-subtle">
+            <div class="flex-1">
+              <div>OpenTUI is a library for building terminal user interfaces (TUIs)</div>
+              <p>This paragraph inside the feed card is also long enough to be collected.</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    `
+
+    const results = await collectScanResults(document, scanOptions)
+
+    expect(results).toHaveLength(2)
+    const texts = results.map(r => r.block.text)
+    expect(texts.some(t => t.includes('OpenTUI'))).toBe(true)
+    expect(texts.some(t => t.includes('paragraph inside'))).toBe(true)
   })
 })
 

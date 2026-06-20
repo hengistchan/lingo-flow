@@ -19,6 +19,7 @@ import {
   isTranslatableElement,
   isTranslatableTableCell,
   hasTooManyInteractiveElements,
+  hasBlockLevelChildren,
   isVisible,
 } from './filters'
 
@@ -30,6 +31,7 @@ export const BLOCK_SELECTORS = [
   'h5',
   'h6',
   'p',
+  'div',
   'li',
   'blockquote',
   'td',
@@ -76,6 +78,7 @@ export async function collectScanResults(
   for (const element of candidates) {
     if (isInsideAcceptedStructuralBoundary(element, acceptedElements)) continue
     if (isGeneratedByLingoFlow(element)) continue
+    if (element.tagName.toLowerCase() === 'div' && hasBlockLevelChildren(element)) continue
     if (isInsideUIExclusion(element)) continue
     if (!isTranslatableTableCell(element)) continue
     if (hasTooManyInteractiveElements(element)) continue
@@ -269,7 +272,7 @@ export function detectBlockType(element: HTMLElement): TextBlockType {
   const tagName = element.tagName.toLowerCase()
 
   if (/^h[1-6]$/.test(tagName)) return 'heading'
-  if (tagName === 'p') return 'paragraph'
+  if (tagName === 'p' || tagName === 'div') return 'paragraph'
   if (tagName === 'li') return 'list'
   if (tagName === 'blockquote') return 'quote'
   if (tagName === 'td' || tagName === 'th') return 'table'

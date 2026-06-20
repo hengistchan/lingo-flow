@@ -1,5 +1,7 @@
 import { normalizeText } from '@lingoflow/shared'
 
+const BLOCK_LEVEL_CHILDREN = 'p,div,h1,h2,h3,h4,h5,h6,li,ul,ol,blockquote,table,dl,dt,dd,figure,figcaption,section,article,nav,form,pre'
+
 export const UI_EXCLUSION_SELECTORS = [
   'button',
   '[role="button"]',
@@ -114,7 +116,7 @@ export function isTranslatableElement(element: HTMLElement): boolean {
 function detectBlockTypeForFilter(element: HTMLElement): string {
   const tagName = element.tagName.toLowerCase()
   if (/^h[1-6]$/.test(tagName)) return 'heading'
-  if (tagName === 'p') return 'paragraph'
+  if (tagName === 'p' || tagName === 'div') return 'paragraph'
   if (tagName === 'li') return 'list'
   if (tagName === 'blockquote') return 'quote'
   if (tagName === 'td' || tagName === 'th') return 'table'
@@ -125,4 +127,8 @@ function detectBlockTypeForFilter(element: HTMLElement): string {
 
 function getElementText(element: HTMLElement): string {
   return element.innerText || element.textContent || ''
+}
+
+export function hasBlockLevelChildren(element: HTMLElement): boolean {
+  return !!element.querySelector(BLOCK_LEVEL_CHILDREN)
 }
