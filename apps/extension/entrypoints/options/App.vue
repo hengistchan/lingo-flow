@@ -38,6 +38,7 @@ const customProviderModel = ref('')
 const browserLocale = resolveUiLocale(globalThis.navigator?.language)
 const sourceLanguages = getSourceLanguageOptions()
 const targetLanguages = getTargetLanguageOptions()
+const reasoningEffortOptions = ['auto', 'none', 'minimal', 'low', 'medium', 'high'] as const
 
 const uiLocale = computed<UiLocale>(() =>
   settings.interfaceLocale === 'auto' ? browserLocale : settings.interfaceLocale,
@@ -54,6 +55,7 @@ const activeProviderPreset = computed(() =>
 )
 
 const activeProviderFields = computed(() => activeProviderPreset.value?.fields ?? [])
+const isOpenAICompatibleProvider = computed(() => activeProvider.value?.presetId === 'openai-compatible')
 
 const selectedProviderConfigured = computed(() => {
   const config = settings.providers[settings.defaultProviderId]
@@ -183,6 +185,10 @@ function addProvider(presetId: string) {
   for (const field of preset.fields) {
     if (field.defaultValue) defaultValues[field.key] = field.defaultValue
   }
+  if (presetId === 'openai-compatible') {
+    defaultValues.reasoningEffort = 'auto'
+    defaultValues.disableThinking = 'false'
+  }
   settings.providers[presetId] = {
     id: presetId,
     presetId: presetId,
@@ -229,7 +235,7 @@ function confirmCustomProvider() {
     id,
     presetId: 'openai-compatible',
     name,
-    values: { baseUrl, apiKey, model },
+    values: { baseUrl, apiKey, model, reasoningEffort: 'auto', disableThinking: 'false' },
   }
   settings.defaultProviderId = id
   showCustomProviderForm.value = false
@@ -257,6 +263,18 @@ function connectionCopyKey(code: ProviderConnectionMessageCode): Parameters<type
     provider_failed: 'options.connectionProviderFailed',
   }
   return keys[code]
+}
+
+function reasoningEffortCopyKey(effort: typeof reasoningEffortOptions[number]): Parameters<typeof t>[1] {
+  const keys: Record<typeof reasoningEffortOptions[number], Parameters<typeof t>[1]> = {
+    auto: 'options.reasoningAuto',
+    none: 'options.reasoningNone',
+    minimal: 'options.reasoningMinimal',
+    low: 'options.reasoningLow',
+    medium: 'options.reasoningMedium',
+    high: 'options.reasoningHigh',
+  }
+  return keys[effort]
 }
 
 async function requestProviderOriginAccess(
@@ -388,6 +406,21 @@ function hasRuntimeApi() {
             </template>
           </div>
 
+          <div class="provider-speed-controls" v-if="activeProvider && isOpenAICompatibleProvider">
+            <label>
+              <span>{{ copy('options.reasoningEffort') }}</span>
+              <select v-model="activeProvider.values.reasoningEffort">
+                <option v-for="effort in reasoningEffortOptions" :key="effort" :value="effort">
+                  {{ copy(reasoningEffortCopyKey(effort)) }}
+                </option>
+              </select>
+            </label>
+            <label class="check">
+              <input v-model="activeProvider.values.disableThinking" type="checkbox" true-value="true" false-value="false" />
+              <span>{{ copy('options.disableThinking') }}</span>
+            </label>
+          </div>
+
           <div class="provider-actions">
             <button
               v-if="Object.keys(settings.providers).length > 1"
@@ -490,6 +523,10 @@ function hasRuntimeApi() {
             <label>
               <span>{{ copy('options.maxCacheItems') }}</span>
               <input v-model.number="settings.maxCacheItems" min="1" type="number" />
+            </label>
+            <label>
+              <span>{{ copy('options.translationConcurrency') }}</span>
+              <input v-model.number="settings.translationConcurrency" min="1" max="6" step="1" type="number" />
             </label>
           </div>
         </section>
@@ -600,7 +637,8 @@ section {
   gap: 16px;
 }
 
-.provider-fields {
+.provider-fields,
+.provider-speed-controls {
   padding-top: 22px;
   border-top: 1px solid #eef2f7;
 }
@@ -814,6 +852,7 @@ button:disabled {
   .settings-shell,
   .grid,
   .provider-fields,
+  .provider-speed-controls,
   .connection-test {
     grid-template-columns: 1fr;
   }

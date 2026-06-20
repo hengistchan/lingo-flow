@@ -70,6 +70,27 @@ test('options preview uses readable language selectors and functional navigation
   expect(errors()).toEqual([])
 })
 
+test('options preview exposes LLM translation speed controls', async ({ page }) => {
+  const errors = collectRuntimeErrors(page)
+
+  await page.goto(`/options.html?speed=${Date.now()}`)
+
+  await page.getByRole('button', { name: 'Advanced' }).click()
+  await expect(page.getByLabel('Concurrent translation batches')).toHaveValue('3')
+  await page.getByLabel('Concurrent translation batches').fill('4')
+  await expect(page.getByRole('button', { name: 'Save settings' })).toBeEnabled()
+
+  await page.getByRole('button', { name: 'Translation service' }).click()
+  await page.getByLabel('Default provider').selectOption('openai-compatible')
+  await expect(page.getByLabel('Reasoning effort')).toHaveValue('auto')
+  await page.getByLabel('Reasoning effort').selectOption('minimal')
+  await page.getByLabel('Disable thinking').check()
+  await expect(page.getByRole('button', { name: 'Save settings' })).toBeEnabled()
+
+  await expect(page.getByText(undefinedError)).toHaveCount(0)
+  expect(errors()).toEqual([])
+})
+
 test('popup preview stays usable on a mobile-sized viewport', async ({ page }) => {
   const errors = collectRuntimeErrors(page)
 

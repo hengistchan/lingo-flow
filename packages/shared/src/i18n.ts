@@ -62,6 +62,15 @@ export type UiCopyKey =
   | 'options.renderMode'
   | 'options.belowOriginal'
   | 'options.maxCacheItems'
+  | 'options.translationConcurrency'
+  | 'options.reasoningEffort'
+  | 'options.reasoningAuto'
+  | 'options.reasoningNone'
+  | 'options.reasoningMinimal'
+  | 'options.reasoningLow'
+  | 'options.reasoningMedium'
+  | 'options.reasoningHigh'
+  | 'options.disableThinking'
   | 'options.azureEndpoint'
   | 'options.openAIBaseUrl'
   | 'options.model'
@@ -134,6 +143,15 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.renderMode': '译文显示方式',
     'options.belowOriginal': '显示在原文下方',
     'options.maxCacheItems': '最大缓存条目数',
+    'options.translationConcurrency': '并发翻译批次数',
+    'options.reasoningEffort': '推理强度',
+    'options.reasoningAuto': '自动',
+    'options.reasoningNone': '关闭',
+    'options.reasoningMinimal': '最小',
+    'options.reasoningLow': '低',
+    'options.reasoningMedium': '中',
+    'options.reasoningHigh': '高',
+    'options.disableThinking': '禁用 Thinking',
     'options.azureEndpoint': 'Azure Endpoint',
     'options.openAIBaseUrl': 'OpenAI Base URL',
     'options.model': '模型',
@@ -205,6 +223,15 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.renderMode': 'Render mode',
     'options.belowOriginal': 'Below original text',
     'options.maxCacheItems': 'Max cache items',
+    'options.translationConcurrency': 'Concurrent translation batches',
+    'options.reasoningEffort': 'Reasoning effort',
+    'options.reasoningAuto': 'Auto',
+    'options.reasoningNone': 'None',
+    'options.reasoningMinimal': 'Minimal',
+    'options.reasoningLow': 'Low',
+    'options.reasoningMedium': 'Medium',
+    'options.reasoningHigh': 'High',
+    'options.disableThinking': 'Disable thinking',
     'options.azureEndpoint': 'Azure endpoint',
     'options.openAIBaseUrl': 'OpenAI base URL',
     'options.model': 'Model',

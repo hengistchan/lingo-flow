@@ -50,6 +50,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
         baseUrl: 'https://api.openai.com/v1',
         apiKey: '',
         model: 'gpt-4o-mini',
+        reasoningEffort: 'auto',
+        disableThinking: 'false',
       },
     },
   },
