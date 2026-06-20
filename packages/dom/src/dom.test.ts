@@ -377,4 +377,33 @@ describe('collectTextBlocks', () => {
       'Use the workspace command from the repository root when running extension tests.',
     ])
   })
+
+  it('Protects inline code, links, package names, URLs, and commit hashes in provider request text', async () => {
+    document.body.innerHTML = `
+      <main>
+        <p>
+          Update <code>README.md</code> after <a href="https://github.com/example/repo/commit/a285a523f979213a205fa7008b07927482c76763">a285a52</a>
+          so <code>@vue-tui/runtime</code> points readers to https://example.com/docs before the beta release.
+        </p>
+      </main>
+    `
+
+    const blocks = await collectTextBlocks(document, defaultOptions)
+    const block = blocks[0]
+
+    expect(block.text).toContain('README.md')
+    expect(block.text).toContain('a285a52')
+    expect(block.text).toContain('@vue-tui/runtime')
+    expect(block.text).toContain('https://example.com/docs')
+    expect(block.requestText).toContain('[[LF0]]')
+    expect(block.requestText).toContain('[[LF1]]')
+    expect(block.requestText).not.toContain('README.md')
+    expect(block.requestText).not.toContain('@vue-tui/runtime')
+    expect(block.inlineTokens.map(token => token.text)).toEqual(expect.arrayContaining([
+      'README.md',
+      'a285a52',
+      '@vue-tui/runtime',
+      'https://example.com/docs',
+    ]))
+  })
 })

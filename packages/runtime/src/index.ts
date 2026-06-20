@@ -73,7 +73,7 @@ export function createContentRuntime(dependencies: RuntimeDependencies = {}) {
         pageUrl,
         domain,
       })
-      const tasks = blocks.map(block => createTask(block.id, block.text, block.normalizedText, block.textHash, effectiveSettings, pageUrl, domain))
+      const tasks = blocks.map(block => createTask(block, effectiveSettings, pageUrl, domain))
       progress.totalBlocks = tasks.length
 
       if (tasks.length === 0) {
@@ -237,16 +237,13 @@ export function deriveProgressStatus(input: {
 }
 
 function createTask(
-  blockId: string,
-  sourceText: string,
-  normalizedText: string,
-  textHash: string,
+  block: import('@lingoflow/types').TextBlock,
   settings: PublicRuntimeSettings,
   pageUrl: string,
   domain: string,
 ): TranslationTask {
   const cacheKey = buildTranslationCacheKey({
-    textHash,
+    textHash: block.textHash,
     sourceLang: settings.sourceLang,
     targetLang: settings.targetLang,
     providerId: settings.providerId,
@@ -256,11 +253,13 @@ function createTask(
   })
 
   return {
-    id: `task_${blockId}`,
-    blockId,
-    sourceText,
-    normalizedText,
-    textHash,
+    id: `task_${block.id}`,
+    blockId: block.id,
+    sourceText: block.text,
+    requestText: block.requestText,
+    normalizedText: block.normalizedText,
+    textHash: block.textHash,
+    inlineTokens: block.inlineTokens,
     sourceLang: settings.sourceLang,
     targetLang: settings.targetLang,
     providerId: settings.providerId,

@@ -2,7 +2,7 @@ import { buildTranslationCacheKey, clearAllCache, clearCacheByDomain, pruneCache
 import { createDefaultProviderRegistry, extractAzureConfig, extractOpenAIConfig, testProviderConnection } from '@lingoflow/providers'
 import { isFallbackEligible, retry, translateBatchWithDegrade } from '@lingoflow/scheduler'
 import { getPublicRuntimeSettings, getSettings, getSettingsSummary, saveSettings } from '@lingoflow/settings'
-import { success, failure } from '@lingoflow/shared'
+import { failure, restoreInlineTokens, success } from '@lingoflow/shared'
 import type {
   AppSettings,
   LingoFlowMessage,
@@ -130,7 +130,7 @@ async function translateWithProvider(
     {
       sourceLang: tasks[0]?.sourceLang ?? 'auto',
       targetLang: tasks[0]?.targetLang ?? settings.targetLang,
-      texts: tasks.map(task => task.sourceText),
+      texts: tasks.map(task => task.requestText ?? task.sourceText),
       context: {
         pageUrl: tasks[0]?.pageUrl,
         domain: tasks[0]?.domain,
@@ -161,7 +161,7 @@ async function translateWithProvider(
       taskId: task.id,
       blockId: task.blockId,
       sourceText: task.sourceText,
-      translatedText: output.texts[index],
+      translatedText: restoreInlineTokens(output.texts[index], task.inlineTokens),
       sourceLang: task.sourceLang,
       targetLang: task.targetLang,
       providerId,

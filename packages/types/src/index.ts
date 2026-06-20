@@ -54,13 +54,22 @@ export interface TranslationProvider {
 }
 
 export type TextBlockType = 'heading' | 'paragraph' | 'list' | 'quote' | 'table' | 'unknown'
+export type InlineTokenType = 'code' | 'link' | 'keyboard' | 'reference'
+
+export type InlineToken = {
+  id: string
+  type: InlineTokenType
+  text: string
+}
 
 export type TextBlock = {
   id: string
   elementRefId: string
   text: string
+  requestText: string
   normalizedText: string
   textHash: string
+  inlineTokens: InlineToken[]
   sourceLang: 'auto' | string
   targetLang: string
   pageUrl: string
@@ -78,8 +87,10 @@ export type TranslationTask = {
   id: string
   blockId: string
   sourceText: string
+  requestText?: string
   normalizedText: string
   textHash: string
+  inlineTokens?: InlineToken[]
   sourceLang: 'auto' | string
   targetLang: string
   providerId: string
