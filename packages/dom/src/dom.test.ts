@@ -333,4 +333,48 @@ describe('collectTextBlocks', () => {
       'The second generic article paragraph gives the scorer enough text density to prefer this content.',
     ])
   })
+
+  it('Keeps table cells as structural translation boundaries when cells contain paragraphs', async () => {
+    document.body.innerHTML = `
+      <main>
+        <table>
+          <tbody>
+            <tr>
+              <td><p>This table cell paragraph is long enough to translate but must stay inside the cell.</p></td>
+            </tr>
+          </tbody>
+        </table>
+      </main>
+    `
+
+    const blocks = await collectTextBlocks(document, defaultOptions)
+
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].meta.tagName).toBe('td')
+    expect(blocks[0].text).toBe('This table cell paragraph is long enough to translate but must stay inside the cell.')
+    expect(document.querySelector('td')?.getAttribute('data-lingoflow-block-id')).toBe(blocks[0].id)
+    expect(document.querySelector('td p')?.getAttribute('data-lingoflow-block-id')).toBeNull()
+  })
+
+  it('Separates nested list item text instead of duplicating child list content in the parent item', async () => {
+    document.body.innerHTML = `
+      <main>
+        <ul>
+          <li>
+            Install the package manager before running the development server for this project.
+            <ul>
+              <li>Use the workspace command from the repository root when running extension tests.</li>
+            </ul>
+          </li>
+        </ul>
+      </main>
+    `
+
+    const blocks = await collectTextBlocks(document, defaultOptions)
+
+    expect(blocks.map(block => block.text)).toEqual([
+      'Install the package manager before running the development server for this project.',
+      'Use the workspace command from the repository root when running extension tests.',
+    ])
+  })
 })

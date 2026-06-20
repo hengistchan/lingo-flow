@@ -83,16 +83,19 @@ export async function collectTextBlocks(root: Document, options: CollectTextBloc
   )
 
   const blocks: TextBlock[] = []
+  const acceptedElements: HTMLElement[] = []
 
   for (const element of candidates) {
+    if (isInsideAcceptedStructuralBoundary(element, acceptedElements)) continue
     if (!isTranslatableElement(element)) continue
 
-    const text = getElementText(element)
-    const normalizedText = normalizeText(text)
+    const text = normalizeText(getElementText(element))
+    const normalizedText = text
     const textHash = await sha256(normalizedText)
     const id = `block_${blocks.length + 1}_${textHash.slice(0, 8)}`
 
     element.dataset.lingoflowBlockId = id
+    acceptedElements.push(element)
 
     blocks.push({
       id,
@@ -141,13 +144,14 @@ export function isTranslatableElement(element: HTMLElement): boolean {
   const text = normalizeText(getElementText(element))
   const blockType = detectBlockType(element)
   if (blockType === 'heading') return text.length > 0
+  if (blockType === 'table') return text.length >= 20
   if (text.length < 20) return false
 
   const childTextLength = Array.from(element.children)
     .map(child => normalizeText(getElementText(child as HTMLElement)).length)
     .reduce((sum, length) => sum + length, 0)
 
-  if (element.children.length > 0 && childTextLength > text.length * 0.8) {
+  if (blockType !== 'list' && element.children.length > 0 && childTextLength > text.length * 0.8) {
     return false
   }
 
@@ -165,6 +169,19 @@ export function isVisible(element: HTMLElement): boolean {
 
 function uniqueElements(elements: HTMLElement[]): HTMLElement[] {
   return [...new Set(elements)]
+}
+
+function isInsideAcceptedStructuralBoundary(element: HTMLElement, acceptedElements: HTMLElement[]): boolean {
+  return acceptedElements.some(accepted =>
+    accepted !== element &&
+    ownsDescendantBlocks(accepted) &&
+    accepted.contains(element)
+  )
+}
+
+function ownsDescendantBlocks(element: HTMLElement): boolean {
+  const tagName = element.tagName.toLowerCase()
+  return tagName === 'td' || tagName === 'th'
 }
 
 function scoreGenericContentRoots(root: Document): HTMLElement[] {
@@ -193,7 +210,14 @@ function scoreGenericContentRoots(root: Document): HTMLElement[] {
 }
 
 function getElementText(element: HTMLElement): string {
+  if (element.tagName.toLowerCase() === 'li') return getListItemOwnText(element)
   return element.innerText || element.textContent || ''
+}
+
+function getListItemOwnText(element: HTMLElement): string {
+  const clone = element.cloneNode(true) as HTMLElement
+  clone.querySelectorAll('ul, ol').forEach(node => node.remove())
+  return clone.innerText || clone.textContent || ''
 }
 
 function getElementDepth(element: HTMLElement): number {
