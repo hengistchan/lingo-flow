@@ -81,6 +81,11 @@ function findBlockElement(blockId: string, root: Document): HTMLElement | null {
 }
 
 function insertTranslationElement(source: HTMLElement, translation: HTMLElement) {
+  if (source.tagName.toLowerCase() === 'li') {
+    insertListItemTranslation(source, translation)
+    return
+  }
+
   const placement = resolvePlacement(source)
 
   if (placement.mode === 'inside') {
@@ -89,6 +94,20 @@ function insertTranslationElement(source: HTMLElement, translation: HTMLElement)
   }
 
   placement.target.insertAdjacentElement('afterend', translation)
+}
+
+function insertListItemTranslation(source: HTMLElement, translation: HTMLElement) {
+  const nestedList = Array.from(source.children).find(child => {
+    const tagName = child.tagName.toLowerCase()
+    return tagName === 'ul' || tagName === 'ol'
+  })
+
+  if (nestedList) {
+    source.insertBefore(translation, nestedList)
+    return
+  }
+
+  source.appendChild(translation)
 }
 
 function resolvePlacement(source: HTMLElement): {

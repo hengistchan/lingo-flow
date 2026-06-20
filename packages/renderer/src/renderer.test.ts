@@ -34,6 +34,27 @@ describe('renderer', () => {
     expect(document.querySelector('ul')?.children).toHaveLength(1)
   })
 
+  it('places parent list item translations before nested child lists', () => {
+    document.body.innerHTML = `
+      <ul>
+        <li data-lingoflow-block-id="block_parent">
+          <p><strong>Discounts:</strong> Parent list item summary should be translated before nested items.</p>
+          <ul>
+            <li data-lingoflow-block-id="block_child">Nested child item should remain after the parent translation.</li>
+          </ul>
+        </li>
+      </ul>
+    `
+
+    renderBelowOriginal({ blockId: 'block_parent', translatedText: '父级列表项译文' })
+
+    const parent = document.querySelector('[data-lingoflow-block-id="block_parent"]') as HTMLElement
+    const translation = document.querySelector('[data-lingoflow-translation="block_parent"]') as HTMLElement
+    expect(translation.parentElement).toBe(parent)
+    expect(translation.previousElementSibling?.tagName.toLowerCase()).toBe('p')
+    expect(translation.nextElementSibling?.tagName.toLowerCase()).toBe('ul')
+  })
+
   it('renders table cell translations inside the source cell', () => {
     document.body.innerHTML = `
       <table>
