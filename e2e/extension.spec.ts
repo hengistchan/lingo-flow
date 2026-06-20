@@ -580,7 +580,7 @@ test('installed extension translates GitHub Markdown without duplicate quotes or
     await expect(page.locator('[data-lingoflow-translation]').filter({ hasText: 'README.md' })).toHaveCount(1)
     await expect(page.locator('[data-lingoflow-translation]').filter({ hasText: '@vue-tui/runtime' })).toHaveCount(1)
     await expect(page.locator('[data-lingoflow-translation]').filter({ hasText: 'a285a52' })).toHaveCount(1)
-    await expect(page.locator('[data-lingoflow-translation]').filter({ hasText: '[[LF' })).toHaveCount(0)
+    await expect(page.locator('[data-lingoflow-translation]').filter({ hasText: '⟦LF' })).toHaveCount(0)
 
     await expect(page.locator('li > [data-lingoflow-translation]').filter({ hasText: 'workspace command' })).toHaveCount(1)
     await expect(page.locator('td > [data-lingoflow-translation]').filter({ hasText: 'table cell' })).toHaveCount(1)

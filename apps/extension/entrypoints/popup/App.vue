@@ -581,4 +581,77 @@ button:disabled {
   color: #64748b;
   font-size: 13px;
 }
+
+@media (prefers-color-scheme: dark) {
+  :global(body) {
+    background: #1a1a2e;
+    color: #e2e8f0;
+  }
+
+  .popup {
+    background: #16213e;
+  }
+
+  .brand-copy p {
+    color: #94a3b8;
+  }
+
+  .brand-mark {
+    background: #3b82f6;
+  }
+
+  .icon-button {
+    color: #94a3b8;
+  }
+
+  .language-flow {
+    border-color: #334155;
+  }
+
+  .source-language {
+    color: #cbd5e1;
+  }
+
+  .target-language span {
+    color: #94a3b8;
+  }
+
+  select {
+    border-color: #475569;
+    background: #1e293b;
+    color: #e2e8f0;
+  }
+
+  .progress-panel,
+  .result-summary {
+    background: #1e293b;
+  }
+
+  .progress-track {
+    background: #1e3a5f;
+  }
+
+  .progress-fill {
+    background: #3b82f6;
+  }
+
+  dt {
+    color: #94a3b8;
+  }
+
+  .message {
+    color: #fbbf24;
+  }
+
+  button {
+    border-color: #1e293b;
+    background: #1e293b;
+    color: #e2e8f0;
+  }
+
+  .primary {
+    background: #3b82f6;
+    color: #ffffff;
+  }
+}
 </style>

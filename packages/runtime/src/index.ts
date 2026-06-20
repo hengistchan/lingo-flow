@@ -252,10 +252,10 @@ async function processBatchesWithConcurrency<T>(
   let nextIndex = 0
 
   await Promise.all(Array.from({ length: workerCount }, async () => {
-    while (nextIndex < batches.length) {
-      const batch = batches[nextIndex]
-      nextIndex += 1
-      await processBatch(batch)
+    while (true) {
+      const batchIndex = nextIndex++
+      if (batchIndex >= batches.length) break
+      await processBatch(batches[batchIndex])
     }
   }))
 }

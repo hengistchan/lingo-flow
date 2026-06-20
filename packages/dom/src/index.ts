@@ -75,12 +75,20 @@ export type CollectTextBlockOptions = {
 
 export async function collectTextBlocks(root: Document, options: CollectTextBlockOptions): Promise<TextBlock[]> {
   const contentRoots = discoverContentRoots(root)
-  const candidates = uniqueElements(
+  let candidates = uniqueElements(
     contentRoots.flatMap(contentRoot =>
       Array.from(contentRoot.querySelectorAll(BLOCK_SELECTORS.join(',')))
         .filter((element): element is HTMLElement => element instanceof HTMLElement)
     )
   )
+
+  const shadowRoots = contentRoots.flatMap(root => findAllShadowRoots(root))
+  for (const shadowRoot of shadowRoots) {
+    const shadowCandidates = Array.from(shadowRoot.querySelectorAll(BLOCK_SELECTORS.join(',')))
+      .filter((element): element is HTMLElement => element instanceof HTMLElement)
+    candidates.push(...shadowCandidates)
+  }
+  candidates = uniqueElements(candidates)
 
   const blocks: TextBlock[] = []
   const acceptedElements: HTMLElement[] = []
@@ -173,6 +181,17 @@ export function isVisible(element: HTMLElement): boolean {
   if (style && (style.display === 'none' || style.visibility === 'hidden')) return false
 
   return true
+}
+
+function findAllShadowRoots(root: Element | Document): ShadowRoot[] {
+  const shadows: ShadowRoot[] = []
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
+  let node: Node | null = walker.currentNode
+  while (node) {
+    if (node instanceof Element && node.shadowRoot) shadows.push(node.shadowRoot)
+    node = walker.nextNode()
+  }
+  return shadows
 }
 
 function uniqueElements(elements: HTMLElement[]): HTMLElement[] {
@@ -342,7 +361,7 @@ function protectInlineTextPatterns(text: string, inlineTokens: InlineToken[]): s
 
 function createInlineToken(type: InlineTokenType, text: string, index: number): InlineToken {
   return {
-    id: `[[LF${index}]]`,
+    id: `⟦LF:${index}⟧`,
     type,
     text,
   }

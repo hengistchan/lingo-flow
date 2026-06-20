@@ -60,8 +60,8 @@ describe('content runtime language and progress behavior', () => {
 
     expect(translatedTasks).toHaveLength(1)
     expect(translatedTasks[0].sourceText).toContain('README.md')
-    expect(translatedTasks[0].requestText).toContain('[[LF0]]')
-    expect(translatedTasks[0].requestText).toContain('[[LF1]]')
+    expect(translatedTasks[0].requestText).toContain('⟦LF:0⟧')
+    expect(translatedTasks[0].requestText).toContain('⟦LF:1⟧')
     expect(translatedTasks[0].requestText).not.toContain('README.md')
     expect(translatedTasks[0].inlineTokens?.map(token => token.text)).toEqual(expect.arrayContaining([
       'README.md',

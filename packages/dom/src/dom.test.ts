@@ -415,8 +415,8 @@ describe('collectTextBlocks', () => {
     expect(block.text).toContain('a285a52')
     expect(block.text).toContain('@vue-tui/runtime')
     expect(block.text).toContain('https://example.com/docs')
-    expect(block.requestText).toContain('[[LF0]]')
-    expect(block.requestText).toContain('[[LF1]]')
+    expect(block.requestText).toContain('⟦LF:0⟧')
+    expect(block.requestText).toContain('⟦LF:1⟧')
     expect(block.requestText).not.toContain('README.md')
     expect(block.requestText).not.toContain('@vue-tui/runtime')
     expect(block.inlineTokens.map(token => token.text)).toEqual(expect.arrayContaining([
@@ -453,7 +453,7 @@ describe('collectTextBlocks', () => {
     expect(block?.text).toContain('docs(readme): align the homepage status banner with the public-beta message')
     expect(block?.text).toContain('#208')
     expect(block?.requestText).toContain('docs(readme): align the homepage status banner with the public-beta message')
-    expect(block?.requestText).not.toContain('[[LF0]]')
+    expect(block?.requestText).not.toContain('⟦LF:0⟧')
     expect(block?.inlineTokens).toEqual([])
     expect(document.querySelector('a')?.getAttribute('data-lingoflow-block-id')).toBe(block?.id)
     expect(document.querySelector('h3')?.getAttribute('data-lingoflow-block-id')).toBeNull()
@@ -476,10 +476,10 @@ describe('collectTextBlocks', () => {
     expect(block.meta.tagName).toBe('p')
     expect(block.meta.carrierTagName).toBe('p')
     expect(block.meta.insertion).toBe('linebreak-inside')
-    expect(block.requestText).toContain('[[LF0]]')
+    expect(block.requestText).toContain('⟦LF:0⟧')
     expect(block.requestText).not.toContain('a285a52')
     expect(block.inlineTokens).toEqual([
-      { id: '[[LF0]]', type: 'link', text: 'a285a52' },
+      { id: '⟦LF:0⟧', type: 'link', text: 'a285a52' },
     ])
   })
 })

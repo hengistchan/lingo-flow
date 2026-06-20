@@ -196,7 +196,10 @@ export const googleFreeTranslateProvider: TranslationProvider = {
     maxItemsPerRequest: 20,
   },
   async translate(input: TranslateInput, _config: unknown): Promise<TranslateOutput> {
-    const texts = await Promise.all(input.texts.map(text => translateGoogleFreeText(text, input)))
+    const texts: string[] = []
+    for (const text of input.texts) {
+      texts.push(await translateGoogleFreeText(text, input))
+    }
     return {
       texts,
       usage: { characters: input.texts.join('').length },

@@ -81,13 +81,26 @@ export function clearTranslations(root: Document = document) {
   })
 }
 
-function findBlockElement(blockId: string, root: Document): HTMLElement | null {
-  const elements = root.querySelectorAll('[data-lingoflow-block-id]')
+function findAllShadowRoots(root: Element | Document): ShadowRoot[] {
+  const shadows: ShadowRoot[] = []
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
+  let node: Node | null = walker.currentNode
+  while (node) {
+    if (node instanceof Element && node.shadowRoot) shadows.push(node.shadowRoot)
+    node = walker.nextNode()
+  }
+  return shadows
+}
 
-  for (const element of elements) {
-    if (element instanceof HTMLElement && element.dataset.lingoflowBlockId === blockId) {
-      return element
-    }
+function findBlockElement(blockId: string, root: Document): HTMLElement | null {
+  const selector = `[data-lingoflow-block-id="${blockId}"]`
+  let element = root.querySelector(selector)
+  if (element instanceof HTMLElement) return element
+
+  const shadows = findAllShadowRoots(root.documentElement)
+  for (const shadow of shadows) {
+    element = shadow.querySelector(selector)
+    if (element instanceof HTMLElement) return element
   }
 
   return null

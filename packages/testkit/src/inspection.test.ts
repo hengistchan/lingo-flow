@@ -30,7 +30,7 @@ describe('translation inspection testkit', () => {
         tagName: 'p',
         insertion: 'linebreak-inside',
         sourceText: expect.stringContaining('README.md'),
-        requestText: expect.stringContaining('[[LF0]]'),
+        requestText: expect.stringContaining('⟦LF:0⟧'),
         translatedText: expect.stringContaining('README.md'),
       }),
     ])
