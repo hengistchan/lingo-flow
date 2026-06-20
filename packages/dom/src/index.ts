@@ -285,7 +285,6 @@ function findPrimaryTextAnchor(element: HTMLElement): HTMLElement | null {
   if (text.length < 20) return null
 
   const anchors = Array.from(element.querySelectorAll('a'))
-    .filter((node): node is HTMLElement => node instanceof HTMLElement)
     .filter(node => normalizeText(getElementText(node)).length >= 20)
 
   if (anchors.length !== 1) return null

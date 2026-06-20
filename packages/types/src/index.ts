@@ -99,6 +99,7 @@ export type TranslationTask = {
   normalizedText: string
   textHash: string
   inlineTokens?: InlineToken[]
+  insertion?: TranslationInsertion
   sourceLang: 'auto' | string
   targetLang: string
   providerId: string
@@ -115,6 +116,7 @@ export type TranslationSuccessResult = {
   blockId: string
   sourceText: string
   translatedText: string
+  insertion?: TranslationInsertion
   sourceLang: 'auto' | string
   targetLang: string
   providerId: string
@@ -130,6 +132,7 @@ export type TranslationFailedResult = {
   blockId: string
   sourceText: string
   translatedText?: string
+  insertion?: TranslationInsertion
   sourceLang: 'auto' | string
   targetLang: string
   providerId: string

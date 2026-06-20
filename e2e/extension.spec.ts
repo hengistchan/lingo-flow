@@ -565,6 +565,11 @@ test('installed extension translates GitHub Markdown without duplicate quotes or
     await expect(page.locator('h2', { hasText: 'What' })).toHaveAttribute('data-lingoflow-block-id', /block_/)
     await expect(page.locator('h2', { hasText: 'Why' })).toHaveAttribute('data-lingoflow-block-id', /block_/)
     await expect(page.locator('h2', { hasText: 'Notes' })).toHaveAttribute('data-lingoflow-block-id', /block_/)
+    const titleLink = page.locator('h3 a', { hasText: 'homepage status banner' })
+    await expect(titleLink).toHaveAttribute('data-lingoflow-block-id', /block_/)
+    await expect(page.locator('h3', { hasText: 'homepage status banner' })).not.toHaveAttribute('data-lingoflow-block-id', /block_/)
+    await expect(titleLink.locator('[data-lingoflow-translation]').filter({ hasText: 'homepage status banner' })).toHaveCount(1)
+    await expect(page.locator('h3 + [data-lingoflow-translation]').filter({ hasText: 'homepage status banner' })).toHaveCount(0)
 
     const quoteTranslations = page.locator('blockquote [data-lingoflow-translation]').filter({ hasText: 'Public beta' })
     await expect(quoteTranslations).toHaveCount(1)
@@ -946,6 +951,14 @@ function startArticleServer() {
   </head>
   <body>
     <main>
+      <div class="feed-card">
+        <h3 class="lh-condensed">
+          <a class="Link--primary Link text-bold" href="/vuejs-ai/vue-tui/pull/208">
+            docs(readme): align the homepage status banner with the public-beta message
+            <span class="f3-light color-fg-muted">#208</span>
+          </a>
+        </h3>
+      </div>
       <div class="comment-body markdown-body js-comment-body">
         <h2 dir="auto">What</h2>
         <p dir="auto">The top-level <code class="notranslate">README.md</code> carried a terser banner:</p>

@@ -160,6 +160,7 @@ async function translateWithProvider(
       blockId: task.blockId,
       sourceText: task.sourceText,
       translatedText: restoreInlineTokens(output.texts[index], task.inlineTokens),
+      insertion: task.insertion,
       sourceLang: task.sourceLang,
       targetLang: task.targetLang,
       providerId,

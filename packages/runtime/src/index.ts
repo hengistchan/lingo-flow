@@ -201,6 +201,7 @@ export function createContentRuntime(dependencies: RuntimeDependencies = {}) {
           taskId: task.id,
           blockId: task.blockId,
           sourceText: task.sourceText,
+          insertion: task.insertion,
           fromCache: true,
         })
       } else {
@@ -214,7 +215,12 @@ export function createContentRuntime(dependencies: RuntimeDependencies = {}) {
   function renderResults(results: TranslationResult[]) {
     for (const result of results) {
       if (result.status === 'success') {
-        safeRender({ blockId: result.blockId, translatedText: result.translatedText }, root)
+        safeRender({
+          blockId: result.blockId,
+          translatedText: result.translatedText,
+          insertion: result.insertion,
+          targetLang: result.targetLang,
+        }, root)
       }
     }
   }
@@ -278,6 +284,7 @@ function createTask(
     normalizedText: block.normalizedText,
     textHash: block.textHash,
     inlineTokens: block.inlineTokens,
+    insertion: block.meta.insertion,
     sourceLang: settings.sourceLang,
     targetLang: settings.targetLang,
     providerId: settings.providerId,

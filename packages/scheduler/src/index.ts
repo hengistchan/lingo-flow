@@ -65,6 +65,7 @@ export async function translateBatchWithDegrade(
           taskId: task.id,
           blockId: task.blockId,
           sourceText: task.sourceText,
+          insertion: task.insertion,
           sourceLang: task.sourceLang,
           targetLang: task.targetLang,
           providerId: task.providerId,

@@ -54,6 +54,7 @@ export async function resolveTranslationCache(tasks: TranslationTask[]) {
         blockId: task.blockId,
         sourceText: task.sourceText,
         translatedText: cached.translatedText,
+        insertion: task.insertion,
         sourceLang: cached.sourceLang,
         targetLang: cached.targetLang,
         providerId: cached.providerId,

@@ -69,6 +69,38 @@ describe('content runtime language and progress behavior', () => {
     ]))
   })
 
+  it('passes insertion metadata from collected blocks to rendered results', async () => {
+    document.body.innerHTML = `
+      <article>
+        <p>This paragraph is long enough to be translated inside the original paragraph.</p>
+      </article>
+    `
+    const settings = runtimeSettings()
+    let translatedTasks: TranslationTask[] = []
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      if (message.type === 'translation/translateBatch') {
+        translatedTasks = message.payload.tasks
+        return success({
+          results: translatedTasks.map(task => ({
+            ...successResult(task),
+            translatedText: '段落内部译文',
+          })),
+        })
+      }
+      throw new Error(`Unexpected message: ${message.type}`)
+    })
+
+    const runtime = createContentRuntime({ document, chromeRuntime })
+    await runtime.translatePage()
+
+    expect(translatedTasks[0]?.insertion).toBe('linebreak-inside')
+    const paragraph = document.querySelector('p') as HTMLElement
+    const translation = document.querySelector('[data-lingoflow-translation]') as HTMLElement
+    expect(translation.parentElement).toBe(paragraph)
+    expect(translation.previousSibling?.nodeName).toBe('BR')
+  })
+
   it('renders runtime translations inside structural table cells', async () => {
     document.body.innerHTML = `
       <article>
@@ -198,6 +230,7 @@ function successResult(task: TranslationTask): TranslationResult {
     blockId: task.blockId,
     sourceText: task.sourceText,
     translatedText: `translated:${task.sourceText}`,
+    insertion: task.insertion,
     sourceLang: task.sourceLang,
     targetLang: task.targetLang,
     providerId: task.providerId,
