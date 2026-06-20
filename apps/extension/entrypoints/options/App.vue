@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, toRaw, watch } from 'vue'
+import LfButton from '../../src/ui/LfButton.vue'
+import LfFormField from '../../src/ui/LfFormField.vue'
+import LfNavItem from '../../src/ui/LfNavItem.vue'
 import {
   getLanguageLabel,
   getSourceLanguageOptions,
@@ -319,132 +322,141 @@ function hasRuntimeApi() {
 <template>
   <main class="page">
     <header class="masthead">
-      <div>
+      <div class="masthead-left">
         <h1>{{ copy('options.title') }}</h1>
-        <p>{{ copy('options.subtitle') }}</p>
+        <p class="masthead-sub">{{ copy('options.subtitle') }}</p>
       </div>
-      <div class="save-area">
+      <div class="masthead-right">
         <span v-if="message" class="message" aria-live="polite">{{ message }}</span>
-        <button :disabled="busy || !dirty" @click="save">{{ copy('options.save') }}</button>
+        <lf-button
+          variant="primary"
+          :label="copy('options.save')"
+          :disabled="busy || !dirty"
+          @click="save"
+        />
       </div>
     </header>
 
     <div class="settings-shell">
       <aside class="settings-nav" aria-label="Settings sections">
-        <button
+        <lf-nav-item
           v-for="section in (['languages', 'providers', 'storage', 'advanced'] as SettingsSection[])"
           :key="section"
-          class="nav-item"
-          :class="{ active: activeSection === section }"
-          :aria-current="activeSection === section ? 'page' : undefined"
-          type="button"
+          :label="copy(`options.${section}`)"
+          :active="activeSection === section"
           @click="activeSection = section"
-        >
-          {{ copy(`options.${section}`) }}
-        </button>
+        />
       </aside>
 
       <div class="settings-content">
+        <!-- Languages Section -->
         <section v-if="activeSection === 'languages'">
           <h2>{{ copy('options.languages') }}</h2>
-          <p class="section-intro">{{ copy('options.subtitle') }}</p>
-          <div class="grid">
-            <label>
-              <span>{{ copy('options.targetLanguage') }}</span>
-              <select v-model="settings.targetLang">
-                <option v-for="language in targetLanguages" :key="language.code" :value="language.code">
-                  {{ getLanguageLabel(language.code, uiLocale) }}
-                </option>
-              </select>
-            </label>
-            <label>
-              <span>{{ copy('options.sourceLanguage') }}</span>
-              <select v-model="settings.sourceLang">
-                <option v-for="language in sourceLanguages" :key="language.code" :value="language.code">
-                  {{ language.code === 'auto' ? copy('options.autoDetect') : getLanguageLabel(language.code, uiLocale) }}
-                </option>
-              </select>
-            </label>
-            <label>
-              <span>{{ copy('options.interfaceLanguage') }}</span>
-              <select v-model="settings.interfaceLocale">
-                <option value="auto">{{ copy('options.followBrowser') }}</option>
-                <option value="zh-Hans">简体中文</option>
-                <option value="en">English</option>
-              </select>
-            </label>
+          <div class="form-grid">
+            <lf-form-field
+              :label="copy('options.targetLanguage')"
+              type="select"
+              :model-value="settings.targetLang"
+              :options="targetLanguages.map(l => ({ value: l.code, label: getLanguageLabel(l.code, uiLocale) }))"
+              @update:model-value="settings.targetLang = String($event)"
+            />
+            <lf-form-field
+              :label="copy('options.sourceLanguage')"
+              type="select"
+              :model-value="settings.sourceLang"
+              :options="sourceLanguages.map(l => ({ value: l.code, label: l.code === 'auto' ? copy('options.autoDetect') : getLanguageLabel(l.code, uiLocale) }))"
+              @update:model-value="settings.sourceLang = String($event)"
+            />
+            <lf-form-field
+              :label="copy('options.interfaceLanguage')"
+              type="select"
+              :model-value="settings.interfaceLocale"
+              :options="[
+                { value: 'auto', label: copy('options.followBrowser') },
+                { value: 'zh-Hans', label: '简体中文' },
+                { value: 'en', label: 'English' },
+              ]"
+              @update:model-value="settings.interfaceLocale = String($event) as UiLocale"
+            />
           </div>
         </section>
 
+        <!-- Providers Section -->
         <section v-else-if="activeSection === 'providers'">
           <div class="section-heading">
-            <div>
-              <h2>{{ copy('options.providers') }}</h2>
-              <p class="section-intro">
-                {{ selectedProviderConfigured ? copy('options.providerConfigured') : copy('options.providerIncomplete') }}
-              </p>
-            </div>
-            <span class="status-mark" :data-ready="selectedProviderConfigured" />
+            <h2>{{ copy('options.providers') }}</h2>
+            <span class="status-mark" :data-ready="selectedProviderConfigured">
+              {{ selectedProviderConfigured ? '✓' : '✗' }}
+            </span>
+          </div>
+          <p class="section-intro">
+            {{ selectedProviderConfigured ? copy('options.providerConfigured') : copy('options.providerIncomplete') }}
+          </p>
+
+          <div class="form-grid">
+            <lf-form-field
+              :label="copy('options.defaultProvider')"
+              type="select"
+              :model-value="settings.defaultProviderId"
+              :options="Object.entries(settings.providers).map(([id, c]) => ({ value: id, label: c.name }))"
+              @update:model-value="settings.defaultProviderId = String($event)"
+            />
+            <lf-form-field
+              :label="copy('options.fallbackProvider')"
+              type="select"
+              :model-value="settings.fallbackProviderId"
+              :options="[{ value: '', label: copy('options.none') }, ...Object.entries(settings.providers).map(([id, c]) => ({ value: id, label: c.name }))]"
+              @update:model-value="settings.fallbackProviderId = String($event)"
+            />
           </div>
 
-          <div class="grid">
-            <label>
-              <span>{{ copy('options.defaultProvider') }}</span>
-              <select v-model="settings.defaultProviderId">
-                <option v-for="(config, id) in settings.providers" :key="id" :value="id">{{ config.name }}</option>
-              </select>
-            </label>
-            <label>
-              <span>{{ copy('options.fallbackProvider') }}</span>
-              <select v-model="settings.fallbackProviderId">
-                <option value="">{{ copy('options.none') }}</option>
-                <option v-for="(config, id) in settings.providers" :key="id" :value="id">{{ config.name }}</option>
-              </select>
-            </label>
-          </div>
+          <div class="form-divider"></div>
 
           <div class="provider-fields" v-if="activeProvider">
             <template v-for="field in activeProviderFields" :key="field.key">
-              <label>
-                <span>{{ field.label }}</span>
-                <input
-                  :type="field.type"
-                  :placeholder="field.placeholder"
-                  v-model="activeProvider.values[field.key]"
-                  autocomplete="off"
-                />
-              </label>
+              <lf-form-field
+                :label="field.label"
+                :type="field.type as 'text' | 'password' | 'url'"
+                :placeholder="field.placeholder"
+                :model-value="activeProvider.values[field.key] ?? ''"
+                @update:model-value="activeProvider.values[field.key] = String($event)"
+              />
             </template>
           </div>
 
+          <div class="form-divider" v-if="activeProvider && isOpenAICompatibleProvider"></div>
+
           <div class="provider-speed-controls" v-if="activeProvider && isOpenAICompatibleProvider">
-            <label>
-              <span>{{ copy('options.reasoningEffort') }}</span>
-              <select v-model="activeProvider.values.reasoningEffort">
-                <option v-for="effort in reasoningEffortOptions" :key="effort" :value="effort">
-                  {{ copy(reasoningEffortCopyKey(effort)) }}
-                </option>
-              </select>
-            </label>
-            <label class="check">
-              <input v-model="activeProvider.values.disableThinking" type="checkbox" true-value="true" false-value="false" />
-              <span>{{ copy('options.disableThinking') }}</span>
-            </label>
+            <lf-form-field
+              :label="copy('options.reasoningEffort')"
+              type="select"
+              :model-value="activeProvider.values.reasoningEffort ?? 'auto'"
+              :options="reasoningEffortOptions.map(e => ({ value: e, label: copy(reasoningEffortCopyKey(e)) }))"
+              @update:model-value="activeProvider.values.reasoningEffort = String($event)"
+            />
+            <lf-form-field
+              :label="copy('options.disableThinking')"
+              type="checkbox"
+              :model-value="activeProvider.values.disableThinking === 'true'"
+              @update:model-value="activeProvider.values.disableThinking = String($event)"
+            />
           </div>
 
+          <div class="form-divider"></div>
+
           <div class="provider-actions">
-            <button
+            <lf-button
               v-if="Object.keys(settings.providers).length > 1"
-              class="danger"
-              type="button"
+              variant="danger"
+              :label="copy('options.removeProvider')"
               @click="removeProvider(settings.defaultProviderId)"
-            >
-              {{ copy('options.removeProvider') }}
-            </button>
+            />
             <div class="add-provider-area" v-if="availablePresets.length > 0">
-              <button class="secondary" type="button" @click="showAddProviderMenu = !showAddProviderMenu">
-                {{ copy('options.addProvider') }}
-              </button>
+              <lf-button
+                variant="ghost"
+                :label="copy('options.addProvider')"
+                @click="showAddProviderMenu = !showAddProviderMenu"
+              />
               <div v-if="showAddProviderMenu" class="add-provider-menu">
                 <button
                   v-for="preset in availablePresets"
@@ -464,81 +476,112 @@ function hasRuntimeApi() {
 
           <div v-if="showCustomProviderForm" class="custom-provider-form">
             <h3>{{ copy('options.customOpenAI') }}</h3>
-            <div class="grid">
-              <label>
-                <span>{{ copy('options.customProviderName') }}</span>
-                <input v-model="customProviderName" type="text" placeholder="e.g. DeepL, Ollama, LM Studio" autocomplete="off" />
-              </label>
-              <label>
-                <span>Base URL</span>
-                <input v-model="customProviderBaseUrl" type="url" placeholder="http://localhost:11434/v1" autocomplete="off" />
-              </label>
-              <label>
-                <span>API Key</span>
-                <input v-model="customProviderApiKey" type="password" placeholder="Optional" autocomplete="off" />
-              </label>
-              <label>
-                <span>Model</span>
-                <input v-model="customProviderModel" type="text" placeholder="gpt-4o-mini" autocomplete="off" />
-              </label>
+            <div class="form-grid">
+              <lf-form-field
+                :label="copy('options.customProviderName')"
+                v-model="customProviderName"
+                placeholder="e.g. DeepL, Ollama, LM Studio"
+              />
+              <lf-form-field
+                label="Base URL"
+                type="url"
+                v-model="customProviderBaseUrl"
+                placeholder="http://localhost:11434/v1"
+              />
+              <lf-form-field
+                label="API Key"
+                type="password"
+                v-model="customProviderApiKey"
+                placeholder="Optional"
+              />
+              <lf-form-field
+                label="Model"
+                v-model="customProviderModel"
+                placeholder="gpt-4o-mini"
+              />
             </div>
             <div class="custom-provider-actions">
-              <button class="secondary" type="button" @click="cancelCustomProvider">{{ copy('options.cancel') }}</button>
-              <button type="button" :disabled="!customProviderName.trim() || !customProviderBaseUrl.trim() || !customProviderModel.trim()" @click="confirmCustomProvider">
-                {{ copy('options.addProvider') }}
-              </button>
+              <lf-button variant="ghost" :label="copy('options.cancel')" @click="cancelCustomProvider" />
+              <lf-button
+                variant="primary"
+                :label="copy('options.addProvider')"
+                :disabled="!customProviderName.trim() || !customProviderBaseUrl.trim() || !customProviderModel.trim()"
+                @click="confirmCustomProvider"
+              />
             </div>
           </div>
+
+          <div class="form-divider"></div>
 
           <div class="connection-test">
             <div>
               <strong>{{ copy('options.testConnection') }}</strong>
               <p>{{ copy('options.connectionTestDescription') }}</p>
             </div>
-            <button class="secondary" :disabled="testingConnection" @click="testConnection">
-              {{ testingConnection ? copy('options.testingConnection') : copy('options.testConnection') }}
-            </button>
+            <lf-button
+              variant="test"
+              :label="testingConnection ? copy('options.testingConnection') : copy('options.testConnection')"
+              :disabled="testingConnection"
+              @click="testConnection"
+            />
             <p
               v-if="connectionResult"
               class="connection-result"
               :data-success="connectionResult.ok"
               aria-live="polite"
             >
-              {{ connectionMessage }}
+              {{ connectionResult.ok ? '✓' : '✗' }} {{ connectionMessage }}
             </p>
           </div>
         </section>
 
+        <!-- Storage Section -->
         <section v-else-if="activeSection === 'storage'">
           <h2>{{ copy('options.storage') }}</h2>
-          <label class="check">
-            <input v-model="settings.cacheEnabled" type="checkbox" />
-            <span>{{ copy('options.cacheEnabled') }}</span>
-          </label>
+          <lf-form-field
+            :label="copy('options.cacheEnabled')"
+            type="checkbox"
+            v-model="settings.cacheEnabled"
+          />
+          <div class="form-divider"></div>
           <div class="storage-actions">
-            <button class="danger" :class="{ 'danger-confirm': confirmClearAll }" :disabled="busy" @click="confirmClearAll ? clearAllCache() : (confirmClearAll = true)">
-              {{ confirmClearAll ? copy('options.confirmClearAll') : copy('options.clearAllCache') }}
-            </button>
+            <lf-button
+              variant="danger"
+              :class="{ 'danger-confirm': confirmClearAll }"
+              :label="confirmClearAll ? copy('options.confirmClearAll') : copy('options.clearAllCache')"
+              :disabled="busy"
+              @click="confirmClearAll ? clearAllCache() : (confirmClearAll = true)"
+            />
           </div>
         </section>
 
+        <!-- Advanced Section -->
         <section v-else>
           <h2>{{ copy('options.advanced') }}</h2>
-          <div class="grid">
-            <label>
-              <span>{{ copy('options.renderMode') }}</span>
-              <select v-model="settings.renderMode">
-                <option value="below-original">{{ copy('options.belowOriginal') }}</option>
-              </select>
-            </label>
-            <label>
-              <span>{{ copy('options.maxCacheItems') }}</span>
-              <input v-model.number="settings.maxCacheItems" min="1" type="number" />
-            </label>
-            <label>
-              <span>{{ copy('options.translationConcurrency') }}</span>
-              <input v-model.number="settings.translationConcurrency" min="1" max="6" step="1" type="number" />
-            </label>
+          <div class="form-grid">
+            <lf-form-field
+              :label="copy('options.renderMode')"
+              type="select"
+              :model-value="settings.renderMode"
+              :options="[{ value: 'below-original', label: copy('options.belowOriginal') }]"
+              @update:model-value="settings.renderMode = String($event) as any"
+            />
+            <lf-form-field
+              :label="copy('options.maxCacheItems')"
+              type="number"
+              :model-value="settings.maxCacheItems"
+              :min="1"
+              @update:model-value="settings.maxCacheItems = Number($event)"
+            />
+            <lf-form-field
+              :label="copy('options.translationConcurrency')"
+              type="number"
+              :model-value="settings.translationConcurrency"
+              :min="1"
+              :max="6"
+              :step="1"
+              @update:model-value="settings.translationConcurrency = Number($event)"
+            />
           </div>
         </section>
       </div>
@@ -547,182 +590,128 @@ function hasRuntimeApi() {
 </template>
 
 <style scoped>
-:global(body) {
-  margin: 0;
-  background: #f5f5f5;
-  color: #111827;
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
 .page {
-  width: min(980px, calc(100vw - 40px));
+  width: min(720px, calc(100vw - 40px));
   margin: 0 auto;
   padding: 36px 0 56px;
 }
 
-.masthead,
-.section-heading,
-.save-area {
+.masthead {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
-}
-
-.masthead {
   margin-bottom: 24px;
 }
 
-.save-area {
-  align-items: center;
+.masthead-left {
+  flex: 1;
+  min-width: 0;
 }
 
-h1,
-h2,
-p {
+.masthead-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+h1, h2, p {
   margin: 0;
 }
 
 h1 {
-  font-size: 24px;
+  font-family: var(--lf-font-serif);
+  font-size: 22px;
+  font-weight: 400;
   line-height: 1.15;
 }
 
 h2 {
-  font-size: 18px;
+  font-family: var(--lf-font-serif);
+  font-size: 16px;
+  font-weight: 400;
 }
 
-.masthead p,
-.section-intro {
-  margin-top: 8px;
-  color: #64748b;
+.masthead-sub {
+  margin-top: 4px;
+  color: var(--lf-whisper);
   font-size: 13px;
+}
+
+.message {
+  color: var(--lf-accent);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .settings-shell {
   display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
-  min-height: 520px;
-  overflow: hidden;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 18px 45px rgb(15 23 42 / 7%);
+  grid-template-columns: 160px minmax(0, 1fr);
+  min-height: 400px;
+  border: 1px solid var(--lf-rule);
+  background: var(--lf-paper);
 }
 
 .settings-nav {
   display: grid;
   align-content: start;
-  gap: 6px;
-  padding: 22px 16px;
-  background: #eef4ff;
-}
-
-.nav-item {
-  justify-content: flex-start;
-  border-color: transparent;
-  background: transparent;
-  color: #64748b;
-  text-align: left;
-}
-
-.nav-item.active {
-  background: #dbeafe;
-  color: #1d4ed8;
+  padding: 20px 0;
+  border-right: 1px solid var(--lf-rule);
 }
 
 .settings-content {
-  padding: 28px;
+  padding: 24px 28px;
 }
 
 section {
   display: grid;
-  gap: 24px;
+  gap: 20px;
 }
 
-.grid,
+.section-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-intro {
+  color: var(--lf-whisper);
+  font-size: 13px;
+}
+
+.status-mark {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--lf-accent);
+}
+
+.status-mark[data-ready="true"] {
+  color: #4a7c59;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 20px;
+}
+
+.form-divider {
+  height: 1px;
+  background: var(--lf-rule);
+  margin: 4px 0;
+}
+
 .provider-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 16px 20px;
 }
 
-.provider-fields,
 .provider-speed-controls {
-  padding-top: 22px;
-  border-top: 1px solid #eef2f7;
-}
-
-label {
   display: grid;
-  gap: 7px;
-}
-
-label span {
-  color: #475569;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-input,
-select {
-  min-height: 40px;
-  box-sizing: border-box;
-  width: 100%;
-  border: 1px solid #dbe1ea;
-  border-radius: 7px;
-  padding: 0 11px;
-  background: #ffffff;
-  color: #111827;
-  font: inherit;
-  font-size: 14px;
-}
-
-.invalid {
-  border-color: #dc2626;
-}
-
-.check {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.check input {
-  width: 16px;
-  min-height: 16px;
-}
-
-.storage-actions {
-  padding-top: 20px;
-  border-top: 1px solid #eef2f7;
-}
-
-.connection-test {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px 18px;
-  padding-top: 22px;
-  border-top: 1px solid #eef2f7;
-}
-
-.connection-test p {
-  margin-top: 5px;
-  color: #64748b;
-  font-size: 13px;
-}
-
-.connection-result {
-  grid-column: 1 / -1;
-  margin-top: 0 !important;
-  color: #b45309 !important;
-  font-weight: 700;
-}
-
-.connection-result[data-success="true"] {
-  color: #047857 !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 20px;
 }
 
 .provider-actions {
@@ -743,10 +732,8 @@ select {
   z-index: 10;
   margin-top: 4px;
   min-width: 200px;
-  border: 1px solid #dbe1ea;
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 6px 20px rgb(15 23 42 / 10%);
+  border: 1px solid var(--lf-rule);
+  background: var(--lf-paper);
   overflow: hidden;
 }
 
@@ -755,39 +742,32 @@ select {
   width: 100%;
   min-height: 38px;
   border: none;
-  border-radius: 0;
   background: transparent;
-  color: #111827;
+  color: var(--lf-ink);
+  font-family: var(--lf-font-sans);
+  font-size: 13px;
   font-weight: 400;
   text-align: left;
   padding: 0 14px;
   cursor: pointer;
+  transition: background 0.15s;
 }
 
 .menu-item:hover {
-  background: #f0f6ff;
-}
-
-.menu-item:disabled {
-  color: #94a3b8;
-  cursor: not-allowed;
-}
-
-.menu-item:disabled:hover {
-  background: transparent;
+  background: var(--lf-margin);
 }
 
 .custom-provider-form {
   padding: 20px;
-  margin-top: 16px;
-  border: 1px solid #dbe1ea;
-  border-radius: 8px;
-  background: #f8fafc;
+  border: 1px solid var(--lf-rule);
+  background: var(--lf-margin);
 }
 
 .custom-provider-form h3 {
   margin: 0 0 16px;
+  font-family: var(--lf-font-serif);
   font-size: 15px;
+  font-weight: 400;
 }
 
 .custom-provider-actions {
@@ -797,186 +777,57 @@ select {
   margin-top: 16px;
 }
 
-button {
-  min-height: 40px;
-  display: inline-flex;
+.connection-test {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: center;
-  border: 1px solid #2563eb;
-  border-radius: 8px;
-  padding: 0 14px;
-  background: #2563eb;
-  color: #ffffff;
-  font: inherit;
+  gap: 10px 18px;
+}
+
+.connection-test p {
+  margin-top: 5px;
+  color: var(--lf-whisper);
   font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
 }
 
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
+.connection-result {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--lf-accent);
 }
 
-.danger {
-  border-color: #dc2626;
-  background: #dc2626;
+.connection-result[data-success="true"] {
+  color: #4a7c59;
 }
 
-.danger-confirm {
-  border-color: #991b1b;
-  background: #991b1b;
+.storage-actions {
+  padding-top: 4px;
 }
 
-.secondary {
-  border-color: #bfdbfe;
-  background: #eff6ff;
-  color: #1d4ed8;
-}
-
-.message {
-  color: #1d4ed8;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.status-mark {
-  width: 9px;
-  height: 9px;
-  margin-top: 6px;
-  border-radius: 999px;
-  background: #f59e0b;
-}
-
-.status-mark[data-ready="true"] {
-  background: #10b981;
-}
-
-@media (max-width: 720px) {
+/* ── Responsive ── */
+@media (max-width: 640px) {
   .page {
-    width: min(100% - 24px, 980px);
+    width: min(100% - 24px, 720px);
     padding-top: 20px;
   }
 
-  .masthead,
-  .save-area,
   .settings-shell,
-  .grid,
+  .form-grid,
   .provider-fields,
   .provider-speed-controls,
   .connection-test {
     grid-template-columns: 1fr;
   }
 
-  .masthead,
-  .save-area {
-    display: grid;
-  }
-
   .settings-nav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .settings-content {
-    padding: 22px 18px;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  :global(body) {
-    background: #1a1a2e;
-    color: #e2e8f0;
-  }
-
-  .settings-shell {
-    border-color: #334155;
-    background: #16213e;
-    box-shadow: 0 18px 45px rgb(0 0 0 / 30%);
-  }
-
-  .settings-nav {
-    background: #1e293b;
-  }
-
-  .nav-item {
-    color: #94a3b8;
-  }
-
-  .nav-item.active {
-    background: #1e3a5f;
-    color: #60a5fa;
-  }
-
-  .section-intro {
-    color: #94a3b8;
-  }
-
-  label span {
-    color: #cbd5e1;
-  }
-
-  input,
-  select {
-    border-color: #475569;
-    background: #1e293b;
-    color: #e2e8f0;
-  }
-
-  .provider-fields,
-  .storage-actions,
-  .connection-test {
-    border-top-color: #334155;
-  }
-
-  .connection-test p {
-    color: #94a3b8;
-  }
-
-  .add-provider-menu {
-    border-color: #475569;
-    background: #1e293b;
-  }
-
-  .menu-item {
-    color: #e2e8f0;
-  }
-
-  .menu-item:hover {
-    background: #1e3a5f;
-  }
-
-  .menu-item:disabled {
-    color: #64748b;
-  }
-
-  .custom-provider-form {
-    border-color: #475569;
-    background: #1e293b;
-  }
-
-  button {
-    border-color: #3b82f6;
-    background: #3b82f6;
-  }
-
-  .secondary {
-    border-color: #1e3a5f;
-    background: #1e293b;
-    color: #60a5fa;
-  }
-
-  .danger {
-    border-color: #dc2626;
-    background: #dc2626;
-  }
-
-  .danger-confirm {
-    border-color: #991b1b;
-    background: #991b1b;
-  }
-
-  .message {
-    color: #60a5fa;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    border-right: none;
+    border-bottom: 1px solid var(--lf-rule);
+    padding: 12px 0;
   }
 }
 </style>
