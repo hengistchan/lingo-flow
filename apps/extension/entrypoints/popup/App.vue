@@ -4,6 +4,7 @@ import LfButton from '../../src/ui/LfButton.vue'
 import LfLanguagePair from '../../src/ui/LfLanguagePair.vue'
 import {
   getLanguageLabel,
+  getTargetLanguageOptions,
   resolveUiLocale,
   t,
   sendChromeMessage,
@@ -34,6 +35,7 @@ const contentInjected = ref(false)
 const cacheMessage = ref('')
 let pollTimer: number | undefined
 
+const targetLanguages = getTargetLanguageOptions()
 const targetLanguageName = computed(() => getLanguageLabel(pendingTargetLang.value, uiLocale.value))
 const hasTranslations = computed(() => progress.value.translatedBlocks > 0)
 const statusLabel = computed(() => {
@@ -318,6 +320,8 @@ function getPreviewSafeChrome() {
     <lf-language-pair
       :source-label="copy('popup.autoDetect')"
       :target-label="targetLanguageName"
+      :current-target="pendingTargetLang"
+      :options="targetLanguages.map(l => ({ value: l.code, label: getLanguageLabel(l.code, uiLocale) }))"
       :disabled="busy || progress.status === 'translating'"
       @update:target="onTargetChange"
     />

@@ -2,6 +2,8 @@
 defineProps<{
   sourceLabel: string
   targetLabel: string
+  currentTarget?: string
+  options?: { value: string; label: string }[]
   disabled?: boolean
 }>()
 
@@ -17,10 +19,11 @@ defineEmits<{
     <span class="lf-lang-pair__target">
       <select
         class="lf-lang-pair__select"
+        :value="currentTarget"
         :disabled="disabled"
         @change="$emit('update:target', ($event.target as HTMLSelectElement).value)"
       >
-        <option selected disabled>{{ targetLabel }}</option>
+        <option v-for="opt in options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
       </select>
       <span class="lf-lang-pair__target-display" aria-hidden="true">{{ targetLabel }}</span>
     </span>

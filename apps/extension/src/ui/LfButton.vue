@@ -50,7 +50,7 @@ defineEmits<{
   width: 100%;
   border-color: var(--lf-accent);
   background: var(--lf-accent);
-  color: #ffffff;
+  color: var(--lf-on-accent);
 }
 
 .lf-btn--primary:hover:not(:disabled) {
@@ -77,7 +77,7 @@ defineEmits<{
 .lf-btn--danger {
   border-color: var(--lf-accent);
   background: var(--lf-accent);
-  color: #ffffff;
+  color: var(--lf-on-accent);
 }
 
 .lf-btn--danger:hover:not(:disabled) {
@@ -87,9 +87,9 @@ defineEmits<{
 
 /* Danger Confirm */
 .lf-btn--danger-confirm {
-  border-color: #991b1b;
-  background: #991b1b;
-  color: #ffffff;
+  border-color: var(--lf-danger-confirm);
+  background: var(--lf-danger-confirm);
+  color: var(--lf-on-accent);
 }
 
 /* Test */
