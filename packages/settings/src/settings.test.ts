@@ -19,19 +19,62 @@ describe('settings', () => {
     expect(migrated.version).toBe(DEFAULT_SETTINGS.version)
   })
 
+  it('Migrates version 0 settings with legacy sourceLang en to auto', () => {
+    const migrated = migrateSettings({
+      version: 0,
+      sourceLang: 'en',
+      targetLang: 'ja',
+    })
+
+    expect(migrated.sourceLang).toBe('auto')
+    expect(migrated.targetLang).toBe('ja')
+    expect(migrated.version).toBe(DEFAULT_SETTINGS.version)
+  })
+
+  it('Does not re-migrate version 1 settings', () => {
+    const migrated = migrateSettings({
+      version: 1,
+      sourceLang: 'ja',
+      targetLang: 'en',
+    })
+
+    expect(migrated.sourceLang).toBe('ja')
+    expect(migrated.version).toBe(DEFAULT_SETTINGS.version)
+  })
+
+  it('Handles undefined version as version 0', () => {
+    const migrated = migrateSettings({
+      sourceLang: 'en',
+      targetLang: 'ja',
+    })
+
+    expect(migrated.sourceLang).toBe('auto')
+    expect(migrated.version).toBe(DEFAULT_SETTINGS.version)
+  })
+
   it('public runtime settings omit provider API keys', () => {
     const runtime = getPublicRuntimeSettings({
       ...DEFAULT_SETTINGS,
       providers: {
-        azure: {
-          endpoint: 'https://api.cognitive.microsofttranslator.com',
-          key: 'secret-azure-key',
-          region: 'eastasia',
+        'azure-translator': {
+          id: 'azure-translator',
+          presetId: 'azure-translator',
+          name: 'Azure Translator',
+          values: {
+            endpoint: 'https://api.cognitive.microsofttranslator.com',
+            key: 'secret-azure-key',
+            region: 'eastasia',
+          },
         },
-        openai: {
-          baseUrl: 'https://api.openai.com/v1',
-          apiKey: 'secret-openai-key',
-          model: 'gpt-4o-mini',
+        'openai-compatible': {
+          id: 'openai-compatible',
+          presetId: 'openai-compatible',
+          name: 'OpenAI-compatible',
+          values: {
+            baseUrl: 'https://api.openai.com/v1',
+            apiKey: 'secret-openai-key',
+            model: 'gpt-4o-mini',
+          },
         },
       },
     })

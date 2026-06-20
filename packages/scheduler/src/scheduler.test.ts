@@ -45,6 +45,40 @@ describe('scheduler', () => {
     expect(attempts).toBe(3)
   })
 
+  it('Uses exponential backoff delays between retries', async () => {
+    vi.useFakeTimers()
+
+    const realSetTimeout = globalThis.setTimeout.bind(globalThis)
+    const calls: number[] = []
+    globalThis.setTimeout = ((fn: TimerHandler, ms?: number, ...args: unknown[]) => {
+      calls.push(ms ?? 0)
+      return realSetTimeout(fn, ms ?? 0, ...args)
+    }) as typeof globalThis.setTimeout
+
+    let attempts = 0
+    const resultPromise = retry(
+      async () => {
+        attempts += 1
+        if (attempts < 4) {
+          const error = new Error('rate limited') as Error & { status?: number }
+          error.status = 429
+          throw error
+        }
+        return 'ok'
+      },
+      { attempts: 4, delayMs: 100 },
+    )
+
+    await vi.advanceTimersByTimeAsync(800)
+
+    const result = await resultPromise
+
+    expect(result).toBe('ok')
+    expect(calls).toEqual([100, 200, 400])
+
+    vi.useRealTimers()
+  })
+
   it('splits failed batches and marks single task failure while continuing', async () => {
     const tasks = [task('1'), task('2'), task('3')]
 

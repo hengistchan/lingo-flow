@@ -1,6 +1,7 @@
 import type {
   AzureTranslatorConfig,
   OpenAICompatibleConfig,
+  ProviderConfig,
   ProviderConnectionResult,
   ProviderId,
   TranslateInput,
@@ -8,7 +9,54 @@ import type {
   TranslationProvider,
 } from '@lingoflow/types'
 
+export const REQUEST_TIMEOUT_MS = 30000
+
 export const OPENAI_PROMPT_VERSION = 'prompt-v1'
+
+export const BUILT_IN_PRESETS = [
+  {
+    id: "azure-translator",
+    name: "Azure Translator",
+    type: "machine-translation",
+    fields: [
+      { key: "endpoint", label: "Endpoint", type: "url", required: true, placeholder: "https://api.cognitive.microsofttranslator.com", defaultValue: "https://api.cognitive.microsofttranslator.com" },
+      { key: "key", label: "API Key", type: "password", required: true },
+      { key: "region", label: "Region", type: "text", required: true },
+    ],
+  },
+  {
+    id: "openai-compatible",
+    name: "OpenAI-compatible",
+    type: "llm",
+    fields: [
+      { key: "baseUrl", label: "Base URL", type: "url", required: true, placeholder: "https://api.openai.com/v1", defaultValue: "https://api.openai.com/v1" },
+      { key: "apiKey", label: "API Key", type: "password", required: true },
+      { key: "model", label: "Model", type: "text", required: true, placeholder: "gpt-4o-mini", defaultValue: "gpt-4o-mini" },
+    ],
+  },
+]
+
+export function extractAzureConfig(config: ProviderConfig): AzureTranslatorConfig {
+  return {
+    endpoint: config.values.endpoint || "https://api.cognitive.microsofttranslator.com",
+    key: config.values.key || "",
+    region: config.values.region || "",
+  }
+}
+
+export function extractOpenAIConfig(config: ProviderConfig): OpenAICompatibleConfig {
+  return {
+    baseUrl: config.values.baseUrl || "https://api.openai.com/v1",
+    apiKey: config.values.apiKey || "",
+    model: config.values.model || "gpt-4o-mini",
+  }
+}
+
+export function isProviderConfigured(config: ProviderConfig): boolean {
+  const preset = BUILT_IN_PRESETS.find(p => p.id === config.presetId)
+  if (!preset) return Object.values(config.values).some(v => v.trim())
+  return preset.fields.filter(f => f.required).every(f => (config.values[f.key] || "").trim())
+}
 
 export class ProviderRegistry {
   private readonly providers = new Map<string, TranslationProvider>()
@@ -38,7 +86,7 @@ export function parseOpenAIJsonResult(content: string, expectedLength: number): 
     // Try extracting a JSON array from chatty model output below.
   }
 
-  const jsonMatch = content.match(/\[[\s\S]*\]/)
+  const jsonMatch = content.match(/\[[\s\S]*?\]/)
   if (jsonMatch) {
     try {
       const parsed = JSON.parse(jsonMatch[0])
@@ -78,15 +126,28 @@ export const azureTranslatorProvider: TranslationProvider = {
       search.set('from', input.sourceLang)
     }
 
-    const response = await fetch(`${endpoint}/translate?${search.toString()}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Ocp-Apim-Subscription-Key': providerConfig.key,
-        'Ocp-Apim-Subscription-Region': providerConfig.region,
-      },
-      body: JSON.stringify(input.texts.map(text => ({ text }))),
-    })
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    let response: Response
+    try {
+      response = await fetch(`${endpoint}/translate?${search.toString()}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Ocp-Apim-Subscription-Key': providerConfig.key,
+          'Ocp-Apim-Subscription-Region': providerConfig.region,
+        },
+        body: JSON.stringify(input.texts.map(text => ({ text }))),
+        signal: controller.signal,
+      })
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Azure Translator request timed out after 30 seconds')
+      }
+      throw error
+    } finally {
+      clearTimeout(timer)
+    }
 
     if (!response.ok) {
       throw providerHttpError(response.status, `Azure Translator failed with HTTP ${response.status}`)
@@ -122,33 +183,46 @@ export const openAICompatibleProvider: TranslationProvider = {
   async translate(input: TranslateInput, config: unknown): Promise<TranslateOutput> {
     const providerConfig = assertOpenAIConfig(config)
     const baseUrl = providerConfig.baseUrl.replace(/\/+$/, '')
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${providerConfig.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: providerConfig.model,
-        temperature: 0.2,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Translate each input string into the requested target language. Return only a JSON array of translated strings, preserving order and length.',
-          },
-          {
-            role: 'user',
-            content: JSON.stringify({
-              sourceLang: input.sourceLang,
-              targetLang: input.targetLang,
-              texts: input.texts,
-              context: input.context,
-            }),
-          },
-        ],
-      }),
-    })
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    let response: Response
+    try {
+      response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${providerConfig.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: providerConfig.model,
+          temperature: 0.2,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'Translate each input string into the requested target language. Return only a JSON array of translated strings, preserving order and length.',
+            },
+            {
+              role: 'user',
+              content: JSON.stringify({
+                sourceLang: input.sourceLang,
+                targetLang: input.targetLang,
+                texts: input.texts,
+                context: input.context,
+              }),
+            },
+          ],
+        }),
+        signal: controller.signal,
+      })
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('OpenAI-compatible request timed out after 30 seconds')
+      }
+      throw error
+    } finally {
+      clearTimeout(timer)
+    }
 
     if (!response.ok) {
       throw providerHttpError(response.status, `OpenAI-compatible provider failed with HTTP ${response.status}`)
@@ -181,11 +255,12 @@ export function createDefaultProviderRegistry(): ProviderRegistry {
 }
 
 export async function testProviderConnection(
-  providerId: ProviderId,
-  config: AzureTranslatorConfig | OpenAICompatibleConfig,
+  config: { presetId?: string; values: Record<string, string> },
 ): Promise<ProviderConnectionResult> {
-  const provider =
-    providerId === 'azure-translator' ? azureTranslatorProvider : openAICompatibleProvider
+  const presetId = config.presetId ?? ''
+  const providerId = presetId as ProviderId
+  const provider = presetId === 'azure-translator' ? azureTranslatorProvider : openAICompatibleProvider
+  const providerConfig = presetId === 'azure-translator' ? extractAzureConfig(config as ProviderConfig) : extractOpenAIConfig(config as ProviderConfig)
 
   try {
     await provider.translate(
@@ -194,7 +269,7 @@ export async function testProviderConnection(
         targetLang: 'zh-Hans',
         texts: ['LingoFlow connection test.'],
       },
-      config,
+      providerConfig,
     )
 
     return { ok: true, providerId, messageCode: 'connection_ok' }
@@ -210,10 +285,10 @@ export async function testProviderConnection(
 function getConnectionFailureCode(
   error: unknown,
 ): Exclude<ProviderConnectionResult['messageCode'], 'connection_ok'> {
-  const value = error as { code?: string; status?: number }
-
-  if (value?.code === 'provider_config_invalid') return 'config_incomplete'
-  if (value?.status === 401 || value?.status === 403) return 'authentication_failed'
+  if (typeof error === 'object' && error !== null) {
+    if ('code' in error && error.code === 'provider_config_invalid') return 'config_incomplete'
+    if ('status' in error && (error.status === 401 || error.status === 403)) return 'authentication_failed'
+  }
   if (error instanceof TypeError) return 'network_failed'
   return 'provider_failed'
 }

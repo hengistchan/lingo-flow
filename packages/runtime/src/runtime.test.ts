@@ -5,7 +5,7 @@ import type {
   TranslationResult,
   TranslationTask,
 } from '@lingoflow/types'
-import { createContentRuntime, deriveProgressStatus } from './index'
+import { createContentRuntime, deriveProgressStatus, evictOldestCacheEntries } from './index'
 
 describe('content runtime language and progress behavior', () => {
   it('uses a current-page target override without changing saved defaults', async () => {
@@ -41,6 +41,14 @@ describe('content runtime language and progress behavior', () => {
     expect(deriveProgressStatus({ translated: 2, failed: 1, total: 3 })).toBe('partial')
     expect(deriveProgressStatus({ translated: 0, failed: 3, total: 3 })).toBe('failed')
     expect(deriveProgressStatus({ translated: 0, failed: 0, total: 0 })).toBe('failed')
+  })
+
+  it("Returns failed when all blocks failed with none translated", () => {
+    expect(deriveProgressStatus({ translated: 0, failed: 5, total: 10 })).toBe("failed")
+  })
+
+  it("Returns failed when no blocks were found", () => {
+    expect(deriveProgressStatus({ translated: 0, failed: 0, total: 0 })).toBe("failed")
   })
 })
 
@@ -85,3 +93,32 @@ function successResult(task: TranslationTask): TranslationResult {
     status: 'success',
   }
 }
+
+describe("evictOldestCacheEntries", () => {
+  it("Evicts the oldest entries when cache exceeds the limit", () => {
+    const cache = new Map()
+    for (let i = 0; i < 5; i++) {
+      cache.set("key_" + i, { status: "success", cacheKey: "key_" + i })
+    }
+    evictOldestCacheEntries(cache, 3)
+    expect(cache.size).toBe(3)
+    expect(cache.has("key_0")).toBe(false)
+    expect(cache.has("key_1")).toBe(false)
+    expect(cache.has("key_2")).toBe(true)
+    expect(cache.has("key_3")).toBe(true)
+    expect(cache.has("key_4")).toBe(true)
+  })
+
+  it("Does nothing when cache is within the limit", () => {
+    const cache = new Map()
+    cache.set("a", { status: "success", cacheKey: "a" })
+    evictOldestCacheEntries(cache, 5)
+    expect(cache.size).toBe(1)
+  })
+
+  it("Handles empty cache without error", () => {
+    const cache = new Map()
+    evictOldestCacheEntries(cache, 10)
+    expect(cache.size).toBe(0)
+  })
+})

@@ -2,6 +2,10 @@ import type { TranslationTask } from '@lingoflow/types'
 import {
   resolveTranslationCache,
   safeSaveTranslationCache,
+  markCacheHits,
+  pruneCache,
+  clearAllCache,
+  clearCacheByDomain,
 } from './index'
 
 const task: TranslationTask = {
@@ -35,5 +39,33 @@ describe('translation cache failure handling', () => {
     await expect(
       safeSaveTranslationCache({ task, translatedText: '缓存写入失败也应继续显示。' }),
     ).resolves.toBeUndefined()
+  })
+})
+
+describe("markCacheHits", () => {
+  it("Resolves without error for an empty array", async () => {
+    await expect(markCacheHits([])).resolves.toBeUndefined()
+  })
+
+  it("Handles gracefully when IndexedDB is unavailable", async () => {
+    await expect(markCacheHits(["nonexistent-key"])).resolves.toBeUndefined()
+  })
+})
+
+describe("pruneCache", () => {
+  it("Handles gracefully when IndexedDB is unavailable", async () => {
+    await expect(pruneCache(10)).resolves.toBeUndefined()
+  })
+})
+
+describe("clearAllCache", () => {
+  it("Resolves without error even when IndexedDB is unavailable", async () => {
+    await expect(clearAllCache()).resolves.toBeUndefined()
+  })
+})
+
+describe("clearCacheByDomain", () => {
+  it("Resolves without error even when IndexedDB is unavailable", async () => {
+    await expect(clearCacheByDomain("example.com")).resolves.toBeUndefined()
   })
 })

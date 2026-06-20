@@ -6,10 +6,15 @@ describe('key-free settings summary', () => {
       ...DEFAULT_SETTINGS,
       providers: {
         ...DEFAULT_SETTINGS.providers,
-        azure: {
-          endpoint: 'https://api.cognitive.microsofttranslator.com',
-          key: 'secret-azure-key',
-          region: 'eastasia',
+        'azure-translator': {
+          id: 'azure-translator',
+          presetId: 'azure-translator',
+          name: 'Azure Translator',
+          values: {
+            endpoint: 'https://api.cognitive.microsofttranslator.com',
+            key: 'secret-azure-key',
+            region: 'eastasia',
+          },
         },
       },
     })

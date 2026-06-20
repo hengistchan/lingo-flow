@@ -6,13 +6,16 @@ import {
   getTargetLanguageOptions,
   resolveUiLocale,
   t,
+  sendChromeMessage,
 } from '@lingoflow/shared'
 import { DEFAULT_SETTINGS } from '@lingoflow/settings'
+import { BUILT_IN_PRESETS, isProviderConfigured } from '@lingoflow/providers'
 import type {
   AppSettings,
-  MessageResponse,
+  ProviderConfig,
   ProviderConnectionMessageCode,
   ProviderConnectionResult,
+  ProviderPreset,
   UiLocale,
 } from '@lingoflow/types'
 
@@ -25,6 +28,13 @@ const message = ref('')
 const busy = ref(false)
 const testingConnection = ref(false)
 const connectionResult = ref<ProviderConnectionResult>()
+const confirmClearAll = ref(false)
+const showAddProviderMenu = ref(false)
+const showCustomProviderForm = ref(false)
+const customProviderName = ref('')
+const customProviderBaseUrl = ref('')
+const customProviderApiKey = ref('')
+const customProviderModel = ref('')
 const browserLocale = resolveUiLocale(globalThis.navigator?.language)
 const sourceLanguages = getSourceLanguageOptions()
 const targetLanguages = getTargetLanguageOptions()
@@ -33,23 +43,29 @@ const uiLocale = computed<UiLocale>(() =>
   settings.interfaceLocale === 'auto' ? browserLocale : settings.interfaceLocale,
 )
 const dirty = computed(() => JSON.stringify(settings) !== JSON.stringify(savedSettings.value))
-const selectedProviderConfigured = computed(() => {
-  if (settings.defaultProviderId === 'azure-translator') {
-    return Boolean(
-      settings.providers.azure.endpoint.trim() &&
-        settings.providers.azure.key.trim() &&
-        settings.providers.azure.region.trim(),
-    )
-  }
 
-  return Boolean(
-    settings.providers.openai.baseUrl.trim() &&
-      settings.providers.openai.apiKey.trim() &&
-      settings.providers.openai.model.trim(),
-  )
+const activeProvider = computed({
+  get: () => settings.providers[settings.defaultProviderId],
+  set: (val) => { if (val) settings.providers[settings.defaultProviderId] = val },
 })
+
+const activeProviderPreset = computed(() =>
+  BUILT_IN_PRESETS.find(p => p.id === activeProvider.value?.presetId),
+)
+
+const activeProviderFields = computed(() => activeProviderPreset.value?.fields ?? [])
+
+const selectedProviderConfigured = computed(() => {
+  const config = settings.providers[settings.defaultProviderId]
+  return config ? isProviderConfigured(config) : false
+})
+
 const connectionMessage = computed(() =>
   connectionResult.value ? copy(connectionCopyKey(connectionResult.value.messageCode)) : '',
+)
+
+const availablePresets = computed(() =>
+  BUILT_IN_PRESETS.filter(p => !(p.id in settings.providers)),
 )
 
 watch(dirty, hasUnsavedChanges => {
@@ -58,6 +74,9 @@ watch(dirty, hasUnsavedChanges => {
 watch(settings, () => {
   connectionResult.value = undefined
 }, { deep: true })
+watch(confirmClearAll, (val) => {
+  if (val) setTimeout(() => { confirmClearAll.value = false }, 3000)
+})
 
 onMounted(loadSettings)
 
@@ -67,7 +86,7 @@ async function loadSettings() {
 
   try {
     if (hasRuntimeApi()) {
-      Object.assign(settings, await sendRuntimeMessage<AppSettings>({ type: 'settings/get' }))
+      Object.assign(settings, await sendChromeMessage<AppSettings>({ type: 'settings/get' }))
     }
     savedSettings.value = structuredClone(toRaw(settings))
   } catch (error) {
@@ -84,13 +103,19 @@ async function save() {
   message.value = ''
 
   try {
+    const config = settings.providers[settings.defaultProviderId]
+    const endpoint = getProviderEndpoint(config)
+    if (endpoint && !providerOriginPattern(endpoint)) {
+      message.value = copy('options.invalidEndpoint')
+      return
+    }
     const value = structuredClone(toRaw(settings))
-    if (!(await requestProviderOriginAccess(value.defaultProviderId, getProviderConfig(value)))) {
+    if (!(await requestProviderOriginAccess(value.defaultProviderId, getProviderEndpoint(getProviderConfig(value))))) {
       message.value = copy('options.connectionPermissionDenied')
       return
     }
     if (hasRuntimeApi()) {
-      await sendRuntimeMessage({ type: 'settings/save', payload: { settings: value } })
+      await sendChromeMessage({ type: 'settings/save', payload: { settings: value } })
     }
     savedSettings.value = value
     message.value = copy('options.saved')
@@ -107,7 +132,7 @@ async function clearAllCache() {
 
   try {
     if (hasRuntimeApi()) {
-      await sendRuntimeMessage({ type: 'cache/clearAll' })
+      await sendChromeMessage({ type: 'cache/clearAll' })
     }
     message.value = copy('options.cacheCleared')
   } catch (error) {
@@ -123,22 +148,20 @@ async function testConnection() {
 
   try {
     const providerId = settings.defaultProviderId
-    const config =
-      providerId === 'azure-translator'
-        ? structuredClone(toRaw(settings.providers.azure))
-        : structuredClone(toRaw(settings.providers.openai))
+    const config = structuredClone(toRaw(settings.providers[providerId]))
 
     if (!hasRuntimeApi()) {
       connectionResult.value = { ok: false, providerId, messageCode: 'config_incomplete' }
       return
     }
 
-    if (!(await requestProviderOriginAccess(providerId, config))) {
+    const endpoint = getProviderEndpoint(config)
+    if (!(await requestProviderOriginAccess(providerId, endpoint))) {
       connectionResult.value = { ok: false, providerId, messageCode: 'permission_denied' }
       return
     }
 
-    connectionResult.value = await sendRuntimeMessage<ProviderConnectionResult>({
+    connectionResult.value = await sendChromeMessage<ProviderConnectionResult>({
       type: 'provider/testConnection',
       payload: { providerId, config },
     })
@@ -153,10 +176,71 @@ async function testConnection() {
   }
 }
 
-async function sendRuntimeMessage<T = unknown>(payload: unknown): Promise<T> {
-  const response = (await chrome.runtime.sendMessage(payload)) as MessageResponse<T>
-  if (!response?.ok) throw new Error(response?.error?.message ?? 'Settings message failed.')
-  return response.data
+function addProvider(presetId: string) {
+  const preset = BUILT_IN_PRESETS.find(p => p.id === presetId)
+  if (!preset) return
+  const defaultValues: Record<string, string> = {}
+  for (const field of preset.fields) {
+    if (field.defaultValue) defaultValues[field.key] = field.defaultValue
+  }
+  settings.providers[presetId] = {
+    id: presetId,
+    presetId: presetId,
+    name: preset.name,
+    values: defaultValues,
+  }
+  settings.defaultProviderId = presetId
+  showAddProviderMenu.value = false
+}
+
+function removeProvider(id: string) {
+  if (Object.keys(settings.providers).length <= 1) return
+  delete settings.providers[id]
+  if (settings.defaultProviderId === id) {
+    settings.defaultProviderId = Object.keys(settings.providers)[0] ?? ''
+  }
+  if (settings.fallbackProviderId === id) {
+    settings.fallbackProviderId = ''
+  }
+}
+
+function openCustomProviderForm() {
+  showAddProviderMenu.value = false
+  showCustomProviderForm.value = true
+  customProviderName.value = ''
+  customProviderBaseUrl.value = 'http://localhost:11434/v1'
+  customProviderApiKey.value = ''
+  customProviderModel.value = 'gpt-4o-mini'
+}
+
+function cancelCustomProvider() {
+  showCustomProviderForm.value = false
+}
+
+function confirmCustomProvider() {
+  const name = customProviderName.value.trim()
+  const baseUrl = customProviderBaseUrl.value.trim()
+  const apiKey = customProviderApiKey.value.trim()
+  const model = customProviderModel.value.trim()
+  if (!name || !baseUrl || !model) return
+
+  const id = 'custom-' + Date.now()
+  settings.providers[id] = {
+    id,
+    presetId: 'openai-compatible',
+    name,
+    values: { baseUrl, apiKey, model },
+  }
+  settings.defaultProviderId = id
+  showCustomProviderForm.value = false
+}
+
+function getProviderEndpoint(config: ProviderConfig): string {
+  return config.values.endpoint || config.values.baseUrl || ''
+}
+
+function getProviderConfig(value: AppSettings): ProviderConfig {
+  return value.providers[value.defaultProviderId]
 }
 
 function copy(key: Parameters<typeof t>[1], variables?: Record<string, string | number>) {
@@ -175,20 +259,10 @@ function connectionCopyKey(code: ProviderConnectionMessageCode): Parameters<type
   return keys[code]
 }
 
-function getProviderConfig(value: AppSettings) {
-  return value.defaultProviderId === 'azure-translator'
-    ? value.providers.azure
-    : value.providers.openai
-}
-
 async function requestProviderOriginAccess(
-  providerId: AppSettings['defaultProviderId'],
-  config: AppSettings['providers']['azure'] | AppSettings['providers']['openai'],
+  providerId: string,
+  endpoint: string,
 ) {
-  const endpoint =
-    providerId === 'azure-translator'
-      ? (config as AppSettings['providers']['azure']).endpoint
-      : (config as AppSettings['providers']['openai']).baseUrl
   const origin = providerOriginPattern(endpoint)
 
   if (!origin || !hasRuntimeApi() || typeof globalThis.chrome?.permissions?.request !== 'function') {
@@ -288,36 +362,88 @@ function hasRuntimeApi() {
             <label>
               <span>{{ copy('options.defaultProvider') }}</span>
               <select v-model="settings.defaultProviderId">
-                <option value="azure-translator">{{ copy('options.azure') }}</option>
-                <option value="openai-compatible">{{ copy('options.openAI') }}</option>
+                <option v-for="(config, id) in settings.providers" :key="id" :value="id">{{ config.name }}</option>
               </select>
             </label>
             <label>
               <span>{{ copy('options.fallbackProvider') }}</span>
               <select v-model="settings.fallbackProviderId">
                 <option value="">{{ copy('options.none') }}</option>
-                <option value="azure-translator">{{ copy('options.azure') }}</option>
-                <option value="openai-compatible">{{ copy('options.openAI') }}</option>
+                <option v-for="(config, id) in settings.providers" :key="id" :value="id">{{ config.name }}</option>
               </select>
             </label>
           </div>
 
-          <div v-if="settings.defaultProviderId === 'azure-translator'" class="provider-fields">
-            <label>
-              <span>{{ copy('options.region') }}</span>
-              <input v-model="settings.providers.azure.region" autocomplete="off" />
-            </label>
-            <label>
-              <span>{{ copy('options.apiKey') }}</span>
-              <input v-model="settings.providers.azure.key" autocomplete="off" type="password" />
-            </label>
+          <div class="provider-fields" v-if="activeProvider">
+            <template v-for="field in activeProviderFields" :key="field.key">
+              <label>
+                <span>{{ field.label }}</span>
+                <input
+                  :type="field.type"
+                  :placeholder="field.placeholder"
+                  v-model="activeProvider.values[field.key]"
+                  autocomplete="off"
+                />
+              </label>
+            </template>
           </div>
 
-          <div v-else class="provider-fields">
-            <label>
-              <span>{{ copy('options.apiKey') }}</span>
-              <input v-model="settings.providers.openai.apiKey" autocomplete="off" type="password" />
-            </label>
+          <div class="provider-actions">
+            <button
+              v-if="Object.keys(settings.providers).length > 1"
+              class="danger"
+              type="button"
+              @click="removeProvider(settings.defaultProviderId)"
+            >
+              {{ copy('options.removeProvider') }}
+            </button>
+            <div class="add-provider-area" v-if="availablePresets.length > 0">
+              <button class="secondary" type="button" @click="showAddProviderMenu = !showAddProviderMenu">
+                {{ copy('options.addProvider') }}
+              </button>
+              <div v-if="showAddProviderMenu" class="add-provider-menu">
+                <button
+                  v-for="preset in availablePresets"
+                  :key="preset.id"
+                  class="menu-item"
+                  type="button"
+                  @click="addProvider(preset.id)"
+                >
+                  {{ preset.name }}
+                </button>
+                <button class="menu-item" type="button" @click="openCustomProviderForm">
+                  {{ copy('options.customOpenAI') }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="showCustomProviderForm" class="custom-provider-form">
+            <h3>{{ copy('options.customOpenAI') }}</h3>
+            <div class="grid">
+              <label>
+                <span>{{ copy('options.customProviderName') }}</span>
+                <input v-model="customProviderName" type="text" placeholder="e.g. DeepL, Ollama, LM Studio" autocomplete="off" />
+              </label>
+              <label>
+                <span>Base URL</span>
+                <input v-model="customProviderBaseUrl" type="url" placeholder="http://localhost:11434/v1" autocomplete="off" />
+              </label>
+              <label>
+                <span>API Key</span>
+                <input v-model="customProviderApiKey" type="password" placeholder="Optional" autocomplete="off" />
+              </label>
+              <label>
+                <span>Model</span>
+                <input v-model="customProviderModel" type="text" placeholder="gpt-4o-mini" autocomplete="off" />
+              </label>
+            </div>
+            <div class="custom-provider-actions">
+              <button class="secondary" type="button" @click="cancelCustomProvider">{{ copy('options.cancel') }}</button>
+              <button type="button" :disabled="!customProviderName.trim() || !customProviderBaseUrl.trim() || !customProviderModel.trim()" @click="confirmCustomProvider">
+                {{ copy('options.addProvider') }}
+              </button>
+            </div>
           </div>
 
           <div class="connection-test">
@@ -346,8 +472,8 @@ function hasRuntimeApi() {
             <span>{{ copy('options.cacheEnabled') }}</span>
           </label>
           <div class="storage-actions">
-            <button class="danger" :disabled="busy" @click="clearAllCache">
-              {{ copy('options.clearAllCache') }}
+            <button class="danger" :class="{ 'danger-confirm': confirmClearAll }" :disabled="busy" @click="confirmClearAll ? clearAllCache() : (confirmClearAll = true)">
+              {{ confirmClearAll ? copy('options.confirmClearAll') : copy('options.clearAllCache') }}
             </button>
           </div>
         </section>
@@ -364,18 +490,6 @@ function hasRuntimeApi() {
             <label>
               <span>{{ copy('options.maxCacheItems') }}</span>
               <input v-model.number="settings.maxCacheItems" min="1" type="number" />
-            </label>
-            <label>
-              <span>{{ copy('options.azureEndpoint') }}</span>
-              <input v-model="settings.providers.azure.endpoint" />
-            </label>
-            <label>
-              <span>{{ copy('options.openAIBaseUrl') }}</span>
-              <input v-model="settings.providers.openai.baseUrl" />
-            </label>
-            <label>
-              <span>{{ copy('options.model') }}</span>
-              <input v-model="settings.providers.openai.model" />
             </label>
           </div>
         </section>
@@ -516,6 +630,10 @@ select {
   font-size: 14px;
 }
 
+.invalid {
+  border-color: #dc2626;
+}
+
 .check {
   display: flex;
   align-items: center;
@@ -558,6 +676,78 @@ select {
   color: #047857 !important;
 }
 
+.provider-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.add-provider-area {
+  position: relative;
+}
+
+.add-provider-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10;
+  margin-top: 4px;
+  min-width: 200px;
+  border: 1px solid #dbe1ea;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 6px 20px rgb(15 23 42 / 10%);
+  overflow: hidden;
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  min-height: 38px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: #111827;
+  font-weight: 400;
+  text-align: left;
+  padding: 0 14px;
+  cursor: pointer;
+}
+
+.menu-item:hover {
+  background: #f0f6ff;
+}
+
+.menu-item:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.menu-item:disabled:hover {
+  background: transparent;
+}
+
+.custom-provider-form {
+  padding: 20px;
+  margin-top: 16px;
+  border: 1px solid #dbe1ea;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.custom-provider-form h3 {
+  margin: 0 0 16px;
+  font-size: 15px;
+}
+
+.custom-provider-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
 button {
   min-height: 40px;
   display: inline-flex;
@@ -582,6 +772,11 @@ button:disabled {
 .danger {
   border-color: #dc2626;
   background: #dc2626;
+}
+
+.danger-confirm {
+  border-color: #991b1b;
+  background: #991b1b;
 }
 
 .secondary {

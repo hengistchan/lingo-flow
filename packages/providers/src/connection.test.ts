@@ -1,13 +1,12 @@
-import type { AzureTranslatorConfig, OpenAICompatibleConfig } from '@lingoflow/types'
 import { testProviderConnection } from './index'
 
-const azureConfig: AzureTranslatorConfig = {
+const azureValues = {
   endpoint: 'https://api.cognitive.microsofttranslator.com',
   key: 'azure-secret',
   region: 'eastasia',
 }
 
-const openAIConfig: OpenAICompatibleConfig = {
+const openAIValues = {
   baseUrl: 'https://api.openai.com/v1',
   apiKey: 'openai-secret',
   model: 'gpt-test',
@@ -24,14 +23,14 @@ describe('testProviderConnection', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
 
-    const result = await testProviderConnection('azure-translator', azureConfig)
+    const result = await testProviderConnection({ presetId: 'azure-translator', values: azureValues })
 
     expect(result).toEqual({
       ok: true,
       providerId: 'azure-translator',
       messageCode: 'connection_ok',
     })
-    expect(JSON.stringify(result)).not.toContain(azureConfig.key)
+    expect(JSON.stringify(result)).not.toContain(azureValues.key)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual([
       { text: 'LingoFlow connection test.' },
@@ -46,7 +45,7 @@ describe('testProviderConnection', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
 
-    const result = await testProviderConnection('openai-compatible', openAIConfig)
+    const result = await testProviderConnection({ presetId: 'openai-compatible', values: openAIValues })
 
     expect(result).toEqual({
       ok: true,
@@ -61,13 +60,40 @@ describe('testProviderConnection', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(
-      testProviderConnection('azure-translator', { ...azureConfig, key: '' }),
+      testProviderConnection({ presetId: 'azure-translator', values: { ...azureValues, key: '' } }),
     ).resolves.toEqual({
       ok: false,
       providerId: 'azure-translator',
       messageCode: 'config_incomplete',
     })
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('returns provider_failed when a request times out', async () => {
+    vi.useFakeTimers()
+
+    const fetchMock = vi.fn().mockImplementation((_url: string, init?: { signal?: AbortSignal }) => {
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          reject(new DOMException('The operation was aborted.', 'AbortError'))
+        })
+      }) as Promise<Response>
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const resultPromise = testProviderConnection({ presetId: 'azure-translator', values: azureValues })
+
+    await vi.advanceTimersByTimeAsync(30000)
+
+    const result = await resultPromise
+
+    expect(result).toEqual({
+      ok: false,
+      providerId: 'azure-translator',
+      messageCode: 'provider_failed',
+    })
+
+    vi.useRealTimers()
   })
 
   it('normalizes authentication and network failures', async () => {
@@ -77,12 +103,12 @@ describe('testProviderConnection', () => {
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(testProviderConnection('azure-translator', azureConfig)).resolves.toEqual({
+    await expect(testProviderConnection({ presetId: 'azure-translator', values: azureValues })).resolves.toEqual({
       ok: false,
       providerId: 'azure-translator',
       messageCode: 'authentication_failed',
     })
-    await expect(testProviderConnection('openai-compatible', openAIConfig)).resolves.toEqual({
+    await expect(testProviderConnection({ presetId: 'openai-compatible', values: openAIValues })).resolves.toEqual({
       ok: false,
       providerId: 'openai-compatible',
       messageCode: 'network_failed',

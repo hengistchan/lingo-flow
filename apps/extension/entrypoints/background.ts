@@ -1,23 +1,37 @@
 import { buildTranslationCacheKey, clearAllCache, clearCacheByDomain, pruneCache, resolveTranslationCache, safeSaveTranslationCache } from '@lingoflow/cache'
-import { createDefaultProviderRegistry, testProviderConnection } from '@lingoflow/providers'
+import { createDefaultProviderRegistry, extractAzureConfig, extractOpenAIConfig, testProviderConnection } from '@lingoflow/providers'
 import { isFallbackEligible, retry, translateBatchWithDegrade } from '@lingoflow/scheduler'
 import { getPublicRuntimeSettings, getSettings, getSettingsSummary, saveSettings } from '@lingoflow/settings'
+import { success, failure } from '@lingoflow/shared'
 import type {
   AppSettings,
-  AzureTranslatorConfig,
-  MessageResponse,
-  OpenAICompatibleConfig,
-  ProviderId,
+  LingoFlowMessage,
   TranslationResult,
   TranslationTask,
 } from '@lingoflow/types'
 import { defineBackground } from 'wxt/utils/define-background'
 
+const KNOWN_MESSAGE_TYPES = new Set<string>([
+  'settings/get',
+  'settings/getRuntime',
+  'settings/getSummary',
+  'settings/save',
+  'provider/testConnection',
+  'translation-cache/resolve',
+  'translation/translateBatch',
+  'cache/clearByDomain',
+  'cache/clearAll',
+])
+
 const registry = createDefaultProviderRegistry()
 
 export default defineBackground(() => {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    handleMessage(message, sender)
+    if (!message?.type || !KNOWN_MESSAGE_TYPES.has(message.type)) {
+      return false
+    }
+
+    handleMessage(message as LingoFlowMessage, sender)
       .then(data => sendResponse(success(data)))
       .catch(error => sendResponse(failure(error)))
 
@@ -25,8 +39,8 @@ export default defineBackground(() => {
   })
 })
 
-async function handleMessage(message: { type?: string; payload?: unknown }, _sender: chrome.runtime.MessageSender): Promise<unknown> {
-  switch (message?.type) {
+async function handleMessage(message: LingoFlowMessage, _sender: chrome.runtime.MessageSender): Promise<unknown> {
+  switch (message.type) {
     case 'settings/get':
       return getSettings()
     case 'settings/getRuntime': {
@@ -36,28 +50,32 @@ async function handleMessage(message: { type?: string; payload?: unknown }, _sen
     case 'settings/getSummary':
       return getSettingsSummary(await getSettings())
     case 'settings/save':
-      await saveSettings((message.payload as { settings: AppSettings }).settings)
+      await saveSettings(message.payload.settings)
       return { saved: true }
-    case 'provider/testConnection': {
-      const payload = message.payload as {
-        providerId: ProviderId
-        config: AzureTranslatorConfig | OpenAICompatibleConfig
-      }
-      return testProviderConnection(payload.providerId, payload.config)
-    }
+    case 'provider/testConnection':
+      return testProviderConnection(message.payload.config)
     case 'translation-cache/resolve':
-      return resolveTranslationCache((message.payload as { tasks: TranslationTask[] }).tasks)
+      return resolveTranslationCache(message.payload.tasks)
     case 'translation/translateBatch':
-      return translateBatch((message.payload as { tasks: TranslationTask[] }).tasks)
+      return translateBatch(message.payload.tasks)
     case 'cache/clearByDomain':
-      await clearCacheByDomain((message.payload as { domain: string }).domain)
+      await clearCacheByDomain(message.payload.domain)
       return { cleared: true }
     case 'cache/clearAll':
       await clearAllCache()
       await clearAllPageMemoryCaches()
       return { cleared: true }
-    default:
-      throw new Error(`Unsupported LingoFlow message: ${message?.type ?? 'unknown'}`)
+    case 'page/progressUpdate':
+      return { received: true }
+    case 'page/translate':
+    case 'page/clear':
+    case 'page/clearCache':
+    case 'page/status':
+      return { delegated: true }
+    default: {
+      const _exhaustive: never = message
+      throw new Error(`Unsupported LingoFlow message: ${(message as { type?: string }).type ?? 'unknown'}`)
+    }
   }
 }
 
@@ -73,7 +91,8 @@ async function translateBatch(tasks: TranslationTask[]) {
 }
 
 async function translateBatchWithProviders(tasks: TranslationTask[], settings: AppSettings): Promise<TranslationResult[]> {
-  const primaryProviderId = tasks[0]?.providerId as ProviderId
+  if (tasks.length === 0) return []
+  const primaryProviderId = tasks[0].providerId
 
   try {
     return await retry(() => translateWithProvider(tasks, settings, primaryProviderId), {
@@ -96,12 +115,17 @@ async function translateBatchWithProviders(tasks: TranslationTask[], settings: A
 async function translateWithProvider(
   tasks: TranslationTask[],
   settings: AppSettings,
-  providerId: ProviderId,
+  providerId: string,
 ): Promise<TranslationResult[]> {
-  const provider = registry.get(providerId)
-  const config = getProviderConfig(settings, providerId)
-  const model = providerId === 'openai-compatible' ? settings.providers.openai.model : undefined
-  const promptVersion = providerId === 'openai-compatible' ? 'prompt-v1' : undefined
+  const providerConfig = getProviderConfigForProvider(settings, providerId)
+  if (!providerConfig) throw new Error("Provider config not found: " + providerId)
+  const presetId = providerConfig.presetId ?? providerId
+  const provider = registry.get(presetId)
+  const config = presetId === "azure-translator"
+    ? extractAzureConfig(providerConfig)
+    : extractOpenAIConfig(providerConfig)
+  const model = providerConfig.values.model || undefined
+  const promptVersion = presetId === "openai-compatible" ? "prompt-v1" : undefined
   const output = await provider.translate(
     {
       sourceLang: tasks[0]?.sourceLang ?? 'auto',
@@ -171,9 +195,8 @@ async function translateWithProvider(
   return results
 }
 
-function getProviderConfig(settings: AppSettings, providerId: ProviderId) {
-  if (providerId === 'azure-translator') return settings.providers.azure
-  return settings.providers.openai
+function getProviderConfigForProvider(settings: AppSettings, providerId: string) {
+  return settings.providers[providerId]
 }
 
 async function clearAllPageMemoryCaches() {
@@ -184,17 +207,4 @@ async function clearAllPageMemoryCaches() {
       : [chrome.tabs.sendMessage(tab.id, { type: 'page/clearCache' })],
   )
   await Promise.allSettled(messages)
-}
-
-function success<T>(data: T): MessageResponse<T> {
-  return { ok: true, data }
-}
-
-function failure(error: unknown): MessageResponse<never> {
-  return {
-    ok: false,
-    error: {
-      message: error instanceof Error ? error.message : String(error),
-    },
-  }
 }

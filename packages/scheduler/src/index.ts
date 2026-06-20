@@ -43,7 +43,8 @@ export async function retry<T>(operation: () => Promise<T>, options: RetryOption
     } catch (error) {
       lastError = error
       if (attempt >= options.attempts || !isRetryableProviderError(error)) break
-      if (options.delayMs > 0) await sleep(options.delayMs)
+      const backoffMs = Math.min(options.delayMs * Math.pow(2, attempt - 1), 10000)
+      if (backoffMs > 0) await sleep(backoffMs)
     }
   }
 

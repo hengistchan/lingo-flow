@@ -2,7 +2,7 @@ import { buildTranslationCacheKey } from '@lingoflow/cache'
 import { collectTextBlocks } from '@lingoflow/dom'
 import { clearTranslations, safeRender } from '@lingoflow/renderer'
 import { createBatches } from '@lingoflow/scheduler'
-import { getDomain, getSourceLanguageOptions, getTargetLanguageOptions } from '@lingoflow/shared'
+import { getDomain, getSourceLanguageOptions, getTargetLanguageOptions, success, failure } from '@lingoflow/shared'
 import type {
   MessageResponse,
   PageTranslationProgress,
@@ -10,6 +10,10 @@ import type {
   TranslationResult,
   TranslationTask,
 } from '@lingoflow/types'
+
+const MAX_MEMORY_CACHE_ENTRIES = 500
+const DEFAULT_MAX_BATCH_ITEMS = 20
+const DEFAULT_MAX_BATCH_CHARS = 12000
 
 type RuntimeDependencies = {
   document?: Document
@@ -21,13 +25,24 @@ type PageTranslationOverrides = {
   targetLang?: string
 }
 
+export function evictOldestCacheEntries(cache: Map<string, TranslationResult>, maxEntries: number) {
+  while (cache.size > maxEntries) {
+    const oldestKey = cache.keys().next().value
+    if (oldestKey !== undefined) cache.delete(oldestKey)
+  }
+}
+
 export function createContentRuntime(dependencies: RuntimeDependencies = {}) {
   const root = dependencies.document ?? document
   const runtime = dependencies.chromeRuntime ?? chrome.runtime
   const memoryCache = new Map<string, TranslationResult>()
   let progress: PageTranslationProgress = idleProgress()
+  let translating = false
 
   async function translatePage(overrides: PageTranslationOverrides = {}) {
+    if (translating) return progress
+    translating = true
+
     progress = {
       status: 'translating',
       sourceLang: overrides.sourceLang ?? progress.sourceLang,
@@ -86,6 +101,7 @@ export function createContentRuntime(dependencies: RuntimeDependencies = {}) {
 
           renderResults(cache.hits)
           for (const hit of cache.hits) memoryCache.set(hit.cacheKey, hit)
+          evictOldestCacheEntries(memoryCache, MAX_MEMORY_CACHE_ENTRIES)
           progress.cacheHits += cache.hits.length
           progress.translatedBlocks += cache.hits.length
           misses = cache.misses
@@ -94,21 +110,34 @@ export function createContentRuntime(dependencies: RuntimeDependencies = {}) {
         }
       }
 
-      for (const batch of createBatches(misses, { maxItems: 20, maxChars: 12000 })) {
-        const response = await sendRuntimeMessage<{ results: TranslationResult[] }>(runtime, {
-          type: 'translation/translateBatch',
-          payload: { tasks: batch },
-        })
+      for (const batch of createBatches(misses, { maxItems: DEFAULT_MAX_BATCH_ITEMS, maxChars: DEFAULT_MAX_BATCH_CHARS })) {
+        try {
+          const response = await sendRuntimeMessage<{ results: TranslationResult[] }>(runtime, {
+            type: 'translation/translateBatch',
+            payload: { tasks: batch },
+          })
 
-        renderResults(response.results)
-        for (const result of response.results) {
-          if (result.status === 'success') {
-            memoryCache.set(result.cacheKey, result)
-            progress.translatedBlocks += 1
-          } else {
+          renderResults(response.results)
+          for (const result of response.results) {
+            if (result.status === 'success') {
+              memoryCache.set(result.cacheKey, result)
+              evictOldestCacheEntries(memoryCache, MAX_MEMORY_CACHE_ENTRIES)
+              progress.translatedBlocks += 1
+            } else {
+              progress.failedBlocks += 1
+            }
+          }
+        } catch (error) {
+          for (const task of batch) {
             progress.failedBlocks += 1
           }
+          console.warn('[LingoFlow] Batch translation failed', error)
         }
+
+        runtime.sendMessage({
+          type: 'page/progressUpdate',
+          payload: { ...progress },
+        }).catch(() => {})
       }
 
       progress.status = deriveProgressStatus({
@@ -122,6 +151,8 @@ export function createContentRuntime(dependencies: RuntimeDependencies = {}) {
       progress.messageCode = 'runtime_error'
       progress.message = error instanceof Error ? error.message : String(error)
       return progress
+    } finally {
+      translating = false
     }
   }
 
@@ -199,7 +230,8 @@ export function deriveProgressStatus(input: {
   failed: number
   total: number
 }): PageTranslationProgress['status'] {
-  if (input.total <= 0 || input.translated <= 0) return 'failed'
+  if (input.total <= 0) return 'failed'
+  if (input.translated === 0) return 'failed'
   if (input.failed > 0 || input.translated < input.total) return 'partial'
   return 'done'
 }
@@ -268,17 +300,4 @@ function resolveLanguage(
 ): string {
   if (override && options.some(option => option.code === override)) return override
   return options.some(option => option.code === fallback) ? fallback : options[0]?.code ?? fallback
-}
-
-function success<T>(data: T): MessageResponse<T> {
-  return { ok: true, data }
-}
-
-function failure(error: unknown): MessageResponse<never> {
-  return {
-    ok: false,
-    error: {
-      message: error instanceof Error ? error.message : String(error),
-    },
-  }
 }

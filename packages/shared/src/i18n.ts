@@ -23,6 +23,7 @@ export type UiCopyKey =
   | 'popup.failedBlocks'
   | 'popup.noReadableText'
   | 'popup.genericFailure'
+  | 'popup.loading'
   | 'options.languages'
   | 'options.providers'
   | 'options.storage'
@@ -56,6 +57,7 @@ export type UiCopyKey =
   | 'options.apiKey'
   | 'options.cacheEnabled'
   | 'options.clearAllCache'
+  | 'options.confirmClearAll'
   | 'options.cacheCleared'
   | 'options.renderMode'
   | 'options.belowOriginal'
@@ -63,6 +65,12 @@ export type UiCopyKey =
   | 'options.azureEndpoint'
   | 'options.openAIBaseUrl'
   | 'options.model'
+  | 'options.invalidEndpoint'
+  | 'options.removeProvider'
+  | 'options.addProvider'
+  | 'options.customOpenAI'
+  | 'options.customProviderName'
+  | 'options.cancel'
 
 const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
   'zh-Hans': {
@@ -87,6 +95,7 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'popup.failedBlocks': '失败段落',
     'popup.noReadableText': '此页面没有可翻译的正文',
     'popup.genericFailure': '无法翻译此页面，请检查设置后重试',
+    'popup.loading': '正在加载…',
     'options.languages': '语言',
     'options.providers': '翻译服务',
     'options.storage': '存储',
@@ -120,6 +129,7 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.apiKey': 'API 密钥',
     'options.cacheEnabled': '启用本地翻译缓存',
     'options.clearAllCache': '清除全部缓存',
+    'options.confirmClearAll': '确认清除全部缓存',
     'options.cacheCleared': '全部翻译缓存已清除',
     'options.renderMode': '译文显示方式',
     'options.belowOriginal': '显示在原文下方',
@@ -127,6 +137,12 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.azureEndpoint': 'Azure Endpoint',
     'options.openAIBaseUrl': 'OpenAI Base URL',
     'options.model': '模型',
+    'options.invalidEndpoint': '请输入有效的 URL',
+    'options.removeProvider': '移除此翻译服务',
+    'options.addProvider': '添加翻译服务',
+    'options.customOpenAI': '自定义 OpenAI 兼容',
+    'options.customProviderName': '名称',
+    'options.cancel': '取消',
   },
   en: {
     'popup.autoDetect': 'Auto-detect page language',
@@ -150,6 +166,7 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'popup.failedBlocks': 'Failed blocks',
     'popup.noReadableText': 'No readable text found on this page',
     'popup.genericFailure': 'This page could not be translated. Check settings and try again.',
+    'popup.loading': 'Loading...',
     'options.languages': 'Languages',
     'options.providers': 'Translation service',
     'options.storage': 'Storage',
@@ -183,6 +200,7 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.apiKey': 'API key',
     'options.cacheEnabled': 'Enable local translation cache',
     'options.clearAllCache': 'Clear all cache',
+    'options.confirmClearAll': 'Confirm clear all cache',
     'options.cacheCleared': 'All translation cache cleared',
     'options.renderMode': 'Render mode',
     'options.belowOriginal': 'Below original text',
@@ -190,6 +208,12 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.azureEndpoint': 'Azure endpoint',
     'options.openAIBaseUrl': 'OpenAI base URL',
     'options.model': 'Model',
+    'options.invalidEndpoint': 'Please enter a valid URL',
+    'options.removeProvider': 'Remove provider',
+    'options.addProvider': 'Add provider',
+    'options.customOpenAI': 'Custom OpenAI-compatible',
+    'options.customProviderName': 'Name',
+    'options.cancel': 'Cancel',
   },
 }
 

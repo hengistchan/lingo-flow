@@ -158,7 +158,30 @@ export type CachedTranslation = {
   translatedTextLength: number
 }
 
-export type ProviderId = 'azure-translator' | 'openai-compatible'
+export type ProviderId = string
+
+export type ProviderPreset = {
+  id: string
+  name: string
+  type: ProviderType
+  fields: ProviderFieldDef[]
+}
+
+export type ProviderFieldDef = {
+  key: string
+  label: string
+  type: 'text' | 'password' | 'url'
+  required: boolean
+  placeholder?: string
+  defaultValue?: string
+}
+
+export type ProviderConfig = {
+  id: string
+  presetId?: string
+  name: string
+  values: Record<string, string>
+}
 
 export type AzureTranslatorConfig = {
   endpoint: string
@@ -182,10 +205,7 @@ export type AppSettings = {
   maxCacheItems: number
   defaultProviderId: ProviderId
   fallbackProviderId?: ProviderId | ''
-  providers: {
-    azure: AzureTranslatorConfig
-    openai: OpenAICompatibleConfig
-  }
+  providers: Record<string, ProviderConfig>
 }
 
 export type SettingsSummary = {
@@ -275,7 +295,7 @@ export type TestProviderConnectionMessage = {
   type: 'provider/testConnection'
   payload: {
     providerId: ProviderId
-    config: AzureTranslatorConfig | OpenAICompatibleConfig
+    config: ProviderConfig
   }
 }
 
@@ -310,6 +330,11 @@ export type PageStatusMessage = {
   type: 'page/status'
 }
 
+export type PageProgressUpdateMessage = {
+  type: 'page/progressUpdate'
+  payload: PageTranslationProgress
+}
+
 export type LingoFlowMessage =
   | ResolveCacheMessage
   | TranslateBatchMessage
@@ -324,6 +349,7 @@ export type LingoFlowMessage =
   | PageClearMessage
   | PageClearCacheMessage
   | PageStatusMessage
+  | PageProgressUpdateMessage
 
 export type MessageResponse<T> =
   | {

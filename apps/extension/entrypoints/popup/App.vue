@@ -5,6 +5,7 @@ import {
   getTargetLanguageOptions,
   resolveUiLocale,
   t,
+  sendChromeMessage,
 } from '@lingoflow/shared'
 import type {
   MessageResponse,
@@ -28,9 +29,10 @@ const pendingTargetLang = ref(summary.value.targetLang)
 const targetSelectionTouched = ref(false)
 const busy = ref(false)
 const actionFailed = ref(false)
+const contentInjected = ref(false)
 const cacheMessage = ref('')
-const targetLanguages = getTargetLanguageOptions()
 let pollTimer: number | undefined
+const targetLanguages = getTargetLanguageOptions()
 
 const targetLanguageName = computed(() => getLanguageLabel(pendingTargetLang.value, uiLocale.value))
 const hasTranslations = computed(() => progress.value.translatedBlocks > 0)
@@ -51,6 +53,7 @@ const primaryActionLabel = computed(() => {
   }
   return copy('popup.translateTo', { language: targetLanguageName.value })
 })
+const loading = computed(() => busy.value && progress.value.status === "idle")
 const completion = computed(() => {
   if (progress.value.totalBlocks === 0) return 0
   return Math.round(((progress.value.translatedBlocks + progress.value.failedBlocks) / progress.value.totalBlocks) * 100)
@@ -61,25 +64,37 @@ const userMessage = computed(() => {
   return ''
 })
 
+function onProgressUpdate(message: { type?: string; payload?: PageTranslationProgress }) {
+  if (message?.type === 'page/progressUpdate' && message.payload) {
+    progress.value = { ...message.payload }
+    if (!targetSelectionTouched.value && message.payload.status !== 'idle') {
+      pendingTargetLang.value = message.payload.targetLang
+    }
+  }
+}
+
 onMounted(() => {
   if (!extensionApiAvailable.value) return
 
+  chrome.runtime.onMessage.addListener(onProgressUpdate)
   void initialize()
-  pollTimer = window.setInterval(refreshStatus, 900)
+  pollTimer = window.setInterval(refreshStatus, 3000)
 })
 
 onUnmounted(() => {
+  chrome.runtime.onMessage.removeListener(onProgressUpdate)
   if (pollTimer) window.clearInterval(pollTimer)
 })
 
 async function initialize() {
   try {
-    summary.value = await sendRuntimeMessage<SettingsSummary>({ type: 'settings/getSummary' })
+    summary.value = await sendChromeMessage<SettingsSummary>({ type: 'settings/getSummary' })
     if (summary.value.interfaceLocale !== 'auto') {
       uiLocale.value = summary.value.interfaceLocale
     }
     pendingTargetLang.value = summary.value.targetLang
     targetSelectionTouched.value = false
+    contentInjected.value = false
     await refreshStatus()
   } catch {
     actionFailed.value = true
@@ -103,6 +118,7 @@ async function translatePage() {
       type: 'page/translate',
       payload: { targetLang: pendingTargetLang.value },
     })
+    contentInjected.value = true
   } catch {
     actionFailed.value = true
     progress.value.status = 'failed'
@@ -138,7 +154,7 @@ async function clearSiteCache() {
     const tab = await getActiveTab()
     const domain = tab.url ? new URL(tab.url).hostname : ''
     if (!domain) throw new Error('No current website is available.')
-    await sendRuntimeMessage({ type: 'cache/clearByDomain', payload: { domain } })
+    await sendChromeMessage({ type: 'cache/clearByDomain', payload: { domain } })
     await ensureContentRuntime(tab.id)
     await sendTabMessage(tab.id, { type: 'page/clearCache' })
     cacheMessage.value = copy('popup.siteCacheCleared')
@@ -152,13 +168,17 @@ async function clearSiteCache() {
 async function refreshStatus() {
   try {
     const tab = await getActiveTab()
-    await ensureContentRuntime(tab.id)
+    if (!contentInjected.value) {
+      await ensureContentRuntime(tab.id)
+      contentInjected.value = true
+    }
     const nextProgress = await sendTabMessage<PageTranslationProgress>(tab.id, { type: 'page/status' })
     progress.value = nextProgress
     if (!targetSelectionTouched.value && nextProgress.status !== 'idle') {
       pendingTargetLang.value = nextProgress.targetLang
     }
   } catch {
+    contentInjected.value = false
     progress.value = idleProgress()
   }
 }
@@ -196,12 +216,6 @@ async function ensureContentRuntime(tabId: number) {
       throw firstError
     }
   }
-}
-
-async function sendRuntimeMessage<T>(message: unknown): Promise<T> {
-  const response = (await chrome.runtime.sendMessage(message)) as MessageResponse<T>
-  if (!response?.ok) throw new Error(response?.error?.message ?? 'Settings message failed.')
-  return response.data
 }
 
 async function sendTabMessage<T>(tabId: number, message: unknown): Promise<T> {
@@ -268,6 +282,10 @@ function getPreviewSafeChrome() {
         <span aria-hidden="true">⚙</span>
       </button>
     </header>
+
+    <section v-if="loading" class="loading-indicator">
+      <p>{{ copy("popup.loading") }}</p>
+    </section>
 
     <section class="language-flow" aria-label="Translation language">
       <p class="source-language">{{ copy('popup.autoDetect') }}</p>
@@ -537,5 +555,13 @@ button:disabled {
   border-color: #2563eb;
   background: #2563eb;
   color: #ffffff;
+}
+
+.loading-indicator {
+  margin-top: 12px;
+  padding: 12px;
+  text-align: center;
+  color: #64748b;
+  font-size: 13px;
 }
 </style>

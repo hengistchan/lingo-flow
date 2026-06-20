@@ -116,36 +116,50 @@ export async function safeSaveTranslationCache(input: { task: TranslationTask; t
 export async function markCacheHits(cacheKeys: string[]) {
   if (cacheKeys.length === 0) return
 
-  const database = getLingoFlowDB()
-  const now = Date.now()
+  try {
+    const database = getLingoFlowDB()
+    const now = Date.now()
 
-  await database.transaction('rw', database.translations, async () => {
-    for (const cacheKey of cacheKeys) {
-      const item = await database.translations.get(cacheKey)
-      if (item) {
-        await database.translations.update(cacheKey, {
-          hitCount: item.hitCount + 1,
-          lastUsedAt: now,
+    await database.transaction('rw', database.translations, async () => {
+      await database.translations
+        .where("cacheKey")
+        .anyOf(cacheKeys)
+        .modify(function (item) {
+          item.hitCount = (item.hitCount || 0) + 1
+          item.lastUsedAt = now
         })
-      }
-    }
-  })
+    })
+  } catch (error) {
+    console.warn('[LingoFlow] Cache mark hits failed', error)
+  }
 }
 
 export async function clearAllCache() {
-  await getLingoFlowDB().translations.clear()
+  try {
+    await getLingoFlowDB().translations.clear()
+  } catch (error) {
+    console.warn('[LingoFlow] Cache clear all failed', error)
+  }
 }
 
 export async function clearCacheByDomain(domain: string) {
-  await getLingoFlowDB().translations.where('domain').equals(domain).delete()
+  try {
+    await getLingoFlowDB().translations.where('domain').equals(domain).delete()
+  } catch (error) {
+    console.warn('[LingoFlow] Cache clear domain failed', error)
+  }
 }
 
 export async function pruneCache(maxItems = 50000) {
-  const database = getLingoFlowDB()
-  const count = await database.translations.count()
-  if (count <= maxItems) return
+  try {
+    const database = getLingoFlowDB()
+    const count = await database.translations.count()
+    if (count <= maxItems) return
 
-  const overflow = count - maxItems
-  const oldItems = await database.translations.orderBy('lastUsedAt').limit(overflow).toArray()
-  await database.translations.bulkDelete(oldItems.map(item => item.cacheKey))
+    const overflow = count - maxItems
+    const oldItems = await database.translations.orderBy('lastUsedAt').limit(overflow).toArray()
+    await database.translations.bulkDelete(oldItems.map(item => item.cacheKey))
+  } catch (error) {
+    console.warn('[LingoFlow] Cache prune failed', error)
+  }
 }

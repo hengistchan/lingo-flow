@@ -12,4 +12,9 @@ describe('parseOpenAIJsonResult', () => {
   it('rejects invalid or wrong-length LLM output', () => {
     expect(() => parseOpenAIJsonResult('["only one"]', 2)).toThrow('Invalid LLM translation output')
   })
+
+  it("Extracts the first JSON array when multiple brackets appear in chatty output", () => {
+    const content = 'Here are the translations: ["Hello", "World"] and here is an unrelated array: [1, 2, 3]'
+    expect(parseOpenAIJsonResult(content, 2)).toEqual(["Hello", "World"])
+  })
 })

@@ -140,10 +140,9 @@ test('installed popup keeps the translating target accurate and locks it until c
             defaultProviderId: 'openai-compatible',
             providers: {
               ...current.data.providers,
-              openai: {
-                baseUrl: providerBaseUrl,
-                apiKey: 'test-only-key',
-                model: 'test-model',
+              'openai-compatible': {
+                ...current.data.providers['openai-compatible'],
+                values: { baseUrl: providerBaseUrl, apiKey: 'test-only-key', model: 'test-model' },
               },
             },
           },
@@ -206,10 +205,9 @@ test('installed extension reports mixed provider results as partial without savi
             defaultProviderId: 'openai-compatible',
             providers: {
               ...current.data.providers,
-              openai: {
-                baseUrl: providerBaseUrl,
-                apiKey: 'test-only-key',
-                model: 'test-model',
+              'openai-compatible': {
+                ...current.data.providers['openai-compatible'],
+                values: { baseUrl: providerBaseUrl, apiKey: 'test-only-key', model: 'test-model' },
               },
             },
           },
@@ -288,10 +286,8 @@ test('installed extension connects to an explicitly authorized custom OpenAI-com
 
     await options.getByRole('button', { name: 'Translation service' }).click()
     await options.getByLabel('Default provider').selectOption('openai-compatible')
-    await options.getByLabel('API key').fill('test-only-key')
-
-    await options.getByRole('button', { name: 'Advanced' }).click()
-    await options.getByLabel('OpenAI base URL').fill(articleServer.providerBaseUrl)
+    await options.getByLabel('API Key').fill('test-only-key')
+    await options.getByLabel('Base URL').fill(articleServer.providerBaseUrl)
     await options.getByLabel('Model').fill('test-model')
 
     await options.getByRole('button', { name: 'Translation service' }).click()
@@ -329,9 +325,8 @@ test('installed extension connects to Azure protocol and uses it as a fallback p
     await options.goto(extension.url('options.html'))
     await options.getByRole('button', { name: 'Translation service' }).click()
     await options.getByLabel('Region').fill('test-region')
-    await options.getByLabel('API key').fill('azure-test-key')
-    await options.getByRole('button', { name: 'Advanced' }).click()
-    await options.getByLabel('Azure endpoint').fill(articleServer.azureProviderEndpoint)
+    await options.getByLabel('API Key').fill('azure-test-key')
+    await options.getByLabel('Endpoint').fill(articleServer.azureProviderEndpoint)
     await options.getByRole('button', { name: 'Translation service' }).click()
     await options.getByRole('button', { name: 'Test connection' }).click()
     await expect(options.getByText('Connection successful')).toBeVisible()
@@ -361,15 +356,17 @@ test('installed extension connects to Azure protocol and uses it as a fallback p
             defaultProviderId: 'openai-compatible',
             fallbackProviderId: 'azure-translator',
             providers: {
-              azure: {
-                endpoint: providerUrls.azure,
-                key: 'azure-test-key',
-                region: 'test-region',
+              'azure-translator': {
+                id: 'azure-translator',
+                presetId: 'azure-translator',
+                name: 'Azure Translator',
+                values: { endpoint: providerUrls.azure, key: 'azure-test-key', region: 'test-region' },
               },
-              openai: {
-                baseUrl: providerUrls.openai,
-                apiKey: 'openai-test-key',
-                model: 'test-model',
+              'openai-compatible': {
+                id: 'openai-compatible',
+                presetId: 'openai-compatible',
+                name: 'OpenAI-compatible',
+                values: { baseUrl: providerUrls.openai, apiKey: 'openai-test-key', model: 'test-model' },
               },
             },
           },
@@ -430,10 +427,9 @@ test('installed extension keeps the page intact when a provider returns invalid 
             fallbackProviderId: '',
             providers: {
               ...current.data.providers,
-              openai: {
-                baseUrl: providerBaseUrl,
-                apiKey: 'test-only-key',
-                model: 'test-model',
+              'openai-compatible': {
+                ...current.data.providers['openai-compatible'],
+                values: { baseUrl: providerBaseUrl, apiKey: 'test-only-key', model: 'test-model' },
               },
             },
           },
@@ -509,10 +505,9 @@ test('installed extension reuses cache and current-site cleanup forces a fresh p
             defaultProviderId: 'openai-compatible',
             providers: {
               ...current.data.providers,
-              openai: {
-                baseUrl: providerBaseUrl,
-                apiKey: 'test-only-key',
-                model: 'test-model',
+              'openai-compatible': {
+                ...current.data.providers['openai-compatible'],
+                values: { baseUrl: providerBaseUrl, apiKey: 'test-only-key', model: 'test-model' },
               },
             },
           },
@@ -587,6 +582,7 @@ test('installed extension reuses cache and current-site cleanup forces a fresh p
 
     await extensionPage.getByRole('button', { name: 'Storage' }).click()
     await extensionPage.getByRole('button', { name: 'Clear all cache' }).click()
+    await extensionPage.getByRole('button', { name: 'Confirm clear all cache' }).click()
     await expect(extensionPage.getByText('All translation cache cleared')).toBeVisible()
 
     const afterClearAll = await translate()
@@ -651,10 +647,9 @@ test('installed extension translates representative public reading pages', async
             defaultProviderId: 'openai-compatible',
             providers: {
               ...current.data.providers,
-              openai: {
-                baseUrl: providerBaseUrl,
-                apiKey: 'test-only-key',
-                model: 'test-model',
+              'openai-compatible': {
+                ...current.data.providers['openai-compatible'],
+                values: { baseUrl: providerBaseUrl, apiKey: 'test-only-key', model: 'test-model' },
               },
             },
           },

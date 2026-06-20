@@ -46,9 +46,10 @@ export type CollectTextBlockOptions = {
 }
 
 export async function collectTextBlocks(root: Document, options: CollectTextBlockOptions): Promise<TextBlock[]> {
-  const candidates = Array.from(root.querySelectorAll(CANDIDATE_SELECTORS.join(',')))
-    .filter((element): element is HTMLElement => element instanceof HTMLElement)
-    .filter(uniqueElement)
+  const candidates = uniqueElements(
+    Array.from(root.querySelectorAll(CANDIDATE_SELECTORS.join(',')))
+      .filter((element): element is HTMLElement => element instanceof HTMLElement)
+  )
 
   const blocks: TextBlock[] = []
 
@@ -113,8 +114,8 @@ export function isVisible(element: HTMLElement): boolean {
   return true
 }
 
-function uniqueElement(element: HTMLElement, index: number, elements: HTMLElement[]) {
-  return elements.indexOf(element) === index
+function uniqueElements(elements: HTMLElement[]): HTMLElement[] {
+  return [...new Set(elements)]
 }
 
 function getElementText(element: HTMLElement): string {
@@ -133,7 +134,7 @@ function getElementDepth(element: HTMLElement): number {
   return depth
 }
 
-function detectBlockType(element: HTMLElement): TextBlockType {
+export function detectBlockType(element: HTMLElement): TextBlockType {
   const tagName = element.tagName.toLowerCase()
 
   if (/^h[1-6]$/.test(tagName)) return 'heading'
