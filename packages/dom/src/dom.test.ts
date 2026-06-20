@@ -426,4 +426,60 @@ describe('collectTextBlocks', () => {
       'https://example.com/docs',
     ]))
   })
+
+  it('Treats a primary title link as translatable text with linebreak-inside insertion', async () => {
+    document.body.innerHTML = `
+      <main>
+        <h3 class="lh-condensed">
+          <a class="Link--primary text-bold" href="/vuejs-ai/vue-tui/pull/208">
+            docs(readme): align the homepage status banner with the public-beta message
+            <span class="f3-light color-fg-muted">#208</span>
+          </a>
+        </h3>
+      </main>
+    `
+
+    const blocks = await collectTextBlocks(document, {
+      ...defaultOptions,
+      pageUrl: 'https://github.com/conduit/for_you_feed',
+      domain: 'github.com',
+    })
+    const block = blocks.find(item => item.text.includes('homepage status banner'))
+
+    expect(block).toBeDefined()
+    expect(block?.meta.tagName).toBe('a')
+    expect(block?.meta.carrierTagName).toBe('a')
+    expect(block?.meta.insertion).toBe('linebreak-inside')
+    expect(block?.text).toContain('docs(readme): align the homepage status banner with the public-beta message')
+    expect(block?.text).toContain('#208')
+    expect(block?.requestText).toContain('docs(readme): align the homepage status banner with the public-beta message')
+    expect(block?.requestText).not.toContain('[[LF0]]')
+    expect(block?.inlineTokens).toEqual([])
+    expect(document.querySelector('a')?.getAttribute('data-lingoflow-block-id')).toBe(block?.id)
+    expect(document.querySelector('h3')?.getAttribute('data-lingoflow-block-id')).toBeNull()
+  })
+
+  it('Keeps reference links protected while exposing insertion metadata for paragraphs', async () => {
+    document.body.innerHTML = `
+      <main>
+        <p>
+          The runtime banner was tightened in
+          <a href="https://github.com/example/repo/commit/a285a523f979213a205fa7008b07927482c76763">a285a52</a>
+          before release so readers see the public beta message.
+        </p>
+      </main>
+    `
+
+    const blocks = await collectTextBlocks(document, defaultOptions)
+    const block = blocks[0]
+
+    expect(block.meta.tagName).toBe('p')
+    expect(block.meta.carrierTagName).toBe('p')
+    expect(block.meta.insertion).toBe('linebreak-inside')
+    expect(block.requestText).toContain('[[LF0]]')
+    expect(block.requestText).not.toContain('a285a52')
+    expect(block.inlineTokens).toEqual([
+      { id: '[[LF0]]', type: 'link', text: 'a285a52' },
+    ])
+  })
 })

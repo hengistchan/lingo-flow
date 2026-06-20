@@ -54,6 +54,12 @@ export interface TranslationProvider {
 }
 
 export type TextBlockType = 'heading' | 'paragraph' | 'list' | 'quote' | 'table' | 'unknown'
+export type TranslationInsertion =
+  | 'linebreak-inside'
+  | 'inline-inside'
+  | 'inside-container'
+  | 'before-nested-structure'
+  | 'after-block'
 export type InlineTokenType = 'code' | 'link' | 'keyboard' | 'reference'
 
 export type InlineToken = {
@@ -80,6 +86,8 @@ export type TextBlock = {
     visible: boolean
     textLength: number
     blockType: TextBlockType
+    insertion: TranslationInsertion
+    carrierTagName: string
   }
 }
 

@@ -1,5 +1,5 @@
 import { normalizeText, sha256 } from '@lingoflow/shared'
-import type { InlineToken, InlineTokenType, TextBlock, TextBlockType } from '@lingoflow/types'
+import type { InlineToken, InlineTokenType, TextBlock, TextBlockType, TranslationInsertion } from '@lingoflow/types'
 
 export const CANDIDATE_SELECTORS = [
   'article h1',
@@ -89,14 +89,16 @@ export async function collectTextBlocks(root: Document, options: CollectTextBloc
     if (isInsideAcceptedStructuralBoundary(element, acceptedElements)) continue
     if (!isTranslatableElement(element)) continue
 
-    const inlineText = extractInlineText(element)
+    const carrier = resolveTextCarrier(element)
+    const inlineText = extractInlineText(carrier)
     const text = inlineText.text
     const normalizedText = text
     const textHash = await sha256(normalizedText)
     const id = `block_${blocks.length + 1}_${textHash.slice(0, 8)}`
+    const blockType = detectBlockType(element)
 
-    element.dataset.lingoflowBlockId = id
-    acceptedElements.push(element)
+    carrier.dataset.lingoflowBlockId = id
+    acceptedElements.push(carrier)
 
     blocks.push({
       id,
@@ -111,11 +113,13 @@ export async function collectTextBlocks(root: Document, options: CollectTextBloc
       pageUrl: options.pageUrl,
       domain: options.domain,
       meta: {
-        tagName: element.tagName.toLowerCase(),
-        depth: getElementDepth(element),
-        visible: isVisible(element),
+        tagName: carrier.tagName.toLowerCase(),
+        depth: getElementDepth(carrier),
+        visible: isVisible(carrier),
         textLength: normalizedText.length,
-        blockType: detectBlockType(element),
+        blockType,
+        insertion: resolveInsertion(element, carrier, blockType, normalizedText),
+        carrierTagName: carrier.tagName.toLowerCase(),
       },
     })
   }
@@ -266,6 +270,53 @@ function prepareTextClone(element: HTMLElement): HTMLElement {
 function getElementTextFromPreparedClone(element: HTMLElement): string {
   const clone = prepareTextClone(element)
   return clone.innerText || clone.textContent || ''
+}
+
+function resolveTextCarrier(element: HTMLElement): HTMLElement {
+  const primaryAnchor = findPrimaryTextAnchor(element)
+  return primaryAnchor ?? element
+}
+
+function findPrimaryTextAnchor(element: HTMLElement): HTMLElement | null {
+  const tagName = element.tagName.toLowerCase()
+  if (!/^h[1-6]$/.test(tagName)) return null
+
+  const text = normalizeText(getElementText(element))
+  if (text.length < 20) return null
+
+  const anchors = Array.from(element.querySelectorAll('a'))
+    .filter((node): node is HTMLElement => node instanceof HTMLElement)
+    .filter(node => normalizeText(getElementText(node)).length >= 20)
+
+  if (anchors.length !== 1) return null
+
+  const anchor = anchors[0]
+  const anchorText = normalizeText(getElementText(anchor))
+  if (anchorText.length / text.length < 0.8) return null
+
+  return anchor
+}
+
+function resolveInsertion(
+  source: HTMLElement,
+  carrier: HTMLElement,
+  blockType: TextBlockType,
+  text: string,
+): TranslationInsertion {
+  const carrierTagName = carrier.tagName.toLowerCase()
+  if (carrierTagName === 'a') return 'linebreak-inside'
+  if (blockType === 'table') return 'inside-container'
+  if (blockType === 'list') return hasNestedList(source) ? 'before-nested-structure' : 'inside-container'
+  if (blockType === 'heading') return text.length <= 32 ? 'inline-inside' : 'linebreak-inside'
+  if (blockType === 'paragraph' || blockType === 'quote') return 'linebreak-inside'
+  return 'after-block'
+}
+
+function hasNestedList(element: HTMLElement): boolean {
+  return Array.from(element.children).some(child => {
+    const tagName = child.tagName.toLowerCase()
+    return tagName === 'ul' || tagName === 'ol'
+  })
 }
 
 function getInlineTokenType(element: HTMLElement): InlineTokenType {
