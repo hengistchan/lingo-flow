@@ -655,10 +655,10 @@ test('installed extension reuses cache and current-site cleanup forces a fresh p
       })
     })
 
+    const originalParagraph = await article.locator('article p').first().textContent()
     const first = await translate()
     expect(first).toMatchObject({ ok: true, data: { status: 'done', cacheHits: 0 } })
     expect(articleServer.providerRequestCount()).toBe(1)
-    const originalParagraph = await article.locator('article p').first().textContent()
     await expect(article.locator('[data-lingoflow-translation]')).toHaveCount(first.data.totalBlocks)
 
     const popup = await extension.context.newPage()
