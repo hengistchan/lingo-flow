@@ -472,6 +472,84 @@ test('installed extension keeps the page intact when a provider returns invalid 
   }
 })
 
+test('installed extension translates GitHub Markdown without duplicate quotes or broken placement', async () => {
+  const articleServer = await startArticleServer()
+  const extension = await launchExtension({ allowLocalhost: true })
+
+  try {
+    const extensionPage = await extension.context.newPage()
+    await extensionPage.goto(extension.url('options.html'))
+    const saveResponse = await extensionPage.evaluate(async providerBaseUrl => {
+      const current = await chrome.runtime.sendMessage({ type: 'settings/get' })
+      if (!current?.ok) return current
+
+      return chrome.runtime.sendMessage({
+        type: 'settings/save',
+        payload: {
+          settings: {
+            ...current.data,
+            cacheEnabled: false,
+            defaultProviderId: 'openai-compatible',
+            providers: {
+              ...current.data.providers,
+              'openai-compatible': {
+                ...current.data.providers['openai-compatible'],
+                values: { baseUrl: providerBaseUrl, apiKey: 'test-only-key', model: 'test-model' },
+              },
+            },
+          },
+        },
+      })
+    }, articleServer.successProviderBaseUrl)
+    expect(saveResponse).toMatchObject({ ok: true })
+
+    const page = await extension.context.newPage()
+    const pageErrors = collectRuntimeErrors(page)
+    await page.goto(articleServer.githubPrUrl)
+
+    await extension.worker.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (!tab?.id) throw new Error('No active GitHub fixture tab found.')
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['lingoflow-content.js'],
+      })
+    })
+
+    const result = await extension.worker.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (!tab?.id) throw new Error('No active GitHub fixture tab found.')
+      return chrome.tabs.sendMessage(tab.id, {
+        type: 'page/translate',
+        payload: { targetLang: 'ja' },
+      })
+    })
+
+    expect(result).toMatchObject({ ok: true, data: { status: 'done' } })
+
+    await expect(page.locator('h2', { hasText: 'What' })).toHaveAttribute('data-lingoflow-block-id', /block_/)
+    await expect(page.locator('h2', { hasText: 'Why' })).toHaveAttribute('data-lingoflow-block-id', /block_/)
+    await expect(page.locator('h2', { hasText: 'Notes' })).toHaveAttribute('data-lingoflow-block-id', /block_/)
+
+    const quoteTranslations = page.locator('blockquote [data-lingoflow-translation]').filter({ hasText: 'Public beta' })
+    await expect(quoteTranslations).toHaveCount(1)
+    await expect(page.locator('blockquote')).not.toHaveAttribute('data-lingoflow-block-id', /block_/)
+    await expect(page.locator('blockquote + [data-lingoflow-translation]')).toHaveCount(0)
+
+    await expect(page.locator('[data-lingoflow-translation]').filter({ hasText: 'README.md' })).toHaveCount(1)
+    await expect(page.locator('[data-lingoflow-translation]').filter({ hasText: '@vue-tui/runtime' })).toHaveCount(1)
+    await expect(page.locator('[data-lingoflow-translation]').filter({ hasText: 'a285a52' })).toHaveCount(1)
+    await expect(page.locator('[data-lingoflow-translation]').filter({ hasText: '[[LF' })).toHaveCount(0)
+
+    await expect(page.locator('li > [data-lingoflow-translation]').filter({ hasText: 'workspace command' })).toHaveCount(1)
+    await expect(page.locator('td > [data-lingoflow-translation]').filter({ hasText: 'table cell' })).toHaveCount(1)
+    expect(pageErrors()).toEqual([])
+  } finally {
+    await extension.close()
+    await articleServer.close()
+  }
+})
+
 test('installed popup exposes current-site cache cleanup', async () => {
   const extension = await launchExtension()
 
@@ -815,6 +893,49 @@ function startArticleServer() {
       return
     }
 
+    if (request.method === 'GET' && requestUrl.pathname === '/github-pr.html') {
+      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      response.end(`<!doctype html>
+<html lang="en">
+  <head>
+    <title>GitHub PR Fixture</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 40px; max-width: 840px; }
+      .markdown-body { line-height: 1.55; }
+      table { border-collapse: collapse; }
+      td { border: 1px solid #d0d7de; padding: 8px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="comment-body markdown-body js-comment-body">
+        <h2 dir="auto">What</h2>
+        <p dir="auto">The top-level <code class="notranslate">README.md</code> carried a terser banner:</p>
+        <blockquote>
+          <p dir="auto"><strong>Public beta</strong> - the <code class="notranslate">@vue-tui/runtime</code> API is stabilizing, and we're now seeking public feedback to lock it down before 1.0.</p>
+        </blockquote>
+        <p dir="auto">The runtime banner was tightened in <a href="https://github.com/example/repo/commit/a285a523f979213a205fa7008b07927482c76763">a285a52</a> before release.</p>
+        <h2 dir="auto">Why</h2>
+        <ul>
+          <li>Use the workspace command from the repository root when running extension tests.</li>
+        </ul>
+        <table>
+          <tbody>
+            <tr>
+              <td><p>This table cell paragraph is long enough to translate but must stay inside the table cell.</p></td>
+            </tr>
+          </tbody>
+        </table>
+        <h2 dir="auto">Notes</h2>
+        <p dir="auto">Docs-only, single-line change. No code or behavior affected.</p>
+        <pre><code>const shouldNotTranslate = true</code></pre>
+      </div>
+    </main>
+  </body>
+</html>`)
+      return
+    }
+
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
     response.end(`<!doctype html>
 <html lang="en">
@@ -842,6 +963,7 @@ function startArticleServer() {
     invalidProviderBaseUrl: string
     slowProviderBaseUrl: string
     azureProviderEndpoint: string
+    githubPrUrl: string
     providerRequestCount: () => number
     close: () => Promise<void>
   }>(resolve => {
@@ -857,6 +979,7 @@ function startArticleServer() {
         invalidProviderBaseUrl: `${origin}/invalid/v1`,
         slowProviderBaseUrl: `${origin}/slow/v1`,
         azureProviderEndpoint: `${origin}/azure`,
+        githubPrUrl: `${origin}/github-pr.html`,
         providerRequestCount: () => providerRequestCount,
         close: () => new Promise<void>(r => server.close(() => r())),
       })
