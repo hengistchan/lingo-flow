@@ -7,6 +7,7 @@ import os from 'node:os'
 
 const builtExtensionPath = path.resolve('apps/extension/output/chrome-mv3')
 const undefinedError = /Cannot read properties of undefined/
+const LINGOFLOW_DEV_INSPECT_MARKER = 'lingoflow/dev-inspect'
 
 test('installed extension renders popup and options with real extension APIs', async () => {
   const extension = await launchExtension()
@@ -731,6 +732,8 @@ test('production content script contains no Unicode noncharacters', () => {
   const contentScript = readFileSync(path.join(builtExtensionPath, 'lingoflow-content.js'), 'utf-8')
 
   expect(contentScript).not.toContain('\uFFFF')
+  expect(contentScript).not.toContain('__lingoflowInspectDom')
+  expect(contentScript).not.toContain(LINGOFLOW_DEV_INSPECT_MARKER)
 })
 
 test('installed extension translates representative public reading pages', async () => {
