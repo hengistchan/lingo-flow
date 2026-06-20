@@ -1,6 +1,6 @@
 import { inspectDomTranslation, printTranslationInspection } from '@lingoflow/testkit'
 import {
-  createDevInspectorBridgeScript,
+  installDevInspectorPageBridge,
   installDevInspectorResponder,
   LINGOFLOW_INSPECT_REQUEST,
   LINGOFLOW_INSPECT_RESPONSE,
@@ -10,15 +10,39 @@ describe('dev inspector console bridge', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     document.body.innerHTML = ''
+    delete window.__lingoflowInspectDom
+    delete window.__lingoflowInspectHtml
+    delete window.__lingoFlowDevInspectorBridgeStarted
+    delete window.__lingoFlowDevInspectorResponderStarted
   })
 
-  it('publishes page-console inspection helpers from the injected script', () => {
-    const script = createDevInspectorBridgeScript()
+  it('publishes page-console inspection helpers on the page window', async () => {
+    const messages: Array<Record<string, unknown>> = []
+    vi.spyOn(window, 'postMessage').mockImplementation((message: unknown) => {
+      messages.push(message as Record<string, unknown>)
+    })
 
-    expect(script).toContain('__lingoflowInspectDom')
-    expect(script).toContain('__lingoflowInspectHtml')
-    expect(script).toContain(LINGOFLOW_INSPECT_REQUEST)
-    expect(script).toContain(LINGOFLOW_INSPECT_RESPONSE)
+    installDevInspectorPageBridge(LINGOFLOW_INSPECT_REQUEST, LINGOFLOW_INSPECT_RESPONSE)
+
+    expect(window.__lingoflowInspectDom).toEqual(expect.any(Function))
+    expect(window.__lingoflowInspectHtml).toEqual(expect.any(Function))
+
+    const result = window.__lingoflowInspectDom?.('main')
+    expect(messages[0]).toMatchObject({
+      type: LINGOFLOW_INSPECT_REQUEST,
+      payload: { selector: 'main' },
+    })
+
+    window.dispatchEvent(new MessageEvent('message', {
+      data: {
+        type: LINGOFLOW_INSPECT_RESPONSE,
+        id: messages[0].id,
+        ok: true,
+        result: { printed: 'ok' },
+      },
+    }))
+
+    await expect(result).resolves.toEqual({ printed: 'ok' })
   })
 
   it('responds to selector inspection requests with the printed report', async () => {

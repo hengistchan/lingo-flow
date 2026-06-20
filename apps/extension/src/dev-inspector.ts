@@ -33,68 +33,74 @@ type InstallResponderOptions = {
   inspector?: Inspector
 }
 
+type PageInspectionOptions = Omit<TranslationInspectionOptions, 'translate'>
+
+type PageInspectionResult = {
+  report: TranslationInspectionReport
+  printed: string
+}
+
 declare global {
   interface Window {
     __lingoFlowDevInspectorBridgeStarted?: boolean
     __lingoFlowDevInspectorResponderStarted?: boolean
+    __lingoflowInspectDom?: (input?: string | Element | null, options?: PageInspectionOptions) => Promise<PageInspectionResult>
+    __lingoflowInspectHtml?: (html: string, options?: PageInspectionOptions) => Promise<PageInspectionResult>
   }
 }
 
-export function createDevInspectorBridgeScript(): string {
-  return `
-;(() => {
-  const REQUEST = ${JSON.stringify(LINGOFLOW_INSPECT_REQUEST)}
-  const RESPONSE = ${JSON.stringify(LINGOFLOW_INSPECT_RESPONSE)}
-  if (window.__lingoflowInspectDom && window.__lingoflowInspectHtml) return
+export function installDevInspectorPageBridge(
+  requestType: string,
+  responseType: string,
+): void {
+  const win = window
+  if (win.__lingoFlowDevInspectorBridgeStarted) return
 
   let nextId = 0
-  const requestInspection = payload => {
-    const id = "lingoflow-inspect-" + Date.now() + "-" + (++nextId)
+  const requestInspection = (payload: InspectPayload): Promise<PageInspectionResult> => {
+    const id = `lingoflow-inspect-${Date.now()}-${++nextId}`
     return new Promise((resolve, reject) => {
-      const onMessage = event => {
-        if (event.source !== window) return
-        const message = event.data
-        if (!message || message.type !== RESPONSE || message.id !== id) return
-        window.removeEventListener("message", onMessage)
-        if (message.ok) {
+      const onMessage = (event: MessageEvent) => {
+        if (event.source && event.source !== win) return
+        const message = event.data as {
+          type?: string
+          id?: string
+          ok?: boolean
+          result?: PageInspectionResult
+          error?: string
+        } | undefined
+        if (!message || message.type !== responseType || message.id !== id) return
+
+        win.removeEventListener('message', onMessage)
+        if (message.ok && message.result) {
           resolve(message.result)
         } else {
-          reject(new Error(message.error || "LingoFlow DOM inspection failed"))
+          reject(new Error(message.error || 'LingoFlow DOM inspection failed'))
         }
       }
-      window.addEventListener("message", onMessage)
-      window.postMessage({ type: REQUEST, id, payload }, "*")
+
+      win.addEventListener('message', onMessage)
+      win.postMessage({ type: requestType, id, payload }, '*')
     })
   }
 
-  window.__lingoflowInspectDom = (input, options) => {
-    const payload = { options }
-    if (typeof input === "string") {
-      if (input.trim().startsWith("<")) payload.html = input
+  win.__lingoflowInspectDom = (input?: string | Element | null, options?: PageInspectionOptions) => {
+    const payload: InspectPayload = { options }
+    if (typeof input === 'string') {
+      if (input.trim().startsWith('<')) payload.html = input
       else payload.selector = input
-    } else if (input && typeof input.outerHTML === "string") {
+    } else if (input && typeof input.outerHTML === 'string') {
       payload.html = input.outerHTML
     } else {
-      payload.selector = "body"
+      payload.selector = 'body'
     }
     return requestInspection(payload)
   }
 
-  window.__lingoflowInspectHtml = (html, options) => {
-    return requestInspection({ html: String(html || ""), options })
+  win.__lingoflowInspectHtml = (html: string, options?: PageInspectionOptions) => {
+    return requestInspection({ html: String(html || ''), options })
   }
-})()
-`.trim()
-}
 
-export function installDevInspectorBridge(win: Window = window): void {
-  if (win.__lingoFlowDevInspectorBridgeStarted) return
-
-  const doc = win.document
-  const script = doc.createElement('script')
-  script.textContent = createDevInspectorBridgeScript()
-  ;(doc.documentElement ?? doc.head ?? doc.body).append(script)
-  script.remove()
   win.__lingoFlowDevInspectorBridgeStarted = true
 }
 

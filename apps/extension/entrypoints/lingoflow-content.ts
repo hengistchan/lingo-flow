@@ -7,16 +7,16 @@ declare global {
   }
 }
 
-export default defineUnlistedScript(() => {
-  if (import.meta.env.DEV) {
-    void import('../src/dev-inspector').then(({ installDevInspectorBridge, installDevInspectorResponder }) => {
+export default defineUnlistedScript({
+  async main() {
+    if (import.meta.env.DEV) {
+      const { installDevInspectorResponder } = await import('../src/dev-inspector')
       installDevInspectorResponder()
-      installDevInspectorBridge()
-    })
-  }
+    }
 
-  if (window.__lingoFlowContentRuntimeStarted) return
+    if (window.__lingoFlowContentRuntimeStarted) return
 
-  window.__lingoFlowContentRuntimeStarted = true
-  createContentRuntime().start()
+    window.__lingoFlowContentRuntimeStarted = true
+    createContentRuntime().start()
+  },
 })

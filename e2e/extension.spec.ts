@@ -1,6 +1,6 @@
 import { chromium, expect, test, type Page } from '@playwright/test'
 import { createServer } from 'node:http'
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
@@ -736,6 +736,13 @@ test('production content script contains no Unicode noncharacters', () => {
   expect(contentScript).not.toContain(LINGOFLOW_DEV_INSPECT_MARKER)
 })
 
+test('production build omits the dev inspector console bridge', () => {
+  for (const file of readBuiltJavaScriptFiles()) {
+    expect(file.content, file.path).not.toContain('__lingoflowInspectDom')
+    expect(file.content, file.path).not.toContain(LINGOFLOW_DEV_INSPECT_MARKER)
+  }
+})
+
 test('installed extension translates representative public reading pages', async () => {
   test.skip(process.env.LINGOFLOW_PUBLIC_E2E !== '1', 'Set LINGOFLOW_PUBLIC_E2E=1 to run public-page acceptance.')
   test.setTimeout(180_000)
@@ -1055,6 +1062,15 @@ async function gotoPublicPage(page: Page, url: string) {
   }
 
   throw lastError
+}
+
+function readBuiltJavaScriptFiles(dir = builtExtensionPath): Array<{ path: string, content: string }> {
+  return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+    const filePath = path.join(dir, entry.name)
+    if (entry.isDirectory()) return readBuiltJavaScriptFiles(filePath)
+    if (!entry.isFile() || !entry.name.endsWith('.js')) return []
+    return [{ path: filePath, content: readFileSync(filePath, 'utf-8') }]
+  })
 }
 
 function collectRuntimeErrors(page: Page) {
