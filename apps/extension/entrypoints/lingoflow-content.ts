@@ -9,10 +9,8 @@ declare global {
 
 export default defineUnlistedScript({
   async main() {
-    if (import.meta.env.DEV) {
-      const { installDevInspectorResponder } = await import('../src/dev-inspector')
-      installDevInspectorResponder()
-    }
+    const { installDevInspectorResponder } = await import('../src/dev-inspector')
+    installDevInspectorResponder()
 
     if (window.__lingoFlowContentRuntimeStarted) return
 

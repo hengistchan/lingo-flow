@@ -206,23 +206,21 @@ async function ensureContentRuntime(tabId: number) {
       target: { tabId },
       files: ['lingoflow-content.js'],
     })
-    await ensureDevInspectorBridge(tabId)
+    await ensureInspectorBridge(tabId)
   } catch (firstError) {
     try {
       await chrome.scripting.executeScript({
         target: { tabId },
         files: ['content-scripts/content.js'],
       })
-      await ensureDevInspectorBridge(tabId)
+      await ensureInspectorBridge(tabId)
     } catch {
       throw firstError
     }
   }
 }
 
-async function ensureDevInspectorBridge(tabId: number) {
-  if (!import.meta.env.DEV) return
-
+async function ensureInspectorBridge(tabId: number) {
   const {
     installDevInspectorPageBridge,
     LINGOFLOW_INSPECT_REQUEST,

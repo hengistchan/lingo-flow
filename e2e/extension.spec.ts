@@ -732,15 +732,13 @@ test('production content script contains no Unicode noncharacters', () => {
   const contentScript = readFileSync(path.join(builtExtensionPath, 'lingoflow-content.js'), 'utf-8')
 
   expect(contentScript).not.toContain('\uFFFF')
-  expect(contentScript).not.toContain('__lingoflowInspectDom')
-  expect(contentScript).not.toContain(LINGOFLOW_DEV_INSPECT_MARKER)
 })
 
-test('production build omits the dev inspector console bridge', () => {
-  for (const file of readBuiltJavaScriptFiles()) {
-    expect(file.content, file.path).not.toContain('__lingoflowInspectDom')
-    expect(file.content, file.path).not.toContain(LINGOFLOW_DEV_INSPECT_MARKER)
-  }
+test('production build includes the inspector console bridge', () => {
+  const files = readBuiltJavaScriptFiles()
+
+  expect(files.some(file => file.content.includes('__lingoflowInspectDom'))).toBe(true)
+  expect(files.some(file => file.content.includes(LINGOFLOW_DEV_INSPECT_MARKER))).toBe(true)
 })
 
 test('installed extension translates representative public reading pages', async () => {
