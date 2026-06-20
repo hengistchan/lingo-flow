@@ -1,0 +1,48 @@
+/* apps/extension/src/ui/tokens.css */
+
+:root {
+  /* ── Colors: Light Mode ── */
+  --lf-ink: #1a1a1a;
+  --lf-paper: #faf8f5;
+  --lf-margin: #f2efeb;
+  --lf-accent: #c05a2e;
+  --lf-accent-hover: #a84d27;
+  --lf-whisper: #b8b2a6;
+  --lf-rule: #e0dbd3;
+  --lf-ghost: #6b6560;
+
+  /* ── Typography ── */
+  --lf-font-serif: Georgia, "Noto Serif", "Source Han Serif SC", "Songti SC", serif;
+  --lf-font-sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+
+  /* ── Spacing ── */
+  --lf-radius: 0px;
+  --lf-btn-h-primary: 40px;
+  --lf-btn-h-secondary: 36px;
+  --lf-btn-h-small: 34px;
+  --lf-input-h: 38px;
+  --lf-gap-form: 16px;
+  --lf-gap-section: 20px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --lf-ink: #e8e4de;
+    --lf-paper: #1c1b19;
+    --lf-margin: #252420;
+    --lf-accent: #d4764e;
+    --lf-accent-hover: #c06840;
+    --lf-whisper: #7a756b;
+    --lf-rule: #3a3830;
+    --lf-ghost: #9e978c;
+  }
+}
+
+/* ── Global Reset ── */
+body {
+  margin: 0;
+  background: var(--lf-paper);
+  color: var(--lf-ink);
+  font-family: var(--lf-font-sans);
+  -webkit-font-smoothing: antialiased;
+}
