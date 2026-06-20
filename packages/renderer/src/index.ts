@@ -17,8 +17,8 @@ export function injectLingoFlowStyles(root: Document = document) {
       margin-top: 0.35em;
       margin-bottom: 0.85em;
       padding-left: 0.75em;
-      border-left: 3px solid #20D4BF;
-      color: #0F9F91;
+      border-left: 2px solid #c05a2e;
+      color: #6b6560;
       font-size: 0.95em;
       line-height: 1.65;
       word-break: break-word;
@@ -31,6 +31,12 @@ export function injectLingoFlowStyles(root: Document = document) {
     }
     .lingoflow-translation-block {
       display: block;
+    }
+    @media (prefers-color-scheme: dark) {
+      .lingoflow-translation {
+        border-left-color: #d4764e;
+        color: #9e978c;
+      }
     }
   `
 
