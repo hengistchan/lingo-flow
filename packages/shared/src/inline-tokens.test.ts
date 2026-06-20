@@ -35,4 +35,14 @@ describe('restoreInlineTokens', () => {
 
     expect(restored).toBe('请阅读 README.md，参考 a285a52。')
   })
+
+  it('normalizes fullwidth colon ⟦LF：N⟧ back to ASCII ⟦LF:N⟧ before restoration', () => {
+    // LLMs sometimes replace ASCII colon `:` (U+003A) with fullwidth colon `：` (U+FF1A)
+    const restored = restoreInlineTokens('请阅读 ⟦LF：0⟧，参考 ⟦LF：1⟧。', [
+      { id: '⟦LF:0⟧', type: 'code', text: 'README.md' },
+      { id: '⟦LF:1⟧', type: 'link', text: 'a285a52' },
+    ])
+
+    expect(restored).toBe('请阅读 README.md，参考 a285a52。')
+  })
 })

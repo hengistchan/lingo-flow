@@ -35,22 +35,25 @@ defineEmits<{
   display: flex;
   align-items: baseline;
   justify-content: center;
-  gap: 12px;
+  gap: 8px;
   padding: 16px 0;
   border-top: 1px solid var(--lf-rule);
   border-bottom: 1px solid var(--lf-rule);
+  flex-wrap: nowrap;
 }
 
 .lf-lang-pair__source {
   font-family: var(--lf-font-serif);
   font-size: 20px;
   color: var(--lf-ghost);
+  white-space: nowrap;
 }
 
 .lf-lang-pair__dash {
   font-family: var(--lf-font-serif);
   font-size: 20px;
   color: var(--lf-whisper);
+  white-space: nowrap;
 }
 
 .lf-lang-pair__target {
@@ -59,6 +62,7 @@ defineEmits<{
   font-size: 20px;
   color: var(--lf-ink);
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .lf-lang-pair__select {
