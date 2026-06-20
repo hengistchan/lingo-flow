@@ -53,7 +53,15 @@ export interface TranslationProvider {
   validateConfig?(config: unknown): Promise<boolean>
 }
 
-export type TextBlockType = 'heading' | 'paragraph' | 'list' | 'quote' | 'table' | 'unknown'
+export type TextBlockType =
+  | 'heading'
+  | 'paragraph'
+  | 'list'
+  | 'quote'
+  | 'table'
+  | 'caption'
+  | 'description'
+  | 'unknown'
 export type TranslationInsertion =
   | 'linebreak-inside'
   | 'inline-inside'
@@ -66,6 +74,206 @@ export type InlineToken = {
   id: string
   type: InlineTokenType
   text: string
+}
+
+export type ContentRootKind = 'html' | 'shadow' | 'pdf' | 'unknown'
+
+export type BlockState =
+  | 'pending'
+  | 'queued'
+  | 'translating'
+  | 'translated'
+  | 'rendering'
+  | 'rendered'
+  | 'failed'
+  | 'dirty'
+  | 'stale'
+  | 'skipped'
+  | 'cancelled'
+
+export type TranslationBlock = {
+  id: string
+  revision: number
+  runId: string
+  text: string
+  normalizedText: string
+  textHash: string
+  requestText: string
+  inlineTokens: InlineToken[]
+  translatedText?: string
+  failure?: {
+    message: string
+    reason?: string
+  }
+  state: BlockState
+  meta: {
+    tagName: string
+    carrierTagName: string
+    blockType: TextBlockType
+    insertion: TranslationInsertion
+    depth: number
+    visible: boolean
+    textLength: number
+    rootKind: ContentRootKind
+  }
+  sourceLang: 'auto' | string
+  targetLang: string
+  pageUrl: string
+  domain: string
+}
+
+export type BlockBindingDraft = {
+  blockId: string
+  carrierElement: HTMLElement
+  sourceNodes: Node[]
+  commonAncestor: HTMLElement
+  sourceSignature: string
+}
+
+export type BlockBinding = {
+  blockId: string
+  revision: number
+  runId: string
+  carrierElement: HTMLElement
+  sourceNodes: Node[]
+  commonAncestor: HTMLElement
+  insertedNodes: Node[]
+  hiddenSourceNodes: HTMLElement[]
+  loadingElement: HTMLElement | null
+  sourceSignature: string
+  collectedAtMutationSeq: number
+  rootGeneration: number
+}
+
+export type ScanResult = {
+  block: TranslationBlock
+  binding: BlockBindingDraft
+}
+
+export type RenderSkipReason =
+  | 'missing-binding'
+  | 'detached'
+  | 'stale'
+  | 'same-text'
+  | 'duplicate'
+  | 'unsupported-strategy'
+  | 'mode-hidden'
+
+export type BlockEvent =
+  | { type: 'COLLECT'; runId: string; revision: number }
+  | { type: 'ENQUEUE' }
+  | { type: 'TRANSLATE_START'; requestId: string }
+  | { type: 'TRANSLATE_SUCCESS'; requestId: string; text: string }
+  | { type: 'TRANSLATE_FAIL'; requestId: string; error: string }
+  | { type: 'RENDER_START' }
+  | { type: 'RENDER_COMMIT' }
+  | { type: 'RENDER_SKIP'; reason: RenderSkipReason }
+  | { type: 'DOM_MUTATED'; currentTextHash?: string }
+  | { type: 'REQUEUE'; revision: number }
+  | { type: 'MARK_STALE'; reason: string }
+  | { type: 'CLEAR' }
+  | { type: 'CANCEL' }
+
+export type PageRunState =
+  | 'idle'
+  | 'scanning'
+  | 'translating'
+  | 'rendering'
+  | 'done'
+  | 'partial'
+  | 'failed'
+  | 'clearing'
+  | 'cancelled'
+
+export type PageDisplayMode = 'original' | 'dual' | 'translation'
+
+export type MutationCause =
+  | 'initial-scan'
+  | 'child-list'
+  | 'character-data'
+  | 'attributes'
+  | 'route-change'
+  | 'viewport'
+  | 'shadow-root'
+  | 'large-churn'
+  | 'manual'
+
+export type RuntimeEvent =
+  | { type: 'scan:started'; runId: string; rootGeneration: number }
+  | { type: 'scan:completed'; runId: string; blockIds: string[] }
+  | { type: 'block:collected'; runId: string; blockId: string; revision: number }
+  | { type: 'block:stateChanged'; blockId: string; from: BlockState; to: BlockState; reason?: string }
+  | { type: 'block:dirty'; blockId: string; revision: number; cause: MutationCause }
+  | { type: 'queue:changed'; queued: number; inFlight: number }
+  | { type: 'translation:requested'; blockIds: string[]; requestId: string }
+  | { type: 'translation:resolved'; blockId: string; requestId: string; revision: number; text: string }
+  | { type: 'translation:failed'; blockId: string; requestId: string; revision: number; error: string }
+  | { type: 'translation:discarded'; blockId: string; requestId: string; reason: string }
+  | { type: 'render:committed'; blockId: string; revision: number; nodeCount: number }
+  | { type: 'render:skipped'; blockId: string; revision: number; reason: RenderSkipReason }
+  | { type: 'binding:disconnected'; blockId: string; revision: number }
+  | { type: 'binding:rebound'; blockId: string; fromRevision: number; toRevision: number }
+  | { type: 'observer:newContent'; root: HTMLElement; cause: MutationCause }
+  | { type: 'observer:viewportEnter'; blockId: string }
+  | { type: 'observer:viewportExit'; blockId: string }
+  | { type: 'page:runStateChanged'; from: PageRunState; to: PageRunState }
+  | { type: 'page:displayModeChanged'; from: PageDisplayMode; to: PageDisplayMode }
+
+export type StalenessResult =
+  | { ok: true }
+  | {
+      ok: false
+      reason:
+        | 'run-mismatch'
+        | 'revision-mismatch'
+        | 'detached'
+        | 'text-changed'
+        | 'source-signature-changed'
+        | 'root-replaced'
+    }
+
+export type BlockVersion = {
+  blockId: string
+  runId: string
+  revision: number
+  textHash: string
+  sourceSignature: string
+  collectedAtMutationSeq: number
+  rootGeneration: number
+}
+
+export type QueuePriority = 'viewport' | 'normal' | 'background'
+
+export type QueuedBatch = {
+  blockIds: string[]
+  totalChars: number
+}
+
+export type BatchLimits = {
+  maxItems: number
+  maxChars: number
+}
+
+export interface PageAdapter {
+  readonly name: string
+  canHandle(root: Document): boolean
+  getContentRoots(root: Document): Array<Document | ShadowRoot | HTMLElement>
+  classifyRoot(root: Node): ContentRootKind
+}
+
+export type InsertionPlan = {
+  blockId: string
+  mode: PageDisplayMode
+  target: HTMLElement
+  translationElement: HTMLElement
+  placement: TranslationInsertion
+  sourceNodesToHide: HTMLElement[]
+}
+
+export type InsertionResult = {
+  blockId: string
+  insertedNodes: Node[]
+  hiddenSourceNodes: HTMLElement[]
 }
 
 export type TextBlock = {
@@ -223,12 +431,14 @@ export type OpenAICompatibleConfig = {
   disableThinking?: boolean
 }
 
+export type LegacyRenderMode = 'below-original'
+
 export type AppSettings = {
   version: number
   interfaceLocale: 'auto' | UiLocale
   targetLang: string
   sourceLang: 'auto' | string
-  renderMode: 'below-original'
+  renderMode: LegacyRenderMode
   cacheEnabled: boolean
   maxCacheItems: number
   translationConcurrency: number
@@ -263,7 +473,7 @@ export type ProviderConnectionResult = {
 export type PublicRuntimeSettings = {
   targetLang: string
   sourceLang: 'auto' | string
-  renderMode: 'below-original'
+  renderMode: LegacyRenderMode
   cacheEnabled: boolean
   maxCacheItems: number
   translationConcurrency: number
