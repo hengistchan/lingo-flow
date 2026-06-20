@@ -1,4 +1,4 @@
-import type { InsertionPlan, PageDisplayMode, TranslationInsertion } from '@lingoflow/types'
+import type { BlockBinding, InsertionPlan, PageDisplayMode, TranslationBlock, TranslationInsertion } from '@lingoflow/types'
 import {
   applyDisplayMode,
   hideSourceNodes,
@@ -9,6 +9,7 @@ import { StrategyRegistry } from './registry'
 import {
   AfterBlockStrategy,
   BeforeNestedStructureStrategy,
+  type InsertionStrategy,
   InlineInsideStrategy,
   InsideContainerStrategy,
   LinebreakInsideStrategy,
@@ -331,6 +332,102 @@ describe('renderer insertion strategies', () => {
     expect(source.hidden).toBe(false)
     expect(source.dataset.lingoflowSourceHidden).toBeUndefined()
   })
+
+  it.each([
+    createStrategyFixture('linebreak-inside', () => '<p>Original paragraph text.</p>', 'p', new LinebreakInsideStrategy()),
+    createStrategyFixture('inline-inside', () => '<h2>Original heading</h2>', 'h2', new InlineInsideStrategy()),
+    createStrategyFixture('inside-container', () => '<ul><li>Original list item.</li></ul>', 'li', new InsideContainerStrategy()),
+    createStrategyFixture(
+      'before-nested-structure',
+      () => '<ul><li>Parent item.<ul><li>Nested item.</li></ul></li></ul>',
+      'li',
+      new BeforeNestedStructureStrategy(),
+    ),
+    createStrategyFixture('after-block', () => '<p>Read <span>this phrase</span> before continuing.</p>', 'span', new AfterBlockStrategy()),
+  ])('$name plans, applies, and reverts from real bindings', ({ name, html, selector, strategy }) => {
+    document.body.innerHTML = html()
+    const carrier = document.querySelector(selector) as HTMLElement
+    const block = createBlock(name)
+    const binding = createBinding(block, carrier)
+
+    const plan = strategy.plan(block, binding, 'dual')
+    expect(plan.blockId).toBe(block.id)
+    expect(plan.mode).toBe('dual')
+    expect(plan.placement).toBe(name)
+    expect(plan.target).toBe(carrier)
+    expect(plan.translationElement.textContent).toBe('译文')
+    expect(plan.sourceNodesToHide).toEqual([carrier])
+
+    const result = strategy.apply(plan)
+    expect(result.blockId).toBe(block.id)
+    expect(result.insertedNodes.length).toBeGreaterThan(0)
+    expectGeneratedNodes(result, block.id)
+    expect(document.querySelector(`[data-lingoflow-translation="${block.id}"]`)).not.toBeNull()
+
+    strategy.revert(result)
+
+    expect(document.querySelector(`[data-lingoflow-translation="${block.id}"]`)).toBeNull()
+    expect(document.querySelector('[data-lingoflow-generated]')).toBeNull()
+    expect(carrier.hidden).toBe(false)
+    expect(carrier.dataset.lingoflowSourceHidden).toBeUndefined()
+  })
+
+  it.each([
+    createStrategyFixture('linebreak-inside', () => '<p>Original paragraph text.</p>', 'p', new LinebreakInsideStrategy()),
+    createStrategyFixture('inline-inside', () => '<h2>Original heading</h2>', 'h2', new InlineInsideStrategy()),
+    createStrategyFixture('inside-container', () => '<table><tbody><tr><td>Original cell.</td></tr></tbody></table>', 'td', new InsideContainerStrategy()),
+    createStrategyFixture(
+      'before-nested-structure',
+      () => '<ul><li>Parent item.<ol><li>Nested item.</li></ol></li></ul>',
+      'li',
+      new BeforeNestedStructureStrategy(),
+    ),
+    createStrategyFixture('after-block', () => '<p>Read <span>this phrase</span> before continuing.</p>', 'span', new AfterBlockStrategy()),
+  ].flatMap(fixture => (
+    ([
+      ['original', false, true, false],
+      ['dual', false, false, false],
+      ['translation', true, false, true],
+    ] satisfies Array<[PageDisplayMode, boolean, boolean, boolean]>)
+      .map(([mode, sourceHidden, insertedHidden, resultHasHiddenSource]) => ({
+        ...fixture,
+        mode,
+        sourceHidden,
+        insertedHidden,
+        resultHasHiddenSource,
+      }))
+  )))('$name supports $mode display mode through plan/apply/revert', ({
+    name,
+    html,
+    selector,
+    strategy,
+    mode,
+    sourceHidden,
+    insertedHidden,
+    resultHasHiddenSource,
+  }) => {
+    document.body.innerHTML = html()
+    const carrier = document.querySelector(selector) as HTMLElement
+    const block = createBlock(name)
+    const binding = createBinding(block, carrier)
+
+    const result = strategy.apply(strategy.plan(block, binding, mode))
+
+    expect(carrier.hidden).toBe(sourceHidden)
+    expect(carrier.dataset.lingoflowSourceHidden).toBe(sourceHidden ? 'true' : undefined)
+    expect(result.hiddenSourceNodes).toEqual(resultHasHiddenSource ? [carrier] : [])
+    for (const node of result.insertedNodes) {
+      expect(node).toBeInstanceOf(HTMLElement)
+      expect((node as HTMLElement).hidden).toBe(insertedHidden)
+    }
+
+    strategy.revert(result)
+
+    expect(document.querySelector(`[data-lingoflow-translation="${block.id}"]`)).toBeNull()
+    expect(document.querySelector('[data-lingoflow-generated]')).toBeNull()
+    expect(carrier.hidden).toBe(false)
+    expect(carrier.dataset.lingoflowSourceHidden).toBeUndefined()
+  })
 })
 
 describe('renderer display modes', () => {
@@ -412,5 +509,60 @@ function expectGeneratedNodes(result: { insertedNodes: Node[] }, blockId: string
         element.dataset.lingoflowTranslationBreak ??
         element.dataset.lingoflowTranslationSpacer
     ).toBe(blockId)
+  }
+}
+
+function createStrategyFixture(
+  name: TranslationInsertion,
+  html: () => string,
+  selector: string,
+  strategy: InsertionStrategy,
+) {
+  return { name, html, selector, strategy }
+}
+
+function createBlock(insertion: TranslationInsertion): TranslationBlock {
+  return {
+    id: `block_${insertion.replaceAll('-', '_')}`,
+    revision: 1,
+    runId: 'run_1',
+    text: 'Original text',
+    normalizedText: 'Original text',
+    textHash: 'hash_1',
+    requestText: 'Original text',
+    inlineTokens: [],
+    translatedText: '译文',
+    state: 'translated',
+    meta: {
+      tagName: 'p',
+      carrierTagName: 'p',
+      blockType: 'paragraph',
+      insertion,
+      depth: 1,
+      visible: true,
+      textLength: 13,
+      rootKind: 'html',
+    },
+    sourceLang: 'auto',
+    targetLang: 'zh-Hans',
+    pageUrl: 'https://example.com/article',
+    domain: 'example.com',
+  }
+}
+
+function createBinding(block: TranslationBlock, carrierElement: HTMLElement): BlockBinding {
+  return {
+    blockId: block.id,
+    revision: block.revision,
+    runId: block.runId,
+    carrierElement,
+    sourceNodes: [carrierElement.firstChild ?? carrierElement],
+    commonAncestor: carrierElement,
+    insertedNodes: [],
+    hiddenSourceNodes: [],
+    loadingElement: null,
+    sourceSignature: 'signature_1',
+    collectedAtMutationSeq: 1,
+    rootGeneration: 1,
   }
 }

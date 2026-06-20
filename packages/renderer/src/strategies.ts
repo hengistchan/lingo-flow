@@ -174,8 +174,23 @@ function markGeneratedNode(element: HTMLElement, blockId: string) {
 }
 
 function getHideableSourceNodes(binding: BlockBinding): HTMLElement[] {
-  const sourceElements = binding.sourceNodes.filter((node): node is HTMLElement => node instanceof HTMLElement)
-  return sourceElements.length > 0 ? sourceElements : []
+  const sourceElements = new Set<HTMLElement>()
+
+  for (const node of binding.sourceNodes) {
+    const element = getHideableElement(node)
+    if (element) sourceElements.add(element)
+  }
+
+  if (sourceElements.size === 0) {
+    sourceElements.add(binding.commonAncestor)
+  }
+
+  return Array.from(sourceElements)
+}
+
+function getHideableElement(node: Node): HTMLElement | null {
+  if (node instanceof HTMLElement) return node
+  return node.parentElement
 }
 
 function findNestedList(source: HTMLElement): Element | null {
