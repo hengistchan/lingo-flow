@@ -110,7 +110,8 @@ export function createContentRuntime(dependencies: RuntimeDependencies = {}) {
         }
       }
 
-      for (const batch of createBatches(misses, { maxItems: DEFAULT_MAX_BATCH_ITEMS, maxChars: DEFAULT_MAX_BATCH_CHARS })) {
+      const batches = createBatches(misses, { maxItems: DEFAULT_MAX_BATCH_ITEMS, maxChars: DEFAULT_MAX_BATCH_CHARS })
+      await processBatchesWithConcurrency(batches, settings.translationConcurrency, async batch => {
         try {
           const response = await sendRuntimeMessage<{ results: TranslationResult[] }>(runtime, {
             type: 'translation/translateBatch',
@@ -138,7 +139,7 @@ export function createContentRuntime(dependencies: RuntimeDependencies = {}) {
           type: 'page/progressUpdate',
           payload: { ...progress },
         }).catch(() => {})
-      }
+      })
 
       progress.status = deriveProgressStatus({
         translated: progress.translatedBlocks,
@@ -234,6 +235,23 @@ export function deriveProgressStatus(input: {
   if (input.translated === 0) return 'failed'
   if (input.failed > 0 || input.translated < input.total) return 'partial'
   return 'done'
+}
+
+async function processBatchesWithConcurrency<T>(
+  batches: T[],
+  concurrency: number,
+  processBatch: (batch: T) => Promise<void>,
+) {
+  const workerCount = Math.max(1, Math.min(Math.floor(concurrency) || 1, batches.length))
+  let nextIndex = 0
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < batches.length) {
+      const batch = batches[nextIndex]
+      nextIndex += 1
+      await processBatch(batch)
+    }
+  }))
 }
 
 function createTask(

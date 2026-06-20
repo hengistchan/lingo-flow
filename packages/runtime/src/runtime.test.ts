@@ -104,6 +104,50 @@ describe('content runtime language and progress behavior', () => {
     expect(translation?.parentElement?.tagName.toLowerCase()).toBe('td')
   })
 
+  it('sends translation batches with bounded concurrency', async () => {
+    document.body.innerHTML = `
+      <article>
+        ${Array.from({ length: 41 }, (_, index) => (
+          `<p>Runtime concurrency paragraph ${index} is long enough to be collected and translated.</p>`
+        )).join('')}
+      </article>
+    `
+    const settings = {
+      ...runtimeSettings(),
+      translationConcurrency: 2,
+    }
+    const startedBatchSizes: number[] = []
+    const resolvers: Array<() => void> = []
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      if (message.type === 'translation/translateBatch') {
+        const tasks: TranslationTask[] = message.payload.tasks
+        startedBatchSizes.push(tasks.length)
+        return await new Promise<MessageResponse<{ results: TranslationResult[] }>>(resolve => {
+          resolvers.push(() => resolve(success({ results: tasks.map(successResult) })))
+        })
+      }
+      throw new Error(`Unexpected message: ${message.type}`)
+    })
+
+    const runtime = createContentRuntime({ document, chromeRuntime })
+    const progressPromise = runtime.translatePage()
+
+    await waitFor(() => startedBatchSizes.length >= 2)
+    expect(startedBatchSizes).toEqual([20, 20])
+
+    resolvers[0]()
+    await waitFor(() => startedBatchSizes.length >= 3)
+    expect(startedBatchSizes).toEqual([20, 20, 1])
+
+    resolvers[1]()
+    resolvers[2]()
+    await expect(progressPromise).resolves.toMatchObject({
+      status: 'done',
+      translatedBlocks: 41,
+    })
+  })
+
   it('derives honest terminal states', () => {
     expect(deriveProgressStatus({ translated: 3, failed: 0, total: 3 })).toBe('done')
     expect(deriveProgressStatus({ translated: 2, failed: 1, total: 3 })).toBe('partial')
@@ -127,6 +171,7 @@ function runtimeSettings(): PublicRuntimeSettings {
     renderMode: 'below-original',
     cacheEnabled: false,
     maxCacheItems: 50000,
+    translationConcurrency: 3,
     providerId: 'azure-translator',
     normalizeVersion: NORMALIZE_VERSION,
   }
@@ -160,6 +205,14 @@ function successResult(task: TranslationTask): TranslationResult {
     fromCache: false,
     status: 'success',
   }
+}
+
+async function waitFor(assertion: () => boolean) {
+  for (let index = 0; index < 100; index += 1) {
+    if (assertion()) return
+    await new Promise(resolve => setTimeout(resolve, 0))
+  }
+  throw new Error('Timed out waiting for runtime condition')
 }
 
 describe("evictOldestCacheEntries", () => {
