@@ -52,7 +52,11 @@ export default defineConfig({
     name: 'LingoFlow',
     description: 'AI-powered Translation for the Open Web',
     permissions: ['activeTab', 'scripting', 'storage'],
-    host_permissions: ['https://api.cognitive.microsofttranslator.com/*', 'https://api.openai.com/*'],
+    host_permissions: [
+      'https://api.cognitive.microsofttranslator.com/*',
+      'https://api.openai.com/*',
+      'https://translate.googleapis.com/*',
+    ],
     optional_host_permissions: ['https://*/*', 'http://*/*'],
     action: {
       default_title: 'LingoFlow',

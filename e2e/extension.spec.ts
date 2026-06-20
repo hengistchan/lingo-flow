@@ -677,6 +677,9 @@ test('production build manifest does not contain test-only host permissions', ()
 
   expect(manifest.host_permissions).not.toContain(expect.stringMatching(/127\.0\.0\.1/))
   expect(manifest.host_permissions).not.toContain(expect.stringMatching(/<all_urls>/))
+  expect(manifest.host_permissions).toEqual(
+    expect.arrayContaining(['https://translate.googleapis.com/*']),
+  )
   expect(manifest.permissions).not.toContain(expect.stringMatching(/<all_urls>/))
   expect(manifest.optional_host_permissions).toEqual(
     expect.arrayContaining(['https://*/*', 'http://*/*']),

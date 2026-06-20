@@ -61,6 +61,10 @@ test('options preview uses readable language selectors and functional navigation
   await expect(page.getByRole('button', { name: 'Translation service' })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('heading', { name: 'Translation service' })).toBeVisible()
   await expect(page.getByLabel('Target language')).toHaveCount(0)
+  await expect(page.getByLabel('Default provider').locator('option', { hasText: 'Google Translate Free' })).toHaveCount(1)
+  await page.getByLabel('Default provider').selectOption('google-free-translate')
+  await expect(page.getByText('Configured')).toBeVisible()
+  await expect(page.getByLabel('API Key')).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Storage' }).click()
   await expect(page.getByRole('button', { name: 'Clear all cache' })).toBeVisible()
