@@ -21,6 +21,7 @@
       "@lingoflow/scheduler": ["./packages/scheduler/src/index.ts"],
       "@lingoflow/settings": ["./packages/settings/src/index.ts"],
       "@lingoflow/shared": ["./packages/shared/src/index.ts"],
+      "@lingoflow/testkit": ["./packages/testkit/src/index.ts"],
       "@lingoflow/types": ["./packages/types/src/index.ts"]
     }
   },
