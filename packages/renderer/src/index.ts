@@ -43,7 +43,7 @@ export function renderBelowOriginal(input: RenderInput, root: Document = documen
   translation.dataset.lingoflowTranslation = input.blockId
   translation.textContent = input.translatedText
 
-  element.insertAdjacentElement('afterend', translation)
+  insertTranslationElement(element, translation)
 }
 
 export function safeRender(input: RenderInput, root: Document = document) {
@@ -79,3 +79,85 @@ function findBlockElement(blockId: string, root: Document): HTMLElement | null {
 
   return null
 }
+
+function insertTranslationElement(source: HTMLElement, translation: HTMLElement) {
+  const placement = resolvePlacement(source)
+
+  if (placement.mode === 'inside') {
+    placement.target.appendChild(translation)
+    return
+  }
+
+  placement.target.insertAdjacentElement('afterend', translation)
+}
+
+function resolvePlacement(source: HTMLElement): {
+  mode: 'after' | 'inside'
+  target: HTMLElement
+} {
+  const tagName = source.tagName.toLowerCase()
+
+  if (tagName === 'li' || tagName === 'td' || tagName === 'th') {
+    return { mode: 'inside', target: source }
+  }
+
+  if (isInlineElement(source)) {
+    return { mode: 'after', target: findNearestBlockAncestor(source) ?? source }
+  }
+
+  return { mode: 'after', target: source }
+}
+
+function findNearestBlockAncestor(source: HTMLElement): HTMLElement | null {
+  let current = source.parentElement
+
+  while (current && current !== source.ownerDocument.body) {
+    if (!isInlineElement(current)) return current
+    current = current.parentElement
+  }
+
+  return null
+}
+
+function isInlineElement(element: HTMLElement): boolean {
+  const tagName = element.tagName.toLowerCase()
+  return !BLOCK_TAGS.has(tagName)
+}
+
+const BLOCK_TAGS = new Set([
+  'address',
+  'article',
+  'aside',
+  'blockquote',
+  'dd',
+  'div',
+  'dl',
+  'dt',
+  'figcaption',
+  'figure',
+  'footer',
+  'form',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'header',
+  'hr',
+  'li',
+  'main',
+  'nav',
+  'ol',
+  'p',
+  'pre',
+  'section',
+  'table',
+  'tbody',
+  'td',
+  'tfoot',
+  'th',
+  'thead',
+  'tr',
+  'ul',
+])
