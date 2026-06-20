@@ -8,6 +8,8 @@
 
 **Tech Stack:** TypeScript, Vue 3, Vitest, Playwright, WXT MV3.
 
+**Status:** Implemented and verified on 2026-06-20. Full E2E passed with the public reading pages test still skipped by its environment gate.
+
 ---
 
 ### Task 1: Settings Contract
@@ -17,11 +19,11 @@
 - Modify: `packages/settings/src/index.ts`
 - Modify: `packages/settings/src/settings.test.ts`
 
-- [ ] Add failing tests for `translationConcurrency` defaults, public runtime exposure, and clamping.
-- [ ] Add the setting to `AppSettings` and `PublicRuntimeSettings`.
-- [ ] Merge and clamp stored values to `1..6`.
-- [ ] Verify `pnpm test -- packages/settings/src/settings.test.ts`.
-- [ ] Commit.
+- [x] Add failing tests for `translationConcurrency` defaults, public runtime exposure, and clamping.
+- [x] Add the setting to `AppSettings` and `PublicRuntimeSettings`.
+- [x] Merge and clamp stored values to `1..6`.
+- [x] Verify `pnpm test -- packages/settings/src/settings.test.ts`.
+- [x] Commit.
 
 ### Task 2: Runtime Batch Concurrency
 
@@ -29,11 +31,11 @@
 - Modify: `packages/runtime/src/index.ts`
 - Modify: `packages/runtime/src/runtime.test.ts`
 
-- [ ] Add a failing runtime test showing two batches can be in flight before either resolves.
-- [ ] Implement a bounded async worker over created batches.
-- [ ] Keep render/progress behavior for success, failed, and cache-hit results.
-- [ ] Verify runtime tests.
-- [ ] Commit.
+- [x] Add a failing runtime test showing two batches can be in flight before either resolves.
+- [x] Implement a bounded async worker over created batches.
+- [x] Keep render/progress behavior for success, failed, and cache-hit results.
+- [x] Verify runtime tests.
+- [x] Commit.
 
 ### Task 3: OpenAI-Compatible Speed Request Body
 
@@ -42,11 +44,11 @@
 - Modify: `packages/providers/src/index.ts`
 - Modify: `packages/providers/src/connection.test.ts`
 
-- [ ] Add failing provider tests for `reasoningEffort` and `disableThinking` request fields.
-- [ ] Extend OpenAI-compatible config extraction.
-- [ ] Only send optional fields when configured.
-- [ ] Verify provider tests.
-- [ ] Commit.
+- [x] Add failing provider tests for `reasoningEffort` and `disableThinking` request fields.
+- [x] Extend OpenAI-compatible config extraction.
+- [x] Only send optional fields when configured.
+- [x] Verify provider tests.
+- [x] Commit.
 
 ### Task 4: Options UI Controls
 
@@ -55,21 +57,20 @@
 - Modify: `packages/shared/src/i18n.ts`
 - Modify: `e2e/preview.spec.ts`
 
-- [ ] Add a failing preview test for concurrency and OpenAI speed controls.
-- [ ] Render Advanced concurrency input.
-- [ ] Render OpenAI-compatible reasoning effort select and disable-thinking checkbox.
-- [ ] Verify preview E2E.
-- [ ] Commit.
+- [x] Add a failing preview test for concurrency and OpenAI speed controls.
+- [x] Render Advanced concurrency input.
+- [x] Render OpenAI-compatible reasoning effort select and disable-thinking checkbox.
+- [x] Verify preview E2E.
+- [x] Commit.
 
 ### Task 5: Full Verification
 
 **Files:**
 - Update: `docs/superpowers/plans/2026-06-20-llm-translation-speed-controls.md`
 
-- [ ] Run `pnpm test`.
-- [ ] Run `pnpm typecheck`.
-- [ ] Run `pnpm build`.
-- [ ] Run `pnpm test:e2e`.
-- [ ] Mark plan status with evidence and remaining skipped gates.
-- [ ] Commit.
-
+- [x] Run `pnpm test`.
+- [x] Run `pnpm typecheck`.
+- [x] Run `pnpm build`.
+- [x] Run `pnpm test:e2e`.
+- [x] Mark plan status with evidence and remaining skipped gates.
+- [x] Commit.
