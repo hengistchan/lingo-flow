@@ -378,6 +378,26 @@ describe('collectTextBlocks', () => {
     ])
   })
 
+  it('Keeps MDX list paragraph wrappers from duplicating the parent list item', async () => {
+    document.body.innerHTML = `
+      <main>
+        <ul class="mdx-ul">
+          <li class="mdx-li">
+            <p class="mdx-p"><strong class="mdx-strong">Quota Exhausted:</strong> When the monthly total quota of the package is exhausted, the system will stop service and will not continue to consume your bonus or account balance.</p>
+          </li>
+        </ul>
+      </main>
+    `
+
+    const blocks = await collectTextBlocks(document, defaultOptions)
+
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].meta.tagName).toBe('li')
+    expect(blocks[0].text).toBe('Quota Exhausted: When the monthly total quota of the package is exhausted, the system will stop service and will not continue to consume your bonus or account balance.')
+    expect(document.querySelector('li')?.getAttribute('data-lingoflow-block-id')).toBe(blocks[0].id)
+    expect(document.querySelector('li p')?.getAttribute('data-lingoflow-block-id')).toBeNull()
+  })
+
   it('Protects inline code, links, package names, URLs, and commit hashes in provider request text', async () => {
     document.body.innerHTML = `
       <main>

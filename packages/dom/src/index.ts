@@ -176,16 +176,17 @@ function uniqueElements(elements: HTMLElement[]): HTMLElement[] {
 }
 
 function isInsideAcceptedStructuralBoundary(element: HTMLElement, acceptedElements: HTMLElement[]): boolean {
-  return acceptedElements.some(accepted =>
-    accepted !== element &&
-    ownsDescendantBlocks(accepted) &&
-    accepted.contains(element)
-  )
+  return acceptedElements.some(accepted => {
+    if (accepted === element || !accepted.contains(element)) return false
+    const acceptedTagName = accepted.tagName.toLowerCase()
+    if (acceptedTagName === 'td' || acceptedTagName === 'th') return true
+    if (acceptedTagName === 'li') return isSameListItemParagraphWrapper(element, accepted)
+    return false
+  })
 }
 
-function ownsDescendantBlocks(element: HTMLElement): boolean {
-  const tagName = element.tagName.toLowerCase()
-  return tagName === 'td' || tagName === 'th'
+function isSameListItemParagraphWrapper(element: HTMLElement, listItem: HTMLElement): boolean {
+  return element.tagName.toLowerCase() === 'p' && element.closest('li') === listItem
 }
 
 function scoreGenericContentRoots(root: Document): HTMLElement[] {
