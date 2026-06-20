@@ -19,6 +19,34 @@ export const CANDIDATE_SELECTORS = [
   'th',
 ]
 
+export const CONTENT_ROOT_SELECTORS = [
+  '.markdown-body',
+  '.prose',
+  'article',
+  'main',
+  '[role="main"]',
+  '#content',
+  '#mw-content-text',
+  '.mw-parser-output',
+  '.md-content',
+]
+
+export const BLOCK_SELECTORS = [
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'p',
+  'li',
+  'blockquote',
+  'td',
+  'th',
+  'dd',
+  'figcaption',
+]
+
 export const IGNORE_SELECTORS = [
   'script',
   'style',
@@ -46,9 +74,12 @@ export type CollectTextBlockOptions = {
 }
 
 export async function collectTextBlocks(root: Document, options: CollectTextBlockOptions): Promise<TextBlock[]> {
+  const contentRoots = discoverContentRoots(root)
   const candidates = uniqueElements(
-    Array.from(root.querySelectorAll(CANDIDATE_SELECTORS.join(',')))
-      .filter((element): element is HTMLElement => element instanceof HTMLElement)
+    contentRoots.flatMap(contentRoot =>
+      Array.from(contentRoot.querySelectorAll(BLOCK_SELECTORS.join(',')))
+        .filter((element): element is HTMLElement => element instanceof HTMLElement)
+    )
   )
 
   const blocks: TextBlock[] = []
@@ -86,6 +117,22 @@ export async function collectTextBlocks(root: Document, options: CollectTextBloc
   return blocks
 }
 
+export function discoverContentRoots(root: Document): HTMLElement[] {
+  const explicitRoots = uniqueElements(
+    Array.from(root.querySelectorAll(CONTENT_ROOT_SELECTORS.join(',')))
+      .filter((element): element is HTMLElement => element instanceof HTMLElement)
+      .filter(element => isVisible(element))
+      .filter(element => !element.closest(IGNORE_SELECTORS.join(',')))
+  )
+
+  if (explicitRoots.length > 0) return explicitRoots
+
+  const scoredRoots = scoreGenericContentRoots(root)
+  if (scoredRoots.length > 0) return scoredRoots
+
+  return root.body ? [root.body] : [root.documentElement as HTMLElement]
+}
+
 export function isTranslatableElement(element: HTMLElement): boolean {
   if (!isVisible(element)) return false
   if (element.closest(IGNORE_SELECTORS.join(','))) return false
@@ -118,6 +165,31 @@ export function isVisible(element: HTMLElement): boolean {
 
 function uniqueElements(elements: HTMLElement[]): HTMLElement[] {
   return [...new Set(elements)]
+}
+
+function scoreGenericContentRoots(root: Document): HTMLElement[] {
+  const candidates = Array.from(root.querySelectorAll('section, div'))
+    .filter((element): element is HTMLElement => element instanceof HTMLElement)
+    .filter(element => isVisible(element))
+    .filter(element => !element.closest(IGNORE_SELECTORS.join(',')))
+    .map(element => {
+      const text = normalizeText(getElementText(element))
+      const paragraphs = element.querySelectorAll('p, li').length
+      const linkText = Array.from(element.querySelectorAll('a'))
+        .map(link => normalizeText(getElementText(link as HTMLElement)).length)
+        .reduce((sum, length) => sum + length, 0)
+      const linkDensity = text.length === 0 ? 0 : linkText / text.length
+      return {
+        element,
+        score: text.length + paragraphs * 120 - linkDensity * 400,
+        textLength: text.length,
+        paragraphs,
+      }
+    })
+    .filter(candidate => candidate.textLength >= 80 && candidate.paragraphs > 0)
+    .sort((a, b) => b.score - a.score)
+
+  return candidates[0] ? [candidates[0].element] : []
 }
 
 function getElementText(element: HTMLElement): string {

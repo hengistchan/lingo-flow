@@ -290,4 +290,47 @@ describe('collectTextBlocks', () => {
     expect(intro?.text).toContain('README.md')
     expect(blocks.some(block => block.text.includes('shouldNotTranslate'))).toBe(false)
   })
+
+  it('Collects markdown bodies even when they are not nested under main or article', async () => {
+    document.body.innerHTML = `
+      <div class="markdown-body">
+        <h2>What</h2>
+        <p>This standalone markdown body should still be collected as readable content.</p>
+      </div>
+    `
+
+    const blocks = await collectTextBlocks(document, {
+      ...defaultOptions,
+      pageUrl: 'https://github.com/example/repo/pull/2',
+      domain: 'github.com',
+    })
+
+    expect(blocks.map(block => block.text)).toEqual(expect.arrayContaining([
+      'What',
+      'This standalone markdown body should still be collected as readable content.',
+    ]))
+  })
+
+  it('Falls back to scored generic content containers when semantic roots are absent', async () => {
+    document.body.innerHTML = `
+      <div class="layout-shell">
+        <div class="promo">Tiny promo copy.</div>
+        <div class="story-panel">
+          <p>The first generic article paragraph is long enough to establish this panel as the main reading container.</p>
+          <p>The second generic article paragraph gives the scorer enough text density to prefer this content.</p>
+        </div>
+      </div>
+    `
+
+    const blocks = await collectTextBlocks(document, {
+      ...defaultOptions,
+      pageUrl: 'https://example.com/blog/post',
+      domain: 'example.com',
+    })
+
+    expect(blocks.map(block => block.text)).toEqual([
+      'The first generic article paragraph is long enough to establish this panel as the main reading container.',
+      'The second generic article paragraph gives the scorer enough text density to prefer this content.',
+    ])
+  })
 })
