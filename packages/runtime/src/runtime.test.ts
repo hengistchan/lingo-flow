@@ -36,6 +36,74 @@ describe('content runtime language and progress behavior', () => {
     expect(progress.status).toBe('done')
   })
 
+  it('sends protected request text and inline tokens to translation batches', async () => {
+    document.body.innerHTML = `
+      <article>
+        <p>Update <code>README.md</code> so <code>@vue-tui/runtime</code> documentation remains clear before the release.</p>
+      </article>
+    `
+    const settings = runtimeSettings()
+    let translatedTasks: TranslationTask[] = []
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      if (message.type === 'translation/translateBatch') {
+        translatedTasks = message.payload.tasks
+        return success({
+          results: translatedTasks.map(successResult),
+        })
+      }
+      throw new Error(`Unexpected message: ${message.type}`)
+    })
+
+    const runtime = createContentRuntime({ document, chromeRuntime })
+    await runtime.translatePage()
+
+    expect(translatedTasks).toHaveLength(1)
+    expect(translatedTasks[0].sourceText).toContain('README.md')
+    expect(translatedTasks[0].requestText).toContain('[[LF0]]')
+    expect(translatedTasks[0].requestText).toContain('[[LF1]]')
+    expect(translatedTasks[0].requestText).not.toContain('README.md')
+    expect(translatedTasks[0].inlineTokens?.map(token => token.text)).toEqual(expect.arrayContaining([
+      'README.md',
+      '@vue-tui/runtime',
+    ]))
+  })
+
+  it('renders runtime translations inside structural table cells', async () => {
+    document.body.innerHTML = `
+      <article>
+        <table>
+          <tbody>
+            <tr>
+              <td><p>This table cell text is long enough to be translated inside the cell.</p></td>
+            </tr>
+          </tbody>
+        </table>
+      </article>
+    `
+    const settings = runtimeSettings()
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      if (message.type === 'translation/translateBatch') {
+        const tasks: TranslationTask[] = message.payload.tasks
+        return success({
+          results: tasks.map(task => ({
+            ...successResult(task),
+            translatedText: '表格单元格翻译',
+          })),
+        })
+      }
+      throw new Error(`Unexpected message: ${message.type}`)
+    })
+
+    const runtime = createContentRuntime({ document, chromeRuntime })
+    await runtime.translatePage()
+
+    const translation = document.querySelector('.lingoflow-translation')
+    expect(translation?.textContent).toBe('表格单元格翻译')
+    expect(translation?.parentElement?.tagName.toLowerCase()).toBe('td')
+  })
+
   it('derives honest terminal states', () => {
     expect(deriveProgressStatus({ translated: 3, failed: 0, total: 3 })).toBe('done')
     expect(deriveProgressStatus({ translated: 2, failed: 1, total: 3 })).toBe('partial')
