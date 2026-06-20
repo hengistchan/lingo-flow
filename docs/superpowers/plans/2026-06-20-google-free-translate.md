@@ -8,6 +8,8 @@
 
 **Tech Stack:** TypeScript, Vue 3, Vitest, Playwright, WXT MV3.
 
+**Status:** Implemented and verified on 2026-06-20. Full E2E passed with the public reading pages test still skipped by its environment gate.
+
 ---
 
 ### Task 1: Provider Contract
@@ -17,11 +19,11 @@
 - Modify: `packages/providers/src/index.ts`
 - Modify: `packages/providers/src/connection.test.ts`
 
-- [ ] Add failing tests for Google Free request URL construction, response parsing, and connection success.
-- [ ] Add `google-free-translate` to built-in presets with no required fields.
-- [ ] Implement the provider and register it.
-- [ ] Verify provider tests.
-- [ ] Commit.
+- [x] Add failing tests for Google Free request URL construction, response parsing, and connection success.
+- [x] Add `google-free-translate` to built-in presets with no required fields.
+- [x] Implement the provider and register it.
+- [x] Verify provider tests.
+- [x] Commit.
 
 ### Task 2: Settings and Background Wiring
 
@@ -31,11 +33,11 @@
 - Modify: `packages/settings/src/summary.test.ts`
 - Modify: `apps/extension/entrypoints/background.ts`
 
-- [ ] Add failing tests proving defaults include a configured Google provider.
-- [ ] Add the default provider config without making it the default selection.
-- [ ] Route Google provider config extraction in background translation.
-- [ ] Verify settings/runtime tests.
-- [ ] Commit.
+- [x] Add failing tests proving defaults include a configured Google provider.
+- [x] Add the default provider config without making it the default selection.
+- [x] Route Google provider config extraction in background translation.
+- [x] Verify settings/runtime tests.
+- [x] Commit.
 
 ### Task 3: UI, Permissions, and E2E
 
@@ -44,20 +46,19 @@
 - Modify: `e2e/preview.spec.ts`
 - Modify: `e2e/extension.spec.ts`
 
-- [ ] Add failing preview/E2E assertions for provider visibility and manifest host permission.
-- [ ] Add narrow `https://translate.googleapis.com/*` host permission.
-- [ ] Verify preview/build tests.
-- [ ] Commit.
+- [x] Add failing preview/E2E assertions for provider visibility and manifest host permission.
+- [x] Add narrow `https://translate.googleapis.com/*` host permission.
+- [x] Verify preview/build tests.
+- [x] Commit.
 
 ### Task 4: Full Verification
 
 **Files:**
 - Update: `docs/superpowers/plans/2026-06-20-google-free-translate.md`
 
-- [ ] Run `pnpm test`.
-- [ ] Run `pnpm typecheck`.
-- [ ] Run `pnpm build`.
-- [ ] Run `pnpm test:e2e`.
-- [ ] Mark completion status and skipped gates.
-- [ ] Commit.
-
+- [x] Run `pnpm test`.
+- [x] Run `pnpm typecheck`.
+- [x] Run `pnpm build`.
+- [x] Run `pnpm test:e2e`.
+- [x] Mark completion status and skipped gates.
+- [x] Commit.
