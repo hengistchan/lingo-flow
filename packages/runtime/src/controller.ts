@@ -61,6 +61,7 @@ export class RuntimeController {
       store: this.store,
     })
     this.progress = this.idleProgress()
+    this.subscribeToEvents()
   }
 
   async translatePage(overrides: PageTranslationOverrides = {}): Promise<PageTranslationProgress> {
@@ -78,8 +79,8 @@ export class RuntimeController {
     }
 
     try {
-      this.clearGeneratedNodes()
       const settings = await this.sendRuntimeMessage<PublicRuntimeSettings>({ type: 'settings/getRuntime' })
+      this.clearGeneratedNodes()
       const sourceLang = this.resolveLanguage(overrides.sourceLang, settings.sourceLang, getSourceLanguageOptions())
       const targetLang = this.resolveLanguage(overrides.targetLang, settings.targetLang, getTargetLanguageOptions())
       const effectiveSettings = { ...settings, sourceLang, targetLang }
@@ -245,6 +246,33 @@ export class RuntimeController {
     this.coordinator.setDisplayMode(mode)
   }
 
+  private subscribeToEvents(): void {
+    this.events.on('block:dirty', event => {
+      const { blockId } = event
+      const mutated = this.store.dispatch(blockId, 'DOM_MUTATED')
+      if (mutated) {
+        this.bindings.removeRenderedNodes(blockId)
+        this.store.dispatch(blockId, 'REQUEUE')
+        const block = this.store.get(blockId)
+        if (block) {
+          this.queue.enqueue(blockId, block.normalizedText.length)
+        }
+      }
+    })
+
+    this.events.on('observer:newContent', event => {
+      if (event.cause === 'route-change') {
+        this.queue.clear()
+        this.version.nextRootGeneration()
+      }
+    })
+
+    this.events.on('binding:disconnected', event => {
+      this.bindings.remove(event.blockId)
+      this.version.removeBlock(event.blockId)
+    })
+  }
+
   private materializeBlocks(scanResults: ScanResult[], runId: string): void {
     for (const { block, binding } of scanResults) {
       this.store.add(block)
@@ -308,20 +336,14 @@ export class RuntimeController {
       const block = this.store.get(result.blockId)
       if (!block) continue
 
-      const renderResult = this.coordinator.renderTranslation({
+      this.coordinator.renderTranslation({
         blockId: result.blockId,
         translatedText: result.translatedText,
         runId,
         revision: block.revision,
         textHash: block.textHash,
-        sourceSignature: this.bindings.get(result.blockId)?.sourceSignature,
+        sourceSignature: this.bindings.get(result.blockId)?.sourceSignature ?? '',
       })
-
-      if (renderResult.ok) {
-        this.store.dispatch(result.blockId, 'ENQUEUE')
-        this.store.dispatch(result.blockId, 'TRANSLATE_START')
-        this.store.dispatch(result.blockId, 'TRANSLATE_SUCCESS')
-      }
     }
   }
 

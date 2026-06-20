@@ -5,7 +5,7 @@ import type {
   RenderSkipReason,
   RuntimeEvent,
 } from '@lingoflow/types'
-import { defaultStrategyRegistry, type StrategyRegistry } from '@lingoflow/renderer'
+import { defaultStrategyRegistry, hideSourceNodes, restoreSourceNodes, type StrategyRegistry } from '@lingoflow/renderer'
 import type { BlockBindingStore } from './bindings'
 import type { RuntimeEventBus } from './events'
 import type { BlockStore } from './store'
@@ -14,10 +14,10 @@ import type { VersionTracker } from './version'
 export type RenderInput = {
   blockId: string
   translatedText: string
-  runId?: string
-  revision?: number
-  textHash?: string
-  sourceSignature?: string
+  runId: string
+  revision: number
+  textHash: string
+  sourceSignature: string
 }
 
 export type RenderResult =
@@ -63,16 +63,14 @@ export class RenderCoordinator {
       return this.skip(input.blockId, 'missing-binding')
     }
 
-    if (input.runId && input.revision && input.textHash && input.sourceSignature) {
-      const staleness = this.version.checkStaleness(input.blockId, {
-        runId: input.runId,
-        revision: input.revision,
-        textHash: input.textHash,
-        sourceSignature: input.sourceSignature,
-      })
-      if (!staleness.ok) {
-        return this.skip(input.blockId, 'stale')
-      }
+    const staleness = this.version.checkStaleness(input.blockId, {
+      runId: input.runId,
+      revision: input.revision,
+      textHash: input.textHash,
+      sourceSignature: input.sourceSignature,
+    })
+    if (!staleness.ok) {
+      return this.skip(input.blockId, 'stale')
     }
 
     if (block.text === input.translatedText) {
@@ -129,21 +127,18 @@ export class RenderCoordinator {
       if (!binding) continue
 
       const doc = binding.carrierElement.ownerDocument
-      const translation = doc.querySelector(`[data-lingoflow-translation="${block.id}"]`)
+      const translation = doc.querySelector(`[data-lingoflow-translation="${block.id}"]`) as HTMLElement | null
       if (!translation) continue
 
       if (mode === 'translation') {
-        binding.carrierElement.hidden = true
-        binding.carrierElement.dataset.lingoflowSourceHidden = 'true'
-        ;(translation as HTMLElement).hidden = false
+        hideSourceNodes([binding.carrierElement])
+        translation.hidden = false
       } else if (mode === 'original') {
-        binding.carrierElement.hidden = false
-        delete binding.carrierElement.dataset.lingoflowSourceHidden
-        ;(translation as HTMLElement).hidden = true
+        restoreSourceNodes([binding.carrierElement])
+        translation.hidden = true
       } else {
-        binding.carrierElement.hidden = false
-        delete binding.carrierElement.dataset.lingoflowSourceHidden
-        ;(translation as HTMLElement).hidden = false
+        restoreSourceNodes([binding.carrierElement])
+        translation.hidden = false
       }
     }
 

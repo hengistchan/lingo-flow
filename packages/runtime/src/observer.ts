@@ -29,6 +29,7 @@ export class PageObserver {
   private originalReplaceState: typeof history.replaceState | null = null
   private dirtyTimer: ReturnType<typeof setTimeout> | null = null
   private newContentTimer: ReturnType<typeof setTimeout> | null = null
+  private newContentMaxTimer: ReturnType<typeof setTimeout> | null = null
   private pendingDirty = new Set<string>()
   private rootGeneration = 1
 
@@ -73,6 +74,11 @@ export class PageObserver {
     if (this.newContentTimer) {
       clearTimeout(this.newContentTimer)
       this.newContentTimer = null
+    }
+
+    if (this.newContentMaxTimer) {
+      clearTimeout(this.newContentMaxTimer)
+      this.newContentMaxTimer = null
     }
 
     this.pendingDirty.clear()
@@ -178,22 +184,41 @@ export class PageObserver {
           cause: 'character-data',
         })
       }
-    }, 150)
+    }, 80)
   }
 
   private scheduleNewContent(): void {
+    if (this.newContentMaxTimer === null) {
+      this.newContentMaxTimer = setTimeout(() => {
+        this.newContentMaxTimer = null
+        this.flushNewContent()
+      }, 1000)
+    }
+
     if (this.newContentTimer) return
 
     this.newContentTimer = setTimeout(() => {
       this.newContentTimer = null
-      this.events.emit({
-        type: 'observer:newContent',
-        cause: 'child-list',
-        rootKind: 'html',
-        rootGeneration: this.rootGeneration,
-        rootId: `root_${this.rootGeneration}`,
-      })
+      this.flushNewContent()
     }, 500)
+  }
+
+  private flushNewContent(): void {
+    if (this.newContentTimer) {
+      clearTimeout(this.newContentTimer)
+      this.newContentTimer = null
+    }
+    if (this.newContentMaxTimer) {
+      clearTimeout(this.newContentMaxTimer)
+      this.newContentMaxTimer = null
+    }
+    this.events.emit({
+      type: 'observer:newContent',
+      cause: 'child-list',
+      rootKind: 'html',
+      rootGeneration: this.rootGeneration,
+      rootId: `root_${this.rootGeneration}`,
+    })
   }
 
   private isGeneratedMutation(mutation: MutationRecord): boolean {
@@ -204,9 +229,15 @@ export class PageObserver {
     }
 
     if (mutation.type === 'childList') {
-      for (const node of mutation.addedNodes) {
-        if (node instanceof HTMLElement && this.isGeneratedNode(node)) return true
-      }
+      const addedHtml = Array.from(mutation.addedNodes).filter(
+        (n): n is HTMLElement => n instanceof HTMLElement,
+      )
+      if (addedHtml.length > 0 && addedHtml.every(n => this.isGeneratedNode(n))) return true
+
+      const removedHtml = Array.from(mutation.removedNodes).filter(
+        (n): n is HTMLElement => n instanceof HTMLElement,
+      )
+      if (removedHtml.length > 0 && removedHtml.every(n => this.isGeneratedNode(n))) return true
     }
 
     return false

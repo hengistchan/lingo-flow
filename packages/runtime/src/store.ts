@@ -90,7 +90,8 @@ export class BlockStore {
     if (!valid) return null
 
     const from = block.state
-    block.state = valid.to
-    return { from, to: valid.to, block: { ...block } }
+    const updated = { ...block, state: valid.to }
+    this.blocks.set(blockId, updated)
+    return { from, to: valid.to, block: updated }
   }
 }

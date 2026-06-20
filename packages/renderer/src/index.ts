@@ -1,4 +1,5 @@
 import type { InsertionPlan, TranslationInsertion } from '@lingoflow/types'
+import { findAllShadowRoots } from '@lingoflow/shared'
 import { restoreSourceNodes } from './display-mode'
 import { defaultStrategyRegistry } from './registry'
 import { createTranslationElement } from './strategies'
@@ -127,17 +128,6 @@ function createCompatibilityPlan(
     placement: insertion,
     sourceNodesToHide: [],
   }
-}
-
-function findAllShadowRoots(root: Element | Document): ShadowRoot[] {
-  const shadows: ShadowRoot[] = []
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
-  let node: Node | null = walker.currentNode
-  while (node) {
-    if (node instanceof Element && node.shadowRoot) shadows.push(node.shadowRoot)
-    node = walker.nextNode()
-  }
-  return shadows
 }
 
 function findBlockElement(blockId: string, root: Document): HTMLElement | null {

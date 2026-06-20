@@ -37,6 +37,10 @@ describe('RenderCoordinator', () => {
     const result = coordinator.renderTranslation({
       blockId: 'block_missing',
       translatedText: '译文',
+      runId: 'run_1',
+      revision: 1,
+      textHash: 'hash_1',
+      sourceSignature: 'sig_1',
     })
 
     expect(result.ok).toBe(false)
@@ -82,6 +86,10 @@ describe('RenderCoordinator', () => {
     const result = coordinator.renderTranslation({
       blockId: 'block_1',
       translatedText: '译文',
+      runId: 'run_1',
+      revision: 1,
+      textHash: 'hash_1',
+      sourceSignature: 'sig_1',
     })
 
     expect(result.ok).toBe(false)

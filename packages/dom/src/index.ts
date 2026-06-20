@@ -86,7 +86,7 @@ export async function collectScanResults(
     const text = inlineText.text
     const normalizedText = text
     const textHash = await sha256(normalizedText)
-    const id = `block_${results.length + 1}_${textHash.slice(0, 8)}`
+    const id = `block_${textHash.slice(0, 16)}`
     const blockType = detectBlockType(element)
     const rootKind = resolveRootKind(element, contentRoots, shadowRoots)
 

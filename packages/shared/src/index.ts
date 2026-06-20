@@ -25,3 +25,15 @@ export function getDomain(url: string): string {
     return ''
   }
 }
+
+export function findAllShadowRoots(root: Element | Document): ShadowRoot[] {
+  const shadows: ShadowRoot[] = []
+  const doc = root instanceof Document ? root : root.ownerDocument
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
+  let node: Node | null = walker.currentNode
+  while (node) {
+    if (node instanceof Element && node.shadowRoot) shadows.push(node.shadowRoot)
+    node = walker.nextNode()
+  }
+  return shadows
+}
