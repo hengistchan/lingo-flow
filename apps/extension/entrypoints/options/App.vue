@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, toRaw, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, toRaw, watch } from 'vue'
 import {
   getLanguageLabel,
   getSourceLanguageOptions,
@@ -81,6 +81,14 @@ watch(confirmClearAll, (val) => {
 })
 
 onMounted(loadSettings)
+
+const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+  if (dirty.value) {
+    event.preventDefault()
+  }
+}
+window.addEventListener('beforeunload', handleBeforeUnload)
+onUnmounted(() => window.removeEventListener('beforeunload', handleBeforeUnload))
 
 async function loadSettings() {
   busy.value = true
