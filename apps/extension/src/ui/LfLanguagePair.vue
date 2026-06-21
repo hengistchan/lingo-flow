@@ -2,6 +2,7 @@
 defineProps<{
   sourceLabel: string
   targetLabel: string
+  targetSelectLabel?: string
   currentTarget?: string
   options?: { value: string; label: string }[]
   disabled?: boolean
@@ -19,6 +20,7 @@ defineEmits<{
     <span class="lf-lang-pair__target">
       <select
         class="lf-lang-pair__select"
+        :aria-label="targetSelectLabel"
         :value="currentTarget"
         :disabled="disabled"
         @change="$emit('update:target', ($event.target as HTMLSelectElement).value)"

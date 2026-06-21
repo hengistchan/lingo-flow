@@ -346,6 +346,7 @@ function getPreviewSafeChrome() {
     <lf-language-pair
       :source-label="copy('popup.autoDetect')"
       :target-label="targetLanguageName"
+      :target-select-label="copy('popup.targetLanguage')"
       :current-target="pendingTargetLang"
       :options="targetLanguages.map(l => ({ value: l.code, label: getLanguageLabel(l.code, uiLocale) }))"
       :disabled="busy || progress.status === 'translating'"

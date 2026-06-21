@@ -136,6 +136,41 @@ describe('content runtime language and progress behavior', () => {
     expect(translation?.parentElement?.tagName.toLowerCase()).toBe('td')
   })
 
+  it('renders memory cache hits when translating the same page again', async () => {
+    document.body.innerHTML = `
+      <article>
+        <p>This paragraph is long enough to be translated, cached in memory, and rendered again.</p>
+      </article>
+    `
+    const settings = runtimeSettings()
+    let providerCalls = 0
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      if (message.type === 'translation/translateBatch') {
+        providerCalls += 1
+        const tasks: TranslationTask[] = message.payload.tasks
+        return success({
+          results: tasks.map(successResult),
+        })
+      }
+      throw new Error(`Unexpected message: ${message.type}`)
+    })
+
+    const runtime = createContentRuntime({ document, chromeRuntime })
+    await runtime.translatePage()
+    expect(document.querySelectorAll('[data-lingoflow-translation]')).toHaveLength(1)
+
+    const repeated = await runtime.translatePage()
+
+    expect(repeated).toMatchObject({
+      status: 'done',
+      cacheHits: 1,
+      translatedBlocks: 1,
+    })
+    expect(providerCalls).toBe(1)
+    expect(document.querySelectorAll('[data-lingoflow-translation]')).toHaveLength(1)
+  })
+
   it('sends translation batches with bounded concurrency', async () => {
     document.body.innerHTML = `
       <article>

@@ -156,6 +156,93 @@ test('installed extension injects content runtime into a real page', async () =>
   }
 })
 
+test('installed extension completes the local mock-provider happy path from the popup', async () => {
+  const articleServer = await startArticleServer()
+  const extension = await launchExtension({ allowLocalhost: true })
+
+  try {
+    const extensionPage = await extension.context.newPage()
+    await extensionPage.goto(extension.url('options.html'))
+    const saveResponse = await extensionPage.evaluate(async providerBaseUrl => {
+      const current = await chrome.runtime.sendMessage({ type: 'settings/get' })
+      if (!current?.ok) return current
+
+      return chrome.runtime.sendMessage({
+        type: 'settings/save',
+        payload: {
+          settings: {
+            ...current.data,
+            targetLang: 'ja',
+            cacheEnabled: true,
+            defaultProviderId: 'openai-compatible',
+            fallbackProviderId: '',
+            providers: {
+              ...current.data.providers,
+              'openai-compatible': {
+                ...current.data.providers['openai-compatible'],
+                values: { baseUrl: providerBaseUrl, apiKey: 'test-only-key', model: 'test-model' },
+              },
+            },
+          },
+        },
+      })
+    }, articleServer.successProviderBaseUrl)
+    expect(saveResponse).toMatchObject({ ok: true })
+
+    const article = await extension.context.newPage()
+    const articleErrors = collectRuntimeErrors(article)
+    await article.goto(articleServer.url)
+    await expect(article.getByRole('heading', { name: 'A field guide to quiet reading' })).toBeVisible()
+
+    const popup = await extension.context.newPage()
+    const popupErrors = collectRuntimeErrors(popup)
+    await popup.goto(extension.url('popup.html'))
+    await article.bringToFront()
+
+    await popup.getByRole('button', { name: 'Translate to Japanese' }).click()
+
+    await expect(popup.locator('.status')).toHaveText('Translation complete', { timeout: 8_000 })
+    await expect(article.locator('[data-lingoflow-translation]')).toHaveCount(3)
+    expect(articleServer.providerRequestCount()).toBe(1)
+
+    await popup.getByRole('button', { name: 'Translate again in Japanese' }).click()
+
+    await expect.poll(async () => {
+      const response = await extension.worker.evaluate(async () => {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+        if (!tab?.id) throw new Error('No active article tab found.')
+        return chrome.tabs.sendMessage(tab.id, { type: 'page/status' })
+      })
+      if (!response?.ok) return 'not-ok'
+      return `${response.data.status}:${response.data.cacheHits}`
+    }, { timeout: 8_000 }).toBe('done:3')
+    await expect(popup.locator('.status')).toHaveText('Translation complete', { timeout: 8_000 })
+    await expect(article.locator('[data-lingoflow-translation]')).toHaveCount(3)
+    const cachedStatus = await extension.worker.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (!tab?.id) throw new Error('No active article tab found.')
+      return chrome.tabs.sendMessage(tab.id, { type: 'page/status' })
+    })
+    expect(cachedStatus).toMatchObject({
+      ok: true,
+      data: {
+        status: 'done',
+        cacheHits: 3,
+      },
+    })
+    expect(articleServer.providerRequestCount()).toBe(1)
+
+    await popup.getByRole('button', { name: 'Clear translation' }).click()
+    await expect(article.locator('[data-lingoflow-translation]')).toHaveCount(0)
+    await expect(article.getByRole('heading', { name: 'A field guide to quiet reading' })).toBeVisible()
+    expect(articleErrors()).toEqual([])
+    expect(popupErrors()).toEqual([])
+  } finally {
+    await extension.close()
+    await articleServer.close()
+  }
+})
+
 test('installed popup keeps the translating target accurate and locks it until completion', async () => {
   const articleServer = await startArticleServer()
   const extension = await launchExtension({ allowLocalhost: true })
@@ -206,12 +293,12 @@ test('installed popup keeps the translating target accurate and locks it until c
     await popup.goto(extension.url('popup.html'))
     await article.bringToFront()
 
-    await expect(popup.locator('.brand-copy p')).toHaveText('Translating')
+    await expect(popup.locator('.status')).toHaveText('Translating')
     await expect(popup.getByLabel('Target language')).toHaveValue('ja')
     await expect(popup.getByLabel('Target language')).toBeDisabled()
     await expect(popup.getByRole('button', { name: 'Translating to Japanese' })).toBeDisabled()
 
-    await expect(popup.locator('.brand-copy p')).toHaveText('Translation complete', { timeout: 8_000 })
+    await expect(popup.locator('.status')).toHaveText('Translation complete', { timeout: 8_000 })
     await expect(popup.getByLabel('Target language')).toBeEnabled()
     await expect(popup.getByLabel('Target language')).toHaveValue('ja')
     await expect(popup.getByRole('button', { name: 'Translate again in Japanese' })).toBeVisible()
@@ -298,7 +385,7 @@ test('installed extension reports mixed provider results as partial without savi
     await popup.goto(extension.url('popup.html'))
     await article.bringToFront()
 
-    await expect(popup.locator('.brand-copy p')).toHaveText('Some content could not be translated')
+    await expect(popup.locator('.status')).toHaveText('Some content could not be translated')
     await expect(popup.getByLabel('Target language')).toHaveValue('ja')
     await expect(popup.getByRole('button', { name: 'Translate again in Japanese' })).toBeVisible()
 
@@ -591,14 +678,14 @@ test('installed extension translates GitHub Markdown without duplicate quotes or
   }
 })
 
-test('installed popup exposes current-site cache cleanup', async () => {
+test('installed popup hides current-site cache cleanup until translations exist', async () => {
   const extension = await launchExtension()
 
   try {
     const popup = await extension.context.newPage()
     await popup.goto(extension.url('popup.html'))
 
-    await expect(popup.getByRole('button', { name: "Clear this site's cache" })).toBeVisible()
+    await expect(popup.getByRole('button', { name: "Clear this site's cache" })).toHaveCount(0)
   } finally {
     await extension.close()
   }

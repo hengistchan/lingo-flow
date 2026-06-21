@@ -275,18 +275,23 @@ export class RuntimeController {
 
   private materializeBlocks(scanResults: ScanResult[], runId: string): void {
     for (const { block, binding } of scanResults) {
-      this.store.add(block)
+      const version = this.version.registerBlock(block.id, block.textHash, binding.sourceSignature)
+      const versionedBlock = {
+        ...block,
+        revision: version.revision,
+        runId,
+      }
+      this.store.add(versionedBlock)
       this.bindings.set({
         ...binding,
-        revision: block.revision,
+        revision: version.revision,
         runId,
         insertedNodes: [],
         hiddenSourceNodes: [],
         loadingElement: null,
-        collectedAtMutationSeq: this.version.currentMutationSeq(),
-        rootGeneration: 1,
+        collectedAtMutationSeq: version.collectedAtMutationSeq,
+        rootGeneration: version.rootGeneration,
       })
-      this.version.registerBlock(block.id, block.textHash, binding.sourceSignature)
     }
   }
 
