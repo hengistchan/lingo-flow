@@ -32,6 +32,7 @@ const targetSelectionTouched = ref(false)
 const busy = ref(false)
 const actionFailed = ref(false)
 const contentInjected = ref(false)
+const isDarkMode = ref(window.matchMedia('(prefers-color-scheme: dark)').matches)
 const cacheMessage = ref('')
 let pollTimer: number | undefined
 
@@ -160,8 +161,10 @@ async function clearSiteCache() {
     await ensureContentRuntime(tab.id)
     await sendTabMessage(tab.id, { type: 'page/clearCache' })
     cacheMessage.value = copy('popup.siteCacheCleared')
+    setTimeout(() => { cacheMessage.value = '' }, 5000)
   } catch {
     cacheMessage.value = copy('popup.siteCacheFailed')
+    setTimeout(() => { cacheMessage.value = '' }, 5000)
   } finally {
     busy.value = false
   }
@@ -194,6 +197,13 @@ async function openSettings() {
   }
 
   window.location.href = 'options.html'
+}
+
+function toggleDarkMode() {
+  isDarkMode.value = !isDarkMode.value
+  const root = document.documentElement
+  root.classList.remove('dark', 'light')
+  root.classList.add(isDarkMode.value ? 'dark' : 'light')
 }
 
 async function getActiveTab(): Promise<chrome.tabs.Tab & { id: number }> {
@@ -298,17 +308,33 @@ function getPreviewSafeChrome() {
   <main class="popup">
     <header class="header">
       <h1>LingoFlow</h1>
-      <button
-        class="icon-button"
-        :aria-label="copy('popup.settings')"
-        :title="copy('popup.settings')"
-        @click="openSettings"
-      >
-        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
-          <circle cx="10" cy="10" r="3" />
-          <path d="M10 1.5v2M10 16.5v2M1.5 10h2M16.5 10h2M3.4 3.4l1.4 1.4M15.2 15.2l1.4 1.4M3.4 16.6l1.4-1.4M15.2 4.8l1.4-1.4" />
-        </svg>
-      </button>
+      <div class="header-actions">
+        <button
+          class="icon-button"
+          :aria-label="copy('popup.toggleDarkMode')"
+          :title="copy('popup.toggleDarkMode')"
+          @click="toggleDarkMode"
+        >
+          <svg v-if="isDarkMode" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+          <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5" />
+            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+          </svg>
+        </button>
+        <button
+          class="icon-button"
+          :aria-label="copy('popup.settings')"
+          :title="copy('popup.settings')"
+          @click="openSettings"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+      </div>
     </header>
 
     <p class="status" aria-live="polite">{{ statusLabel }}</p>
@@ -388,6 +414,12 @@ function getPreviewSafeChrome() {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 4px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 h1 {

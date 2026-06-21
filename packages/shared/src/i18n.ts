@@ -19,6 +19,7 @@ export type UiCopyKey =
   | 'popup.siteCacheCleared'
   | 'popup.siteCacheFailed'
   | 'popup.settings'
+  | 'popup.toggleDarkMode'
   | 'popup.progress'
   | 'popup.failedBlocks'
   | 'popup.noReadableText'
@@ -83,7 +84,7 @@ export type UiCopyKey =
 
 const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
   'zh-Hans': {
-    'popup.autoDetect': '自动检测网页语言',
+    'popup.autoDetect': '自动检测',
     'popup.ready': '可开始翻译',
     'popup.translating': '正在翻译',
     'popup.complete': '翻译完成',
@@ -100,6 +101,7 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'popup.siteCacheCleared': '已清除此网站的翻译缓存',
     'popup.siteCacheFailed': '无法清除此网站的缓存',
     'popup.settings': '设置',
+    'popup.toggleDarkMode': '切换深色模式',
     'popup.progress': '进度',
     'popup.failedBlocks': '失败段落',
     'popup.noReadableText': '此页面没有可翻译的正文',
@@ -180,6 +182,7 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'popup.siteCacheCleared': "This site's translation cache was cleared",
     'popup.siteCacheFailed': "This site's cache could not be cleared",
     'popup.settings': 'Settings',
+    'popup.toggleDarkMode': 'Toggle dark mode',
     'popup.progress': 'Progress',
     'popup.failedBlocks': 'Failed blocks',
     'popup.noReadableText': 'No readable text found on this page',

@@ -29,7 +29,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not(.light) {
     --lf-ink: #e8e4de;
     --lf-paper: #1c1b19;
     --lf-margin: #252420;
@@ -42,6 +42,20 @@
     --lf-on-accent: #ffffff;
     --lf-danger-confirm: #7a1515;
   }
+}
+
+:root.dark {
+  --lf-ink: #e8e4de;
+  --lf-paper: #1c1b19;
+  --lf-margin: #252420;
+  --lf-accent: #d4764e;
+  --lf-accent-hover: #c06840;
+  --lf-whisper: #7a756b;
+  --lf-rule: #3a3830;
+  --lf-ghost: #9e978c;
+  --lf-success: #5a9c69;
+  --lf-on-accent: #ffffff;
+  --lf-danger-confirm: #7a1515;
 }
 
 /* ── Global Reset ── */

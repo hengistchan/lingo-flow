@@ -13,6 +13,25 @@ import type {
 export const REQUEST_TIMEOUT_MS = 30000
 export const GOOGLE_FREE_TRANSLATE_ENDPOINT = 'https://translate.googleapis.com/translate_a/single'
 
+export async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let nextIndex = 0
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (true) {
+      const index = nextIndex++
+      if (index >= items.length) break
+      results[index] = await fn(items[index], index)
+    }
+  }))
+
+  return results
+}
+
 export const OPENAI_PROMPT_VERSION = 'prompt-v1'
 const OPENAI_REASONING_EFFORTS = new Set(['auto', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh'])
 
@@ -196,10 +215,7 @@ export const googleFreeTranslateProvider: TranslationProvider = {
     maxItemsPerRequest: 20,
   },
   async translate(input: TranslateInput, _config: unknown): Promise<TranslateOutput> {
-    const texts: string[] = []
-    for (const text of input.texts) {
-      texts.push(await translateGoogleFreeText(text, input))
-    }
+    const texts = await mapWithConcurrency(input.texts, 10, text => translateGoogleFreeText(text, input))
     return {
       texts,
       usage: { characters: input.texts.join('').length },

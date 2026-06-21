@@ -591,7 +591,7 @@ function hasRuntimeApi() {
 
 <style scoped>
 .page {
-  width: min(720px, calc(100vw - 40px));
+  width: min(960px, calc(100vw - 40px));
   margin: 0 auto;
   padding: 36px 0 56px;
 }
@@ -643,6 +643,7 @@ h2 {
   color: var(--lf-accent);
   font-size: 13px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .settings-shell {
@@ -809,7 +810,7 @@ section {
 /* ── Responsive ── */
 @media (max-width: 640px) {
   .page {
-    width: min(100% - 24px, 720px);
+    width: min(100% - 24px, 960px);
     padding-top: 20px;
   }
 
