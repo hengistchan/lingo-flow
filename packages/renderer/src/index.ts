@@ -40,6 +40,12 @@ export function injectLingoFlowStyles(root: Document = document) {
     .lingoflow-translation-block {
       display: block;
     }
+    .lingoflow-translation-wrapper {
+      contain: content;
+    }
+    .lingoflow-translation-inner {
+      white-space: pre-wrap;
+    }
     @media (prefers-color-scheme: dark) {
       .lingoflow-translation {
         border-left-color: #d4764e;
@@ -61,7 +67,12 @@ export function renderBelowOriginal(input: RenderInput, root: Document = documen
 
   const existing = root.querySelector(`[data-lingoflow-translation="${input.blockId}"]`)
   if (existing instanceof HTMLElement) {
-    existing.textContent = input.translatedText
+    const inner = existing.querySelector('.lingoflow-translation-inner')
+    if (inner instanceof HTMLElement) {
+      inner.textContent = input.translatedText
+    } else {
+      existing.textContent = input.translatedText
+    }
     existing.hidden = false
     if (input.targetLang) existing.lang = input.targetLang
     return

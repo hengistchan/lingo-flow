@@ -47,10 +47,17 @@ abstract class BaseInsertionStrategy implements InsertionStrategy {
   protected prepareTranslationElement(plan: InsertionPlan): HTMLElement {
     const translation = plan.translationElement
     translation.dataset.lingoflowTranslation = plan.blockId
+    translation.dataset.lingoflowMode = plan.mode
+    translation.dataset.lingoflowPosition = plan.placement
+    translation.dataset.lingoflowTheme = 'system'
     markGeneratedNode(translation, plan.blockId)
     translation.classList.add('lingoflow-translation')
     translation.classList.toggle('lingoflow-translation-inline', this.inlineTranslation)
     translation.classList.toggle('lingoflow-translation-block', !this.inlineTranslation)
+    translation.classList.add('lingoflow-translation-wrapper')
+    translation.classList.toggle('lingoflow-translation-wrapper-inline', this.inlineTranslation)
+    translation.classList.toggle('lingoflow-translation-wrapper-block', !this.inlineTranslation)
+    ensureTranslationInner(translation, this.inlineTranslation)
     return translation
   }
 
@@ -163,14 +170,31 @@ export function createTranslationElement(
   const translation = root.createElement(inline ? 'span' : 'div')
   translation.dataset.lingoflowTranslation = block.id
   if (block.targetLang) translation.lang = block.targetLang
-  translation.textContent = block.translatedText ?? ''
+  const inner = root.createElement(inline ? 'span' : 'div')
+  inner.classList.add('lingoflow-translation-inner')
+  inner.textContent = block.translatedText ?? ''
+  translation.appendChild(inner)
   return translation
 }
 
 function markGeneratedNode(element: HTMLElement, blockId: string) {
   element.classList.add('notranslate')
   element.dataset.lingoflowGenerated = 'true'
+  element.dataset.lingoflowBlockId = blockId
   element.setAttribute('translate', 'no')
+}
+
+function ensureTranslationInner(wrapper: HTMLElement, inline: boolean): HTMLElement {
+  const existing = wrapper.querySelector('.lingoflow-translation-inner')
+  if (existing instanceof HTMLElement) return existing
+
+  const text = wrapper.textContent ?? ''
+  const inner = wrapper.ownerDocument.createElement(inline ? 'span' : 'div')
+  inner.classList.add('lingoflow-translation-inner')
+  inner.textContent = text
+  wrapper.textContent = ''
+  wrapper.appendChild(inner)
+  return inner
 }
 
 function getHideableSourceNodes(binding: BlockBinding): HTMLElement[] {

@@ -52,6 +52,58 @@ describe('renderer', () => {
     expect(translation.previousSibling?.nodeName).toBe('BR')
   })
 
+  it('renders provider text inside a standardized generated wrapper', () => {
+    document.body.innerHTML = '<p data-lingoflow-block-id="block_wrapper">Original paragraph.</p>'
+
+    renderBelowOriginal({
+      blockId: 'block_wrapper',
+      translatedText: '<strong>译文</strong>',
+      insertion: 'linebreak-inside',
+      targetLang: 'zh-Hans',
+    })
+
+    const wrapper = document.querySelector('[data-lingoflow-translation="block_wrapper"]') as HTMLElement
+    const inner = wrapper.querySelector('.lingoflow-translation-inner') as HTMLElement
+    const breakElement = wrapper.previousSibling as HTMLElement
+
+    expect(wrapper.classList.contains('lingoflow-translation-wrapper')).toBe(true)
+    expect(wrapper.classList.contains('lingoflow-translation-wrapper-inline')).toBe(true)
+    expect(wrapper.dataset.lingoflowGenerated).toBe('true')
+    expect(wrapper.dataset.lingoflowBlockId).toBe('block_wrapper')
+    expect(wrapper.dataset.lingoflowMode).toBe('dual')
+    expect(wrapper.dataset.lingoflowPosition).toBe('linebreak-inside')
+    expect(wrapper.dataset.lingoflowTheme).toBe('system')
+    expect(wrapper.getAttribute('translate')).toBe('no')
+    expect(wrapper.classList.contains('notranslate')).toBe(true)
+    expect(inner.textContent).toBe('<strong>译文</strong>')
+    expect(inner.querySelector('strong')).toBeNull()
+    expect(wrapper.lang).toBe('zh-Hans')
+    expect(breakElement.dataset.lingoflowBlockId).toBe('block_wrapper')
+    expect(breakElement.getAttribute('translate')).toBe('no')
+  })
+
+  it('updates existing standardized wrappers without removing the inner node', () => {
+    document.body.innerHTML = '<p data-lingoflow-block-id="block_update">Original paragraph.</p>'
+
+    renderBelowOriginal({
+      blockId: 'block_update',
+      translatedText: '第一次译文',
+      insertion: 'linebreak-inside',
+    })
+    renderBelowOriginal({
+      blockId: 'block_update',
+      translatedText: '第二次译文',
+      insertion: 'linebreak-inside',
+    })
+
+    const wrapper = document.querySelector('[data-lingoflow-translation="block_update"]') as HTMLElement
+    const inner = wrapper.querySelector('.lingoflow-translation-inner') as HTMLElement
+
+    expect(document.querySelectorAll('[data-lingoflow-translation="block_update"]')).toHaveLength(1)
+    expect(inner).not.toBeNull()
+    expect(inner.textContent).toBe('第二次译文')
+  })
+
   it('renders inline-inside translations inside compact headings', () => {
     document.body.innerHTML = '<h2 data-lingoflow-block-id="block_heading">What</h2>'
 
