@@ -54,7 +54,11 @@ export class BlockBindingStore {
     for (const node of binding.insertedNodes) {
       node.parentNode?.removeChild(node)
     }
+    restoreSourceNodes(binding.hiddenSourceNodes)
     binding.insertedNodes = []
+    binding.hiddenSourceNodes = []
+    binding.loadingElement = null
+    binding.errorElement = null
   }
 
   clear(): void {

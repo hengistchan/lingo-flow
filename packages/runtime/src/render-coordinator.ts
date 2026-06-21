@@ -77,6 +77,10 @@ export class RenderCoordinator {
       return this.skip(input.blockId, 'same-text')
     }
 
+    if (binding.loadingElement || binding.errorElement) {
+      this.bindings.removeRenderedNodes(input.blockId)
+    }
+
     const existingTranslation = binding.carrierElement.ownerDocument.querySelector(
       `[data-lingoflow-translation="${input.blockId}"]`,
     )
@@ -115,6 +119,14 @@ export class RenderCoordinator {
     })
 
     return { ok: true, result }
+  }
+
+  renderLoading(blockId: string, message = 'Translating...'): RenderResult {
+    return this.renderPlaceholder(blockId, 'loading', message)
+  }
+
+  renderError(blockId: string, message: string): RenderResult {
+    return this.renderPlaceholder(blockId, 'error', message)
   }
 
   setDisplayMode(mode: PageDisplayMode): void {
@@ -157,4 +169,64 @@ export class RenderCoordinator {
     })
     return { ok: false, reason }
   }
+
+  private renderPlaceholder(
+    blockId: string,
+    kind: 'loading' | 'error',
+    message: string,
+  ): RenderResult {
+    const binding = this.bindings.get(blockId)
+    if (!binding) return this.skip(blockId, 'missing-binding')
+    if (!binding.carrierElement.isConnected) return this.skip(blockId, 'detached')
+
+    const block = this.store.get(blockId)
+    if (!block) return this.skip(blockId, 'missing-binding')
+
+    this.bindings.removeRenderedNodes(blockId)
+
+    const strategy = this.registry.resolve(
+      { ...block, translatedText: message },
+      binding,
+      this.displayMode,
+    )
+    if (!strategy) return this.skip(blockId, 'unsupported-strategy')
+
+    const plan = strategy.plan(
+      { ...block, translatedText: message },
+      binding,
+      this.displayMode,
+    )
+    const result = strategy.apply(plan)
+    const placeholder = findPrimaryInsertedElement(result.insertedNodes)
+    if (placeholder) {
+      delete placeholder.dataset.lingoflowTranslation
+      placeholder.removeAttribute('data-lingoflow-translation')
+      placeholder.classList.add(kind === 'loading' ? 'lingoflow-loading' : 'lingoflow-error')
+      if (kind === 'loading') {
+        placeholder.dataset.lingoflowLoading = blockId
+      } else {
+        placeholder.dataset.lingoflowError = blockId
+      }
+    }
+
+    this.bindings.markRendered(blockId, result.insertedNodes, result.hiddenSourceNodes)
+    const updated = this.bindings.get(blockId)
+    if (updated && placeholder) {
+      if (kind === 'loading') {
+        updated.loadingElement = placeholder
+        updated.errorElement = null
+      } else {
+        updated.errorElement = placeholder
+        updated.loadingElement = null
+      }
+    }
+
+    return { ok: true, result }
+  }
+}
+
+function findPrimaryInsertedElement(nodes: Node[]): HTMLElement | null {
+  return nodes.find((node): node is HTMLElement =>
+    node instanceof HTMLElement && node.classList.contains('lingoflow-translation-wrapper')
+  ) ?? null
 }

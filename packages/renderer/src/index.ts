@@ -46,10 +46,22 @@ export function injectLingoFlowStyles(root: Document = document) {
     .lingoflow-translation-inner {
       white-space: pre-wrap;
     }
+    .lingoflow-loading {
+      opacity: 0.72;
+      font-style: italic;
+    }
+    .lingoflow-error {
+      border-left-color: #b3261e;
+      color: #b3261e;
+    }
     @media (prefers-color-scheme: dark) {
       .lingoflow-translation {
         border-left-color: #d4764e;
         color: #9e978c;
+      }
+      .lingoflow-error {
+        border-left-color: #ffb4ab;
+        color: #ffb4ab;
       }
     }
   `

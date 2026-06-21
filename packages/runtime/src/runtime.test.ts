@@ -207,6 +207,90 @@ describe('content runtime language and progress behavior', () => {
     expect(document.querySelectorAll('[data-lingoflow-translation]')).toHaveLength(1)
   })
 
+  it('renders loading placeholders while provider work is pending and clears them after success', async () => {
+    document.body.innerHTML = `
+      <article>
+        <p>This paragraph is long enough to show a loading placeholder while translation is pending.</p>
+      </article>
+    `
+    const settings = runtimeSettings()
+    let translatedTasks: TranslationTask[] = []
+    let resolveProvider: (() => void) | undefined
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      if (message.type === 'translation/translateBatch') {
+        translatedTasks = message.payload.tasks
+        await new Promise<void>(resolve => {
+          resolveProvider = resolve
+        })
+        return success({
+          results: translatedTasks.map(successResult),
+        })
+      }
+      throw new Error(`Unexpected message: ${message.type}`)
+    })
+
+    const runtime = createContentRuntime({ document, chromeRuntime })
+    const progressPromise = runtime.translatePage()
+
+    await waitFor(() => translatedTasks.length === 1)
+    const loading = document.querySelector('.lingoflow-loading') as HTMLElement
+    expect(loading).not.toBeNull()
+    expect(loading.dataset.lingoflowLoading).toBe(translatedTasks[0].blockId)
+    expect(loading.textContent).toContain('Translating')
+
+    resolveProvider?.()
+    await progressPromise
+
+    expect(document.querySelector('.lingoflow-loading')).toBeNull()
+    expect(document.querySelector('[data-lingoflow-translation]')?.textContent).toContain('translated:')
+  })
+
+  it('replaces loading placeholders with error placeholders for failed provider results', async () => {
+    document.body.innerHTML = `
+      <article>
+        <p>This paragraph is long enough to show an error placeholder when translation fails.</p>
+      </article>
+    `
+    const settings = runtimeSettings()
+    let translatedTasks: TranslationTask[] = []
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      if (message.type === 'translation/translateBatch') {
+        translatedTasks = message.payload.tasks
+        return success({
+          results: translatedTasks.map(task => ({
+            taskId: task.id,
+            blockId: task.blockId,
+            sourceText: task.sourceText,
+            sourceLang: task.sourceLang,
+            targetLang: task.targetLang,
+            providerId: task.providerId,
+            cacheKey: task.cacheKey,
+            fromCache: false,
+            status: 'failed' as const,
+            meta: task.meta,
+            error: {
+              message: 'provider failed',
+              reason: 'provider_failed' as const,
+            },
+          })),
+        })
+      }
+      throw new Error(`Unexpected message: ${message.type}`)
+    })
+
+    const runtime = createContentRuntime({ document, chromeRuntime })
+    const progress = await runtime.translatePage()
+
+    const error = document.querySelector('.lingoflow-error') as HTMLElement
+    expect(progress.status).toBe('failed')
+    expect(error).not.toBeNull()
+    expect(error.dataset.lingoflowError).toBe(translatedTasks[0].blockId)
+    expect(error.textContent).toContain('provider failed')
+    expect(document.querySelector('.lingoflow-loading')).toBeNull()
+  })
+
   it('sends translation batches with bounded concurrency', async () => {
     document.body.innerHTML = `
       <article>

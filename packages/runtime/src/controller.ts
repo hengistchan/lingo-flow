@@ -140,6 +140,10 @@ export class RuntimeController {
       }
 
       const batches = this.createBatches(misses)
+      for (const task of misses) {
+        this.coordinator.renderLoading(task.blockId)
+      }
+
       await this.processBatchesWithConcurrency(batches, settings.translationConcurrency, async batch => {
         try {
           const response = await this.sendRuntimeMessage<{ results: TranslationResult[] }>({
@@ -155,11 +159,14 @@ export class RuntimeController {
               this.progress.translatedBlocks += 1
             } else {
               this.progress.failedBlocks += 1
+              this.coordinator.renderError(result.blockId, result.error.message)
             }
           }
         } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
           for (const task of batch) {
             this.progress.failedBlocks += 1
+            this.coordinator.renderError(task.blockId, message)
           }
           console.warn('[LingoFlow] Batch translation failed', error)
         }
@@ -312,6 +319,7 @@ export class RuntimeController {
         insertedNodes: [],
         hiddenSourceNodes: [],
         loadingElement: null,
+        errorElement: null,
         collectedAtMutationSeq: version.collectedAtMutationSeq,
         rootGeneration: version.rootGeneration,
       })

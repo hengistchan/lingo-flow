@@ -148,6 +148,7 @@ export type BlockBinding = {
   insertedNodes: Node[]
   hiddenSourceNodes: HTMLElement[]
   loadingElement: HTMLElement | null
+  errorElement?: HTMLElement | null
   sourceSignature: string
   collectedAtMutationSeq: number
   rootGeneration: number
