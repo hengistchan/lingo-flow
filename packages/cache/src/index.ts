@@ -63,6 +63,7 @@ export async function resolveTranslationCache(tasks: TranslationTask[]) {
         cacheKey: task.cacheKey,
         fromCache: true,
         status: 'success',
+        meta: task.meta,
       })
     }
 

@@ -23,6 +23,13 @@ const task: TranslationTask = {
   cacheKey: 'translation:hash_1:en:zh-Hans:openai-compatible:test-model:prompt-v1:v1',
   pageUrl: 'https://example.com/article',
   domain: 'example.com',
+  meta: {
+    url: 'https://example.com/article',
+    domain: 'example.com',
+    ruleId: 'test-rule',
+    runId: 'run_cache_test',
+    rootGeneration: 1,
+  },
 }
 
 describe('translation cache failure handling', () => {

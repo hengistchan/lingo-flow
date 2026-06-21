@@ -1,10 +1,12 @@
 import { buildTranslationCacheKey } from '@lingoflow/cache'
-import { collectScanResults, type CollectScanResultOptions } from '@lingoflow/dom'
+import { collectScanResults } from '@lingoflow/dom'
+import { resolvePageRule } from '@lingoflow/rules'
 import { getDomain, getSourceLanguageOptions, getTargetLanguageOptions } from '@lingoflow/shared'
 import type {
   PageDisplayMode,
   PageTranslationProgress,
   PublicRuntimeSettings,
+  RuntimeContext,
   ScanResult,
   TranslationResult,
   TranslationTask,
@@ -90,18 +92,17 @@ export class RuntimeController {
       const runId = this.version.beginRun()
       const pageUrl = this.root.location.href
       const domain = getDomain(pageUrl)
-
-      const scanResults = await collectScanResults(this.root, {
-        sourceLang,
-        targetLang,
+      const context = this.createRuntimeContext({
+        runId,
+        settings: effectiveSettings,
         pageUrl,
         domain,
-        runId,
-        rootGeneration: 1,
       })
 
-      this.materializeBlocks(scanResults, runId)
-      const tasks = this.createTasks(scanResults, effectiveSettings, pageUrl, domain)
+      const scanResults = await collectScanResults(this.root, context)
+
+      this.materializeBlocks(scanResults, context)
+      const tasks = this.createTasks(scanResults, context)
       this.progress.totalBlocks = tasks.length
 
       if (tasks.length === 0) {
@@ -112,7 +113,7 @@ export class RuntimeController {
       }
 
       const { hits: memoryHits, misses: memoryMisses } = this.resolveMemoryCache(tasks)
-      this.renderResults(memoryHits, runId)
+      this.renderResults(memoryHits, context)
       this.progress.cacheHits += memoryHits.length
       this.progress.translatedBlocks += memoryHits.length
 
@@ -127,7 +128,7 @@ export class RuntimeController {
             payload: { tasks: misses },
           })
 
-          this.renderResults(cache.hits, runId)
+          this.renderResults(cache.hits, context)
           for (const hit of cache.hits) this.memoryCache.set(hit.cacheKey, hit)
           this.evictOldestCacheEntries()
           this.progress.cacheHits += cache.hits.length
@@ -146,7 +147,7 @@ export class RuntimeController {
             payload: { tasks: batch },
           })
 
-          this.renderResults(response.results, runId)
+          this.renderResults(response.results, context)
           for (const result of response.results) {
             if (result.status === 'success') {
               this.memoryCache.set(result.cacheKey, result)
@@ -273,19 +274,41 @@ export class RuntimeController {
     })
   }
 
-  private materializeBlocks(scanResults: ScanResult[], runId: string): void {
+  private createRuntimeContext(input: {
+    runId: string
+    settings: PublicRuntimeSettings
+    pageUrl: string
+    domain: string
+  }): RuntimeContext {
+    const pageRule = resolvePageRule(this.root, input.pageUrl)
+    return Object.freeze({
+      runId: input.runId,
+      url: input.pageUrl,
+      domain: input.domain,
+      sourceLang: input.settings.sourceLang,
+      targetLang: input.settings.targetLang,
+      providerId: input.settings.providerId,
+      model: input.settings.model,
+      displayMode: input.settings.displayMode ?? pageRule.behavior.displayMode,
+      settings: Object.freeze({ ...input.settings }),
+      pageRule,
+      rootGeneration: this.version.currentRootGeneration(),
+    })
+  }
+
+  private materializeBlocks(scanResults: ScanResult[], context: RuntimeContext): void {
     for (const { block, binding } of scanResults) {
-      const version = this.version.registerBlock(block.id, block.textHash, binding.sourceSignature)
+      const version = this.version.registerBlock(block.id, block.textHash, binding.sourceSignature, context.rootGeneration)
       const versionedBlock = {
         ...block,
         revision: version.revision,
-        runId,
+        runId: context.runId,
       }
       this.store.add(versionedBlock)
       this.bindings.set({
         ...binding,
         revision: version.revision,
-        runId,
+        runId: context.runId,
         insertedNodes: [],
         hiddenSourceNodes: [],
         loadingElement: null,
@@ -297,19 +320,17 @@ export class RuntimeController {
 
   private createTasks(
     scanResults: ScanResult[],
-    settings: PublicRuntimeSettings,
-    pageUrl: string,
-    domain: string,
+    context: RuntimeContext,
   ): TranslationTask[] {
     return scanResults.map(({ block }) => {
       const cacheKey = buildTranslationCacheKey({
         textHash: block.textHash,
-        sourceLang: settings.sourceLang,
-        targetLang: settings.targetLang,
-        providerId: settings.providerId,
-        model: settings.model,
-        promptVersion: settings.promptVersion,
-        normalizeVersion: settings.normalizeVersion,
+        sourceLang: context.sourceLang,
+        targetLang: context.targetLang,
+        providerId: context.providerId,
+        model: context.model,
+        promptVersion: context.settings.promptVersion,
+        normalizeVersion: context.settings.normalizeVersion,
       })
 
       return {
@@ -321,20 +342,27 @@ export class RuntimeController {
         textHash: block.textHash,
         inlineTokens: block.inlineTokens,
         insertion: block.meta.insertion,
-        sourceLang: settings.sourceLang,
-        targetLang: settings.targetLang,
-        providerId: settings.providerId,
-        model: settings.model,
-        promptVersion: settings.promptVersion,
-        normalizeVersion: settings.normalizeVersion,
+        sourceLang: context.sourceLang,
+        targetLang: context.targetLang,
+        providerId: context.providerId,
+        model: context.model,
+        promptVersion: context.settings.promptVersion,
+        normalizeVersion: context.settings.normalizeVersion,
         cacheKey,
-        pageUrl,
-        domain,
+        pageUrl: context.url,
+        domain: context.domain,
+        meta: {
+          url: context.url,
+          domain: context.domain,
+          ruleId: context.pageRule.id,
+          runId: context.runId,
+          rootGeneration: context.rootGeneration,
+        },
       }
     })
   }
 
-  private renderResults(results: TranslationResult[], runId: string): void {
+  private renderResults(results: TranslationResult[], context: RuntimeContext): void {
     for (const result of results) {
       if (result.status !== 'success') continue
 
@@ -344,7 +372,7 @@ export class RuntimeController {
       this.coordinator.renderTranslation({
         blockId: result.blockId,
         translatedText: result.translatedText,
-        runId,
+        runId: result.meta?.runId ?? context.runId,
         revision: block.revision,
         textHash: block.textHash,
         sourceSignature: this.bindings.get(result.blockId)?.sourceSignature ?? '',
@@ -366,6 +394,7 @@ export class RuntimeController {
           sourceText: task.sourceText,
           insertion: task.insertion,
           fromCache: true,
+          meta: task.meta,
         })
       } else {
         misses.push(task)

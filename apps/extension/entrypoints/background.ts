@@ -169,6 +169,7 @@ async function translateWithProvider(
       cacheKey,
       fromCache: false,
       status: 'success',
+      meta: task.meta,
     }
   })
 

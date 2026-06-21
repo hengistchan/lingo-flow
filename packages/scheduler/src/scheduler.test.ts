@@ -13,6 +13,13 @@ const task = (id: string): TranslationTask => ({
   cacheKey: `translation:${id}:en:zh-Hans:azure-translator:default:none:v1`,
   pageUrl: 'https://example.com/article',
   domain: 'example.com',
+  meta: {
+    url: 'https://example.com/article',
+    domain: 'example.com',
+    ruleId: 'test-rule',
+    runId: 'run_scheduler_test',
+    rootGeneration: 1,
+  },
 })
 
 describe('scheduler', () => {

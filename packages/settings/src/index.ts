@@ -149,6 +149,7 @@ export function getPublicRuntimeSettings(settings: AppSettings): PublicRuntimeSe
     targetLang: settings.targetLang,
     sourceLang: settings.sourceLang,
     renderMode: settings.renderMode,
+    displayMode: 'dual',
     cacheEnabled: settings.cacheEnabled,
     maxCacheItems: settings.maxCacheItems,
     translationConcurrency: settings.translationConcurrency,

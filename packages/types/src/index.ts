@@ -392,6 +392,15 @@ export type TranslationTask = {
   cacheKey: string
   pageUrl?: string
   domain?: string
+  meta: TranslationTaskMeta
+}
+
+export type TranslationTaskMeta = {
+  url: string
+  domain: string
+  ruleId: string
+  runId: string
+  rootGeneration: number
 }
 
 export type TranslationSuccessResult = {
@@ -408,6 +417,7 @@ export type TranslationSuccessResult = {
   cacheKey: string
   fromCache: boolean
   status: 'success'
+  meta?: TranslationTaskMeta
 }
 
 export type TranslationFailedResult = {
@@ -424,6 +434,7 @@ export type TranslationFailedResult = {
   cacheKey: string
   fromCache: false
   status: 'failed'
+  meta?: TranslationTaskMeta
   error: {
     message: string
     reason?: DegradeReason
@@ -549,6 +560,7 @@ export type PublicRuntimeSettings = {
   targetLang: string
   sourceLang: 'auto' | string
   renderMode: LegacyRenderMode
+  displayMode?: PageDisplayMode
   cacheEnabled: boolean
   maxCacheItems: number
   translationConcurrency: number

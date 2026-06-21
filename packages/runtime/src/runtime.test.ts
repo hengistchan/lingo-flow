@@ -101,6 +101,42 @@ describe('content runtime language and progress behavior', () => {
     expect(translation.previousSibling?.nodeName).toBe('BR')
   })
 
+  it('threads RuntimeContext metadata into provider tasks', async () => {
+    document.body.innerHTML = `
+      <article>
+        <p>This paragraph is long enough to prove runtime context metadata reaches provider tasks.</p>
+      </article>
+    `
+    const settings = runtimeSettings()
+    let translatedTasks: TranslationTask[] = []
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      if (message.type === 'translation/translateBatch') {
+        translatedTasks = message.payload.tasks
+        return success({
+          results: translatedTasks.map(successResult),
+        })
+      }
+      throw new Error(`Unexpected message: ${message.type}`)
+    })
+
+    const runtime = createContentRuntime({ document, chromeRuntime })
+    await runtime.translatePage()
+
+    expect(translatedTasks).toHaveLength(1)
+    expect(translatedTasks[0]).toMatchObject({
+      pageUrl: document.location.href,
+      domain: 'localhost',
+      meta: {
+        url: document.location.href,
+        domain: 'localhost',
+        ruleId: 'default',
+        runId: expect.stringMatching(/^run_/),
+        rootGeneration: 1,
+      },
+    })
+  })
+
   it('renders runtime translations inside structural table cells', async () => {
     document.body.innerHTML = `
       <article>
@@ -272,6 +308,7 @@ function successResult(task: TranslationTask): TranslationResult {
     cacheKey: task.cacheKey,
     fromCache: false,
     status: 'success',
+    meta: task.meta,
   }
 }
 
