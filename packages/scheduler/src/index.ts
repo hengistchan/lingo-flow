@@ -34,6 +34,23 @@ export function createBatches(tasks: TranslationTask[], options: BatchOptions): 
   return batches
 }
 
+export async function processBatchesWithConcurrency<T>(
+  batches: T[][],
+  concurrency: number,
+  processBatch: (batch: T[]) => Promise<void>,
+): Promise<void> {
+  const workerCount = Math.max(1, Math.min(Math.floor(concurrency) || 1, batches.length))
+  let nextIndex = 0
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const batchIndex = nextIndex++
+      if (batchIndex >= batches.length) break
+      await processBatch(batches[batchIndex])
+    }
+  }))
+}
+
 export async function retry<T>(operation: () => Promise<T>, options: RetryOptions): Promise<T> {
   let lastError: unknown
 
@@ -74,6 +91,7 @@ export async function translateBatchWithDegrade(
           cacheKey: task.cacheKey,
           fromCache: false,
           status: 'failed',
+          meta: task.meta,
           error: normalizeError(error),
         },
       ]

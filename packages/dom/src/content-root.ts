@@ -2,11 +2,11 @@ import { normalizeText } from '@lingoflow/shared'
 import { IGNORE_SELECTORS, isVisible } from './filters'
 
 export const CONTENT_ROOT_SELECTORS = [
+  'main',
+  'article',
+  '[role="main"]',
   '.markdown-body',
   '.prose',
-  'article',
-  'main',
-  '[role="main"]',
   '#content',
   '#mw-content-text',
   '.mw-parser-output',
@@ -48,7 +48,7 @@ export function discoverContentRoots(
     return root.documentElement instanceof HTMLElement ? [root.documentElement] : []
   }
 
-  return [root]
+  return root instanceof HTMLElement ? [root] : []
 }
 
 function scoreGenericContentRoots(

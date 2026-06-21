@@ -1,6 +1,7 @@
 import { buildTranslationCacheKey } from '@lingoflow/cache'
 import { collectScanResults } from '@lingoflow/dom'
 import { resolvePageRule } from '@lingoflow/rules'
+import { createBatches, processBatchesWithConcurrency } from '@lingoflow/scheduler'
 import { getDomain, getSourceLanguageOptions, getTargetLanguageOptions } from '@lingoflow/shared'
 import type {
   PageDisplayMode,
@@ -421,12 +422,15 @@ export class RuntimeController {
       }
     }
 
-    const batches = this.createBatches(misses)
+    const batches = createBatches(misses, {
+      maxItems: DEFAULT_MAX_BATCH_ITEMS,
+      maxChars: DEFAULT_MAX_BATCH_CHARS,
+    })
     for (const task of misses) {
       this.coordinator.renderLoading(task.blockId)
     }
 
-    await this.processBatchesWithConcurrency(batches, settings.translationConcurrency, async batch => {
+    await processBatchesWithConcurrency(batches, settings.translationConcurrency, async batch => {
       try {
         const response = await this.sendRuntimeMessage<{ results: TranslationResult[] }>({
           type: 'translation/translateBatch',
@@ -500,42 +504,6 @@ export class RuntimeController {
     }
 
     return { hits, misses }
-  }
-
-  private createBatches(tasks: TranslationTask[]): TranslationTask[][] {
-    const batches: TranslationTask[][] = []
-    let currentBatch: TranslationTask[] = []
-    let currentChars = 0
-
-    for (const task of tasks) {
-      if (currentBatch.length >= DEFAULT_MAX_BATCH_ITEMS || currentChars + task.normalizedText.length > DEFAULT_MAX_BATCH_CHARS) {
-        if (currentBatch.length > 0) batches.push(currentBatch)
-        currentBatch = []
-        currentChars = 0
-      }
-      currentBatch.push(task)
-      currentChars += task.normalizedText.length
-    }
-
-    if (currentBatch.length > 0) batches.push(currentBatch)
-    return batches
-  }
-
-  private async processBatchesWithConcurrency(
-    batches: TranslationTask[][],
-    concurrency: number,
-    processBatch: (batch: TranslationTask[]) => Promise<void>,
-  ) {
-    const workerCount = Math.max(1, Math.min(Math.floor(concurrency) || 1, batches.length))
-    let nextIndex = 0
-
-    await Promise.all(Array.from({ length: workerCount }, async () => {
-      while (true) {
-        const batchIndex = nextIndex++
-        if (batchIndex >= batches.length) break
-        await processBatch(batches[batchIndex])
-      }
-    }))
   }
 
   private clearGeneratedNodes(): void {

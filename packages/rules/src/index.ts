@@ -14,11 +14,11 @@ export type ResolvePageRuleOptions = {
 
 const DEFAULT_SELECTORS: Required<PageRuleSelectors> = {
   contentRoots: [
+    'main',
+    'article',
+    '[role="main"]',
     '.markdown-body',
     '.prose',
-    'article',
-    'main',
-    '[role="main"]',
     '#content',
     '#mw-content-text',
     '.mw-parser-output',

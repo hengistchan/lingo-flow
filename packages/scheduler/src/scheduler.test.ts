@@ -1,4 +1,4 @@
-import { createBatches, retry, translateBatchWithDegrade } from './index'
+import { createBatches, processBatchesWithConcurrency, retry, translateBatchWithDegrade } from './index'
 import type { TranslationTask } from '@lingoflow/types'
 
 const task = (id: string): TranslationTask => ({
@@ -30,6 +30,34 @@ describe('scheduler', () => {
     })
 
     expect(batches.map(batch => batch.map(item => item.id))).toEqual([['1', '2'], ['3']])
+  })
+
+  it('processes batches with bounded concurrency', async () => {
+    const batches = [[task('1')], [task('2')], [task('3')]]
+    const started: string[] = []
+    const completed: string[] = []
+    const resolvers: Array<() => void> = []
+
+    const promise = processBatchesWithConcurrency(batches, 2, async batch => {
+      started.push(batch[0].id)
+      await new Promise<void>(resolve => {
+        resolvers.push(resolve)
+      })
+      completed.push(batch[0].id)
+    })
+
+    await waitFor(() => started.length === 2)
+    expect(started).toEqual(['1', '2'])
+
+    resolvers[0]()
+    await waitFor(() => started.length === 3)
+    expect(started).toEqual(['1', '2', '3'])
+    expect(completed).toEqual(['1'])
+
+    resolvers[1]()
+    resolvers[2]()
+    await promise
+    expect(completed).toEqual(['1', '2', '3'])
   })
 
   it('retries retryable failures and stops after success', async () => {
@@ -111,3 +139,11 @@ describe('scheduler', () => {
     expect(results.map(result => result.status)).toEqual(['success', 'failed', 'success'])
   })
 })
+
+async function waitFor(assertion: () => boolean) {
+  for (let index = 0; index < 100; index += 1) {
+    if (assertion()) return
+    await new Promise(resolve => setTimeout(resolve, 0))
+  }
+  throw new Error('Timed out waiting for scheduler condition')
+}
