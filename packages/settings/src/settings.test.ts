@@ -1,11 +1,11 @@
 import { DEFAULT_SETTINGS, getPublicRuntimeSettings, migrateSettings } from './index'
 
 describe('settings', () => {
-  it('defaults to auto-detect, Simplified Chinese, and Azure provider', () => {
+  it('defaults to auto-detect, Simplified Chinese, and Google Free provider', () => {
     expect(DEFAULT_SETTINGS.sourceLang).toBe('auto')
     expect(DEFAULT_SETTINGS.targetLang).toBe('zh-Hans')
     expect(DEFAULT_SETTINGS.renderMode).toBe('below-original')
-    expect(DEFAULT_SETTINGS.defaultProviderId).toBe('azure-translator')
+    expect(DEFAULT_SETTINGS.defaultProviderId).toBe('google-free-translate')
     expect(DEFAULT_SETTINGS.translationConcurrency).toBe(3)
     expect(DEFAULT_SETTINGS.providers['google-free-translate']).toMatchObject({
       id: 'google-free-translate',
@@ -87,7 +87,7 @@ describe('settings', () => {
     })
 
     expect(JSON.stringify(runtime)).not.toContain('secret')
-    expect(runtime.providerId).toBe('azure-translator')
+    expect(runtime.providerId).toBe('google-free-translate')
     expect(runtime.translationConcurrency).toBe(3)
   })
 

@@ -4,6 +4,7 @@ describe('key-free settings summary', () => {
   it('reports configured Azure without exposing provider keys', () => {
     const summary = getSettingsSummary({
       ...DEFAULT_SETTINGS,
+      defaultProviderId: 'azure-translator',
       providers: {
         ...DEFAULT_SETTINGS.providers,
         'azure-translator': {
@@ -30,7 +31,7 @@ describe('key-free settings summary', () => {
   })
 
   it('reports incomplete selected provider configuration', () => {
-    expect(getSettingsSummary(DEFAULT_SETTINGS).providerConfigured).toBe(false)
+    expect(getSettingsSummary(DEFAULT_SETTINGS).providerConfigured).toBe(true)
 
     expect(
       getSettingsSummary({

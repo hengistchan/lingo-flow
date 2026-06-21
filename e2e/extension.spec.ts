@@ -20,10 +20,10 @@ test('installed extension renders popup and options with real extension APIs', a
 
     await expect(popup).toHaveTitle('LingoFlow')
     await expect(popup.getByRole('heading', { name: 'LingoFlow' })).toBeVisible()
-    await expect(popup.getByText('Translation service is not configured')).toBeVisible()
+    await expect(popup.getByText('Ready to translate')).toBeVisible()
     await expect(popup.getByLabel('Target language')).toHaveValue('zh-Hans')
-    await expect(popup.getByRole('button', { name: 'Configure translation service' })).toBeVisible()
-    await expect(popup.getByText('Ready')).toHaveCount(0)
+    await expect(popup.getByRole('button', { name: 'Translate to Simplified Chinese' })).toBeVisible()
+    await expect(popup.getByText('Translation service is not configured')).toHaveCount(0)
     await expect(popup.getByText(undefinedError)).toHaveCount(0)
     expect(popupErrors()).toEqual([])
 
@@ -46,6 +46,7 @@ test('installed extension renders popup and options with real extension APIs', a
     await options.getByRole('button', { name: 'Translation service' }).click()
     await expect(options.getByText('Testing sends one short sample to the selected provider.')).toBeVisible()
     await expect(options.getByText('Complete the selected provider configuration before testing.')).toHaveCount(0)
+    await options.getByLabel('Default provider').selectOption('openai-compatible')
     await options.getByRole('button', { name: 'Test connection' }).click()
     await expect(options.getByText('Complete the selected provider configuration before testing.')).toBeVisible()
 
@@ -56,7 +57,7 @@ test('installed extension renders popup and options with real extension APIs', a
   }
 })
 
-test('installed extension saves Google Translate Free without asking for provider host permission', async () => {
+test('installed extension starts with Google Translate Free without asking for provider host permission', async () => {
   const extension = await launchExtension()
 
   try {
@@ -65,12 +66,7 @@ test('installed extension saves Google Translate Free without asking for provide
 
     await options.goto(extension.url('options.html'))
     await options.getByRole('button', { name: 'Translation service' }).click()
-    await options.getByLabel('Default provider').selectOption('google-free-translate')
-    await expect(options.getByRole('button', { name: 'Save settings' })).toBeEnabled()
-
-    await options.getByRole('button', { name: 'Save settings' }).click()
-
-    await expect(options.getByText('Settings saved')).toBeVisible()
+    await expect(options.getByLabel('Default provider')).toHaveValue('google-free-translate')
     await expect(options.getByText('Allow access to this provider address to continue.')).toHaveCount(0)
     const savedSummary = await options.evaluate(() =>
       chrome.runtime.sendMessage({ type: 'settings/getSummary' }),
@@ -99,8 +95,27 @@ test('installed extension injects content runtime into a real page', async () =>
     const article = await extension.context.newPage()
     const articleErrors = collectRuntimeErrors(article)
 
+    const extensionPage = await extension.context.newPage()
+    await extensionPage.goto(extension.url('options.html'))
+    const saveResponse = await extensionPage.evaluate(async () => {
+      const current = await chrome.runtime.sendMessage({ type: 'settings/get' })
+      if (!current?.ok) return current
+
+      return chrome.runtime.sendMessage({
+        type: 'settings/save',
+        payload: {
+          settings: {
+            ...current.data,
+            defaultProviderId: 'azure-translator',
+          },
+        },
+      })
+    })
+    expect(saveResponse).toMatchObject({ ok: true })
+
     await article.goto(articleServer.url)
     await expect(article.getByRole('heading', { name: 'A field guide to quiet reading' })).toBeVisible()
+    await article.bringToFront()
 
     // Step 1: Inject content runtime into the article page.
     await extension.worker.evaluate(async () => {
@@ -133,8 +148,6 @@ test('installed extension injects content runtime into a real page', async () =>
     expect(result.data.totalBlocks).toBeGreaterThan(0)
     expect(result.data.failedBlocks).toBeGreaterThan(0)
 
-    const extensionPage = await extension.context.newPage()
-    await extensionPage.goto(extension.url('options.html'))
     const summary = await extensionPage.evaluate(() =>
       chrome.runtime.sendMessage({ type: 'settings/getSummary' }),
     )
@@ -447,6 +460,7 @@ test('installed extension connects to Azure protocol and uses it as a fallback p
     const options = await extension.context.newPage()
     await options.goto(extension.url('options.html'))
     await options.getByRole('button', { name: 'Translation service' }).click()
+    await options.getByLabel('Default provider').selectOption('azure-translator')
     await options.getByLabel('Region').fill('test-region')
     await options.getByLabel('API Key').fill('azure-test-key')
     await options.getByLabel('Endpoint').fill(articleServer.azureProviderEndpoint)

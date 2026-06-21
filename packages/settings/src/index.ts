@@ -29,7 +29,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   cacheEnabled: true,
   maxCacheItems: 50000,
   translationConcurrency: DEFAULT_TRANSLATION_CONCURRENCY,
-  defaultProviderId: 'azure-translator',
+  defaultProviderId: 'google-free-translate',
   fallbackProviderId: '',
   providers: {
     'azure-translator': {

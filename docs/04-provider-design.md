@@ -158,4 +158,4 @@ export function parseOpenAIJsonResult(content: string, expectedLength: number): 
 ## Forbidden Provider Strategy
 
 Do not add scraping-style Google Translate or Bing Translate webpage providers in MVP.
-The no-key Google Free provider is experimental, not the default provider, and can be removed or hidden if release policies require it.
+The no-key Google Free provider is experimental and is the default provider for new installs; it can be removed or hidden if release policies require it.

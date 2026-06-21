@@ -22,8 +22,8 @@ const summary = ref<SettingsSummary>({
   sourceLang: 'auto',
   targetLang: 'zh-Hans',
   interfaceLocale: 'auto',
-  providerId: 'azure-translator',
-  providerName: 'Azure Translator',
+  providerId: 'google-free-translate',
+  providerName: 'Google Translate Free (experimental)',
   providerConfigured: !extensionApiAvailable.value,
 })
 const progress = ref<PageTranslationProgress>(idleProgress())
