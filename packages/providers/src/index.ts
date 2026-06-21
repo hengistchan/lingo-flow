@@ -48,7 +48,7 @@ export const BUILT_IN_PRESETS = [
   },
   {
     id: "google-free-translate",
-    name: "Google Translate Free",
+    name: "Google Translate Free (experimental)",
     type: "machine-translation",
     fields: [],
   },
@@ -204,7 +204,7 @@ export const azureTranslatorProvider: TranslationProvider = {
 
 export const googleFreeTranslateProvider: TranslationProvider = {
   id: 'google-free-translate',
-  name: 'Google Translate Free',
+  name: 'Google Translate Free (experimental)',
   type: 'machine-translation',
   capabilities: {
     speed: 'fast',

@@ -10,7 +10,7 @@ describe('settings', () => {
     expect(DEFAULT_SETTINGS.providers['google-free-translate']).toMatchObject({
       id: 'google-free-translate',
       presetId: 'google-free-translate',
-      name: 'Google Translate Free',
+      name: 'Google Translate Free (experimental)',
       values: {},
     })
   })

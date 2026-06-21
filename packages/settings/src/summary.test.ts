@@ -48,7 +48,7 @@ describe('key-free settings summary', () => {
 
     expect(summary).toMatchObject({
       providerId: 'google-free-translate',
-      providerName: 'Google Translate Free',
+      providerName: 'Google Translate Free (experimental)',
       providerConfigured: true,
     })
     expect(JSON.stringify(summary)).not.toContain('key')

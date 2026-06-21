@@ -8,7 +8,7 @@ LingoFlow is a local-first, BYOK (Bring Your Own Key), provider-agnostic browser
 
 - **Local-first** — Settings, cache, and runtime state stay in your browser
 - **BYOK** — Use your own Azure Translator, OpenAI, or any OpenAI-compatible API key
-- **3 built-in providers** — Azure Translator, OpenAI-compatible (OpenAI/DeepSeek/Qwen/Ollama/LM Studio), Google Translate Free
+- **Built-in provider presets** — Azure Translator, OpenAI-compatible (OpenAI/DeepSeek/Qwen/Ollama/LM Studio), and experimental Google Translate Free
 - **Custom providers** — Add any OpenAI-compatible endpoint with a custom name
 - **Smart caching** — Two-tier cache (memory + IndexedDB) with composite cache keys
 - **Resilient** — Automatic retry with exponential backoff, batch splitting on failure, optional fallback provider
@@ -23,7 +23,7 @@ LingoFlow is a local-first, BYOK (Bring Your Own Key), provider-agnostic browser
 ### From source
 
 ```bash
-git clone https://github.com/anthropics/lingo-flow.git
+git clone https://github.com/hengistchan/lingo-flow.git
 cd lingo-flow
 pnpm install
 pnpm build
@@ -52,7 +52,7 @@ pnpm lint         # Alias for typecheck
 4. Configure your provider:
    - **Azure Translator** — endpoint, API key, region
    - **OpenAI-compatible** — base URL, API key, model name
-   - **Google Translate Free** — no configuration needed
+   - **Google Translate Free (experimental)** — no configuration needed, not guaranteed stable
    - **Custom** — add any OpenAI-compatible endpoint
 5. Click **Test connection** to verify
 6. Click **Save settings**
@@ -79,7 +79,7 @@ packages/
   dom/                   DOM text block collector with content root discovery
   renderer/              Translation rendering with insertion strategies
   runtime/               Content script translation orchestrator
-  providers/             Azure, OpenAI-compatible, Google Free providers
+  providers/             Azure, OpenAI-compatible, experimental Google Free providers
   scheduler/             Batch scheduling, retry, degradation
   cache/                 IndexedDB translation cache (Dexie)
   settings/              Extension settings management

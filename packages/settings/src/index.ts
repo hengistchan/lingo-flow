@@ -45,7 +45,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     'google-free-translate': {
       id: 'google-free-translate',
       presetId: 'google-free-translate',
-      name: 'Google Translate Free',
+      name: 'Google Translate Free (experimental)',
       values: {},
     },
     'openai-compatible': {

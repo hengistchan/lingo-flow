@@ -56,7 +56,7 @@
 - [x] API key is not sent to content script.
 - [x] Provider output is rendered with `innerText` or `textContent`.
 - [x] Extension does not request `<all_urls>` in MVP.
-- [x] No non-public Google/Bing web translate endpoints are used.
+- [x] Google Translate Free is marked experimental and is not the default provider.
 
 ## Manual Test Pages
 
