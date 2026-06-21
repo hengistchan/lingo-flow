@@ -121,6 +121,8 @@ export type TranslationBlock = {
     visible: boolean
     textLength: number
     rootKind: ContentRootKind
+    ruleId?: string
+    rootGeneration?: number
   }
   sourceLang: 'auto' | string
   targetLang: string

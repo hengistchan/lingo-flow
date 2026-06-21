@@ -38,7 +38,10 @@ export const IGNORE_SELECTORS = [
   'svg',
   'canvas',
   '[contenteditable="true"]',
+  '[translate="no"]',
+  '.notranslate',
   '[data-lingoflow-ignore]',
+  '[data-lingoflow-generated]',
   '[data-lingoflow-translation]',
 ]
 
@@ -64,17 +67,17 @@ export function isGeneratedByLingoFlow(element: HTMLElement): boolean {
   return !!element.closest('[data-lingoflow-generated="true"], [data-lingoflow-translation]')
 }
 
-export function hasTooManyInteractiveElements(element: HTMLElement): boolean {
+export function hasTooManyInteractiveElements(element: HTMLElement, maxInteractiveElements = 5): boolean {
   const interactiveCount = element.querySelectorAll(INTERACTIVE_SELECTORS.join(',')).length
-  return interactiveCount >= 5
+  return interactiveCount >= maxInteractiveElements
 }
 
-export function isTranslatableTableCell(element: HTMLElement): boolean {
+export function isTranslatableTableCell(element: HTMLElement, maxInteractiveElements = 4): boolean {
   const tagName = element.tagName.toLowerCase()
   if (tagName !== 'td' && tagName !== 'th') return true
 
   const interactiveCount = element.querySelectorAll(INTERACTIVE_SELECTORS.join(',')).length
-  return interactiveCount < 4
+  return interactiveCount < maxInteractiveElements
 }
 
 export function isInsideUIExclusion(element: HTMLElement): boolean {
@@ -90,17 +93,22 @@ export function isVisible(element: HTMLElement): boolean {
   return true
 }
 
-export function isTranslatableElement(element: HTMLElement): boolean {
+export type TranslatableElementOptions = {
+  minTextLength?: number
+}
+
+export function isTranslatableElement(element: HTMLElement, options: TranslatableElementOptions = {}): boolean {
   if (!isVisible(element)) return false
   if (element.closest(IGNORE_SELECTORS.join(','))) return false
   if (element.dataset.lingoflowBlockId) return false
 
   const text = normalizeText(getElementText(element))
+  const minTextLength = options.minTextLength ?? 20
   const blockType = detectBlockTypeForFilter(element)
   if (blockType === 'heading') return text.length > 0
-  if (blockType === 'table') return text.length >= 20
+  if (blockType === 'table') return text.length >= minTextLength
   if (blockType === 'caption' || blockType === 'description') return text.length > 0
-  if (text.length < 20) return false
+  if (text.length < minTextLength) return false
 
   const childTextLength = Array.from(element.children)
     .map(child => normalizeText(getElementText(child as HTMLElement)).length)

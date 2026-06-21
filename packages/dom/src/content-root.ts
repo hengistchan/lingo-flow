@@ -13,28 +13,55 @@ export const CONTENT_ROOT_SELECTORS = [
   '.md-content',
 ]
 
-export function discoverContentRoots(root: Document): HTMLElement[] {
-  const explicitRoots = uniqueElements(
-    Array.from(root.querySelectorAll(CONTENT_ROOT_SELECTORS.join(',')))
-      .filter((element): element is HTMLElement => element instanceof HTMLElement)
-      .filter(element => isVisible(element))
-      .filter(element => !element.closest(IGNORE_SELECTORS.join(',')))
-  )
+export type DiscoverContentRootsOptions = {
+  contentRootSelectors?: string[]
+  excludeSelectors?: string[]
+  minRootTextLength?: number
+  minRootParagraphCount?: number
+  linkDensityPenalty?: number
+}
+
+export function discoverContentRoots(
+  root: Document | HTMLElement,
+  options: DiscoverContentRootsOptions = {},
+): HTMLElement[] {
+  const selectors = options.contentRootSelectors?.length
+    ? options.contentRootSelectors
+    : CONTENT_ROOT_SELECTORS
+  const excludeSelectors = options.excludeSelectors?.length
+    ? options.excludeSelectors
+    : IGNORE_SELECTORS
+  const explicitRoots = findFirstMatchingContentRoots(root, selectors, excludeSelectors)
 
   if (explicitRoots.length > 0) return explicitRoots
 
-  const scoredRoots = scoreGenericContentRoots(root)
+  const scoredRoots = scoreGenericContentRoots(root, {
+    excludeSelectors,
+    minRootTextLength: options.minRootTextLength,
+    minRootParagraphCount: options.minRootParagraphCount,
+    linkDensityPenalty: options.linkDensityPenalty,
+  })
   if (scoredRoots.length > 0) return scoredRoots
 
-  if (root.body) return [root.body]
-  return root.documentElement instanceof HTMLElement ? [root.documentElement] : []
+  if (root instanceof Document) {
+    if (root.body) return [root.body]
+    return root.documentElement instanceof HTMLElement ? [root.documentElement] : []
+  }
+
+  return [root]
 }
 
-function scoreGenericContentRoots(root: Document): HTMLElement[] {
-  const candidates = Array.from(root.querySelectorAll('section, div'))
+function scoreGenericContentRoots(
+  root: Document | HTMLElement,
+  options: Required<Pick<DiscoverContentRootsOptions, 'excludeSelectors'>> & Omit<DiscoverContentRootsOptions, 'contentRootSelectors' | 'excludeSelectors'>,
+): HTMLElement[] {
+  const minTextLength = options.minRootTextLength ?? 80
+  const minParagraphCount = options.minRootParagraphCount ?? 1
+  const linkDensityPenalty = options.linkDensityPenalty ?? 400
+  const candidates = queryElements(root, 'section, div')
     .filter((element): element is HTMLElement => element instanceof HTMLElement)
     .filter(element => isVisible(element))
-    .filter(element => !element.closest(IGNORE_SELECTORS.join(',')))
+    .filter(element => !matchesSelfOrClosest(element, options.excludeSelectors))
     .map(element => {
       const text = normalizeText(element.innerText || element.textContent || '')
       const paragraphs = element.querySelectorAll('p, li').length
@@ -44,12 +71,12 @@ function scoreGenericContentRoots(root: Document): HTMLElement[] {
       const linkDensity = text.length === 0 ? 0 : linkText / text.length
       return {
         element,
-        score: text.length + paragraphs * 120 - linkDensity * 400,
+        score: text.length + paragraphs * 120 - linkDensity * linkDensityPenalty,
         textLength: text.length,
         paragraphs,
       }
     })
-    .filter(candidate => candidate.textLength >= 80 && candidate.paragraphs > 0)
+    .filter(candidate => candidate.textLength >= minTextLength && candidate.paragraphs >= minParagraphCount)
     .sort((a, b) => b.score - a.score)
 
   return candidates[0] ? [candidates[0].element] : []
@@ -57,4 +84,36 @@ function scoreGenericContentRoots(root: Document): HTMLElement[] {
 
 function uniqueElements(elements: HTMLElement[]): HTMLElement[] {
   return [...new Set(elements)]
+}
+
+function findFirstMatchingContentRoots(
+  root: Document | HTMLElement,
+  selectors: string[],
+  excludeSelectors: string[],
+): HTMLElement[] {
+  for (const selector of selectors) {
+    const roots = uniqueElements(
+      queryElements(root, selector)
+        .filter((element): element is HTMLElement => element instanceof HTMLElement)
+        .filter(element => isVisible(element))
+        .filter(element => !matchesSelfOrClosest(element, excludeSelectors))
+    )
+    if (roots.length > 0) return roots
+  }
+
+  return []
+}
+
+function queryElements(root: Document | HTMLElement, selector: string): Element[] {
+  const matches = Array.from(root.querySelectorAll(selector))
+  if (root instanceof HTMLElement && root.matches(selector)) {
+    matches.unshift(root)
+  }
+  return matches
+}
+
+function matchesSelfOrClosest(element: HTMLElement, selectors: string[]): boolean {
+  const selector = selectors.join(',')
+  if (!selector) return false
+  return element.matches(selector) || !!element.closest(selector)
 }

@@ -1,5 +1,7 @@
 import { collectScanResults, collectTextBlocks, detectBlockType, isTranslatableElement, isVisible } from './index'
-import type { ScanResult } from '@lingoflow/types'
+import { NORMALIZE_VERSION } from '@lingoflow/shared'
+import { resolvePageRule } from '@lingoflow/rules'
+import type { PageRule, PublicRuntimeSettings, RuntimeContext, ScanResult } from '@lingoflow/types'
 
 describe('DOM collector', () => {
   beforeEach(() => {
@@ -484,6 +486,123 @@ describe('collectTextBlocks', () => {
     ])
   })
 })
+
+describe('collectScanResults with RuntimeContext page rules', () => {
+  beforeEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('uses rule content roots to limit collection scope', async () => {
+    document.body.innerHTML = `
+      <main>
+        <p>This main paragraph is long enough but outside of the custom reader root.</p>
+      </main>
+      <section id="reader">
+        <p>This reader paragraph is long enough to be collected from the configured root.</p>
+      </section>
+    `
+
+    const results = await collectScanResults(document, createRuntimeContext({
+      selectors: {
+        contentRoots: ['#reader'],
+      },
+    }))
+
+    expect(results).toHaveLength(1)
+    expect(results[0].block.text).toContain('reader paragraph')
+    expect(results[0].block.meta).toMatchObject({
+      ruleId: 'test-rule',
+      rootGeneration: 7,
+    })
+  })
+
+  it('uses rule block selectors to collect non-default text blocks', async () => {
+    document.body.innerHTML = `
+      <article>
+        <span class="custom-block">This custom inline block is long enough to be translated by a page rule.</span>
+      </article>
+    `
+
+    const results = await collectScanResults(document, createRuntimeContext({
+      selectors: {
+        blockSelectors: ['.custom-block'],
+      },
+    }))
+
+    expect(results).toHaveLength(1)
+    expect(results[0].block.text).toContain('custom inline block')
+  })
+
+  it('uses rule exclude selectors and skips generated or notranslate nodes', async () => {
+    document.body.innerHTML = `
+      <article>
+        <p class="sponsor">This sponsor paragraph is long enough but should be excluded by the page rule.</p>
+        <p data-lingoflow-generated="true">This generated paragraph is long enough but should never be collected.</p>
+        <p translate="no">This no-translate paragraph is long enough but should never be collected.</p>
+        <p class="notranslate">This notranslate paragraph is long enough but should never be collected.</p>
+        <p>This readable paragraph is long enough and should remain as the only collected block.</p>
+      </article>
+    `
+
+    const results = await collectScanResults(document, createRuntimeContext({
+      selectors: {
+        excludeSelectors: ['.sponsor'],
+      },
+    }))
+
+    expect(results).toHaveLength(1)
+    expect(results[0].block.text).toContain('readable paragraph')
+  })
+
+  it('accepts an HTMLElement root for incremental scans', async () => {
+    document.body.innerHTML = `
+      <main>
+        <p>This old paragraph is long enough but outside of the incremental root.</p>
+        <section id="new-root">
+          <p>This newly inserted paragraph is long enough to be collected incrementally.</p>
+        </section>
+      </main>
+    `
+    const incrementalRoot = document.querySelector('#new-root') as HTMLElement
+
+    const results = await collectScanResults(incrementalRoot, createRuntimeContext())
+
+    expect(results).toHaveLength(1)
+    expect(results[0].block.text).toContain('newly inserted paragraph')
+  })
+})
+
+function createRuntimeContext(ruleOverrides: Partial<PageRule> = {}): RuntimeContext {
+  const settings: PublicRuntimeSettings = {
+    sourceLang: 'auto',
+    targetLang: 'zh-Hans',
+    renderMode: 'below-original',
+    cacheEnabled: false,
+    maxCacheItems: 50000,
+    translationConcurrency: 3,
+    providerId: 'google-free-translate',
+    normalizeVersion: NORMALIZE_VERSION,
+  }
+  const pageRule = resolvePageRule(document, 'https://example.com/article', {
+    overrides: {
+      id: 'test-rule',
+      ...ruleOverrides,
+    },
+  })
+
+  return {
+    runId: 'run_rule_test',
+    url: 'https://example.com/article',
+    domain: 'example.com',
+    sourceLang: settings.sourceLang,
+    targetLang: settings.targetLang,
+    providerId: settings.providerId,
+    displayMode: 'dual',
+    settings,
+    pageRule,
+    rootGeneration: 7,
+  }
+}
 
 const scanOptions = {
   sourceLang: 'en' as const,

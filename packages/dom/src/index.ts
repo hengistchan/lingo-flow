@@ -3,6 +3,7 @@ import type {
   BlockBindingDraft,
   ContentRootKind,
   InlineToken,
+  RuntimeContext,
   TextBlock,
   TextBlockType,
   TranslationBlock,
@@ -52,21 +53,47 @@ export type CollectScanResultOptions = CollectTextBlockOptions & {
   rootGeneration: number
 }
 
+type CollectionConfig = {
+  sourceLang: 'auto' | string
+  targetLang: string
+  pageUrl: string
+  domain: string
+  runId: string
+  rootGeneration: number
+  ruleId: string
+  contentRootSelectors: string[]
+  blockSelectors: string[]
+  excludeSelectors: string[]
+  defaultInsertion: TranslationInsertion
+  minTextLength: number
+  maxInteractiveElements: number
+  minRootTextLength: number
+  minRootParagraphCount: number
+  linkDensityPenalty: number
+}
+
 export async function collectScanResults(
-  root: Document,
-  options: CollectScanResultOptions,
+  root: Document | HTMLElement,
+  options: CollectScanResultOptions | RuntimeContext,
 ): Promise<ScanResult[]> {
-  const contentRoots = discoverContentRoots(root)
+  const config = resolveCollectionConfig(options)
+  const contentRoots = discoverContentRoots(root, {
+    contentRootSelectors: config.contentRootSelectors,
+    excludeSelectors: config.excludeSelectors,
+    minRootTextLength: config.minRootTextLength,
+    minRootParagraphCount: config.minRootParagraphCount,
+    linkDensityPenalty: config.linkDensityPenalty,
+  })
   let candidates = uniqueElements(
     contentRoots.flatMap(contentRoot =>
-      Array.from(contentRoot.querySelectorAll(BLOCK_SELECTORS.join(',')))
+      queryCandidateElements(contentRoot, config.blockSelectors.join(','))
         .filter((element): element is HTMLElement => element instanceof HTMLElement)
     )
   )
 
   const shadowRoots = contentRoots.flatMap(r => findAllShadowRoots(r))
   for (const shadowRoot of shadowRoots) {
-    const shadowCandidates = Array.from(shadowRoot.querySelectorAll(BLOCK_SELECTORS.join(',')))
+    const shadowCandidates = Array.from(shadowRoot.querySelectorAll(config.blockSelectors.join(',')))
       .filter((element): element is HTMLElement => element instanceof HTMLElement)
     candidates.push(...shadowCandidates)
   }
@@ -78,11 +105,12 @@ export async function collectScanResults(
   for (const element of candidates) {
     if (isInsideAcceptedStructuralBoundary(element, acceptedElements)) continue
     if (isGeneratedByLingoFlow(element)) continue
+    if (matchesSelfOrClosest(element, config.excludeSelectors)) continue
     if (element.tagName.toLowerCase() === 'div' && hasBlockLevelChildren(element)) continue
     if (isInsideUIExclusion(element)) continue
-    if (!isTranslatableTableCell(element)) continue
-    if (hasTooManyInteractiveElements(element)) continue
-    if (!isTranslatableElement(element)) continue
+    if (!isTranslatableTableCell(element, config.maxInteractiveElements)) continue
+    if (hasTooManyInteractiveElements(element, config.maxInteractiveElements)) continue
+    if (!isTranslatableElement(element, { minTextLength: config.minTextLength })) continue
 
     const carrier = resolveTextCarrier(element)
     const inlineText = extractInlineText(carrier)
@@ -99,7 +127,7 @@ export async function collectScanResults(
     const block: TranslationBlock = {
       id,
       revision: 1,
-      runId: options.runId,
+      runId: config.runId,
       text,
       normalizedText,
       textHash,
@@ -112,14 +140,16 @@ export async function collectScanResults(
         visible: isVisible(carrier),
         textLength: normalizedText.length,
         blockType,
-        insertion: resolveInsertion(element, carrier, blockType, normalizedText),
+        insertion: resolveInsertion(element, carrier, blockType, normalizedText, config.defaultInsertion),
         carrierTagName: carrier.tagName.toLowerCase(),
         rootKind,
+        ruleId: config.ruleId,
+        rootGeneration: config.rootGeneration,
       },
-      sourceLang: options.sourceLang,
-      targetLang: options.targetLang,
-      pageUrl: options.pageUrl,
-      domain: options.domain,
+      sourceLang: config.sourceLang,
+      targetLang: config.targetLang,
+      pageUrl: config.pageUrl,
+      domain: config.domain,
     }
 
     const binding: BlockBindingDraft = {
@@ -172,6 +202,66 @@ function toLegacyTextBlock(block: TranslationBlock): TextBlock {
 
 function uniqueElements(elements: HTMLElement[]): HTMLElement[] {
   return [...new Set(elements)]
+}
+
+function resolveCollectionConfig(options: CollectScanResultOptions | RuntimeContext): CollectionConfig {
+  if (isRuntimeContext(options)) {
+    return {
+      sourceLang: options.sourceLang,
+      targetLang: options.targetLang,
+      pageUrl: options.url,
+      domain: options.domain,
+      runId: options.runId,
+      rootGeneration: options.rootGeneration,
+      ruleId: options.pageRule.id,
+      contentRootSelectors: options.pageRule.selectors.contentRoots,
+      blockSelectors: options.pageRule.selectors.blockSelectors,
+      excludeSelectors: options.pageRule.selectors.excludeSelectors,
+      defaultInsertion: options.pageRule.behavior.defaultInsertion,
+      minTextLength: options.pageRule.thresholds.minTextLength,
+      maxInteractiveElements: options.pageRule.thresholds.maxInteractiveElements,
+      minRootTextLength: options.pageRule.thresholds.minRootTextLength,
+      minRootParagraphCount: options.pageRule.thresholds.minRootParagraphCount,
+      linkDensityPenalty: options.pageRule.thresholds.linkDensityPenalty,
+    }
+  }
+
+  return {
+    sourceLang: options.sourceLang,
+    targetLang: options.targetLang,
+    pageUrl: options.pageUrl,
+    domain: options.domain,
+    runId: options.runId,
+    rootGeneration: options.rootGeneration,
+    ruleId: 'legacy-default',
+    contentRootSelectors: [],
+    blockSelectors: BLOCK_SELECTORS,
+    excludeSelectors: IGNORE_SELECTORS,
+    defaultInsertion: 'after-block',
+    minTextLength: 20,
+    maxInteractiveElements: 5,
+    minRootTextLength: 80,
+    minRootParagraphCount: 1,
+    linkDensityPenalty: 400,
+  }
+}
+
+function isRuntimeContext(options: CollectScanResultOptions | RuntimeContext): options is RuntimeContext {
+  return 'pageRule' in options
+}
+
+function queryCandidateElements(root: HTMLElement, selector: string): Element[] {
+  const elements = Array.from(root.querySelectorAll(selector))
+  if (root.matches(selector)) {
+    elements.unshift(root)
+  }
+  return elements
+}
+
+function matchesSelfOrClosest(element: HTMLElement, selectors: string[]): boolean {
+  const selector = selectors.join(',')
+  if (!selector) return false
+  return element.matches(selector) || !!element.closest(selector)
 }
 
 function resolveRootKind(
@@ -238,6 +328,7 @@ function resolveInsertion(
   carrier: HTMLElement,
   blockType: TextBlockType,
   text: string,
+  defaultInsertion: TranslationInsertion = 'after-block',
 ): TranslationInsertion {
   const carrierTagName = carrier.tagName.toLowerCase()
   if (carrierTagName === 'a') return 'linebreak-inside'
@@ -246,7 +337,7 @@ function resolveInsertion(
   if (blockType === 'heading') return text.length <= 32 ? 'inline-inside' : 'linebreak-inside'
   if (blockType === 'paragraph' || blockType === 'quote') return 'linebreak-inside'
   if (blockType === 'caption' || blockType === 'description') return 'linebreak-inside'
-  return 'after-block'
+  return defaultInsertion
 }
 
 function hasNestedList(element: HTMLElement): boolean {
