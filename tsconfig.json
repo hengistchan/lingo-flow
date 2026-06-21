@@ -17,6 +17,7 @@
       "@lingoflow/dom": ["./packages/dom/src/index.ts"],
       "@lingoflow/providers": ["./packages/providers/src/index.ts"],
       "@lingoflow/renderer": ["./packages/renderer/src/index.ts"],
+      "@lingoflow/rules": ["./packages/rules/src/index.ts"],
       "@lingoflow/runtime": ["./packages/runtime/src/index.ts"],
       "@lingoflow/scheduler": ["./packages/scheduler/src/index.ts"],
       "@lingoflow/settings": ["./packages/settings/src/index.ts"],

@@ -6,6 +6,7 @@ const alias = {
   '@lingoflow/dom': fileURLToPath(new URL('./packages/dom/src/index.ts', import.meta.url)),
   '@lingoflow/providers': fileURLToPath(new URL('./packages/providers/src/index.ts', import.meta.url)),
   '@lingoflow/renderer': fileURLToPath(new URL('./packages/renderer/src/index.ts', import.meta.url)),
+  '@lingoflow/rules': fileURLToPath(new URL('./packages/rules/src/index.ts', import.meta.url)),
   '@lingoflow/runtime': fileURLToPath(new URL('./packages/runtime/src/index.ts', import.meta.url)),
   '@lingoflow/scheduler': fileURLToPath(new URL('./packages/scheduler/src/index.ts', import.meta.url)),
   '@lingoflow/settings': fileURLToPath(new URL('./packages/settings/src/index.ts', import.meta.url)),

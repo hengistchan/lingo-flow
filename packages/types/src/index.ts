@@ -193,6 +193,73 @@ export type PageRunState =
 
 export type PageDisplayMode = 'original' | 'dual' | 'translation'
 
+export type TranslationTheme = 'system' | 'light' | 'dark'
+
+export type PageRuleSelectors = {
+  contentRoots?: string[]
+  blockSelectors?: string[]
+  excludeSelectors?: string[]
+  inlineSelectors?: string[]
+  preserveSelectors?: string[]
+  atomicBlockSelectors?: string[]
+  stayOriginalSelectors?: string[]
+}
+
+export type PageRuleBehavior = {
+  translationArea?: 'main' | 'body' | 'selection'
+  startMode?: 'manual' | 'dynamic' | 'immediate'
+  displayMode?: PageDisplayMode
+  translationPosition?: 'after' | 'before'
+  translationTheme?: TranslationTheme
+  defaultInsertion?: TranslationInsertion
+}
+
+export type PageRuleThresholds = {
+  minTextLength?: number
+  minWordCount?: number
+  maxInteractiveElements?: number
+  minRootTextLength?: number
+  minRootParagraphCount?: number
+  linkDensityPenalty?: number
+}
+
+export type PageRule = {
+  id: string
+  description?: string
+  priority?: number
+  match?: {
+    matches?: string[]
+    excludeMatches?: string[]
+    selectorMatches?: string[]
+    excludeSelectorMatches?: string[]
+  }
+  selectors?: PageRuleSelectors
+  behavior?: PageRuleBehavior
+  thresholds?: PageRuleThresholds
+}
+
+export type ResolvedPageRule = {
+  id: string
+  matchedRuleIds: string[]
+  selectors: Required<PageRuleSelectors>
+  behavior: Required<PageRuleBehavior>
+  thresholds: Required<PageRuleThresholds>
+}
+
+export type RuntimeContext = {
+  runId: string
+  url: string
+  domain: string
+  sourceLang: 'auto' | string
+  targetLang: string
+  providerId: string
+  model?: string
+  displayMode: PageDisplayMode
+  settings: PublicRuntimeSettings
+  pageRule: ResolvedPageRule
+  rootGeneration: number
+}
+
 export type MutationCause =
   | 'initial-scan'
   | 'child-list'
