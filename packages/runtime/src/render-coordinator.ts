@@ -5,7 +5,7 @@ import type {
   RenderSkipReason,
   RuntimeEvent,
 } from '@lingoflow/types'
-import { defaultStrategyRegistry, hideSourceNodes, restoreSourceNodes, type StrategyRegistry } from '@lingoflow/renderer'
+import { defaultStrategyRegistry, hideSourceNodes, injectLingoFlowStyles, restoreSourceNodes, type StrategyRegistry } from '@lingoflow/renderer'
 import type { BlockBindingStore } from './bindings'
 import type { RuntimeEventBus } from './events'
 import type { BlockStore } from './store'
@@ -30,6 +30,7 @@ type RenderCoordinatorDeps = {
   events: RuntimeEventBus
   version: VersionTracker
   registry?: StrategyRegistry
+  document?: Document
 }
 
 export class RenderCoordinator {
@@ -46,6 +47,7 @@ export class RenderCoordinator {
     this.events = deps.events
     this.version = deps.version
     this.registry = deps.registry ?? defaultStrategyRegistry
+    injectLingoFlowStyles(deps.document)
   }
 
   renderTranslation(input: RenderInput): RenderResult {
@@ -121,8 +123,8 @@ export class RenderCoordinator {
     return { ok: true, result }
   }
 
-  renderLoading(blockId: string, message = 'Translating...'): RenderResult {
-    return this.renderPlaceholder(blockId, 'loading', message)
+  renderLoading(blockId: string): RenderResult {
+    return this.renderPlaceholder(blockId, 'loading')
   }
 
   renderError(blockId: string, message: string): RenderResult {
@@ -173,7 +175,7 @@ export class RenderCoordinator {
   private renderPlaceholder(
     blockId: string,
     kind: 'loading' | 'error',
-    message: string,
+    message?: string,
   ): RenderResult {
     const binding = this.bindings.get(blockId)
     if (!binding) return this.skip(blockId, 'missing-binding')
@@ -184,15 +186,16 @@ export class RenderCoordinator {
 
     this.bindings.removeRenderedNodes(blockId)
 
+    const placeholderText = kind === 'loading' ? ' ' : (message ?? '')
     const strategy = this.registry.resolve(
-      { ...block, translatedText: message },
+      { ...block, translatedText: placeholderText },
       binding,
       this.displayMode,
     )
     if (!strategy) return this.skip(blockId, 'unsupported-strategy')
 
     const plan = strategy.plan(
-      { ...block, translatedText: message },
+      { ...block, translatedText: placeholderText },
       binding,
       this.displayMode,
     )
@@ -204,6 +207,16 @@ export class RenderCoordinator {
       placeholder.classList.add(kind === 'loading' ? 'lingoflow-loading' : 'lingoflow-error')
       if (kind === 'loading') {
         placeholder.dataset.lingoflowLoading = blockId
+        const inner = placeholder.querySelector('.lingoflow-translation-inner')
+        if (inner) {
+          const doc = placeholder.ownerDocument
+          inner.textContent = ''
+          for (let i = 0; i < 3; i++) {
+            const dot = doc.createElement('span')
+            dot.className = 'lingoflow-dot'
+            inner.appendChild(dot)
+          }
+        }
       } else {
         placeholder.dataset.lingoflowError = blockId
       }

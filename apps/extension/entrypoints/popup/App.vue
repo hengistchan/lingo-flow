@@ -22,6 +22,7 @@ const summary = ref<SettingsSummary>({
   sourceLang: 'auto',
   targetLang: 'zh-Hans',
   interfaceLocale: 'auto',
+  uiTheme: 'system',
   providerId: 'google-free-translate',
   providerName: 'Google Translate Free (experimental)',
   providerConfigured: !extensionApiAvailable.value,
@@ -32,7 +33,7 @@ const targetSelectionTouched = ref(false)
 const busy = ref(false)
 const actionFailed = ref(false)
 const contentInjected = ref(false)
-const isDarkMode = ref(window.matchMedia('(prefers-color-scheme: dark)').matches)
+const isDarkMode = ref(resolveInitialDarkMode())
 const cacheMessage = ref('')
 let pollTimer: number | undefined
 
@@ -95,6 +96,12 @@ async function initialize() {
     if (summary.value.interfaceLocale !== 'auto') {
       uiLocale.value = summary.value.interfaceLocale
     }
+    if (summary.value.uiTheme === 'dark') {
+      isDarkMode.value = true
+    } else if (summary.value.uiTheme === 'light') {
+      isDarkMode.value = false
+    }
+    applyTheme(isDarkMode.value)
     pendingTargetLang.value = summary.value.targetLang
     targetSelectionTouched.value = false
     contentInjected.value = false
@@ -199,11 +206,22 @@ async function openSettings() {
   window.location.href = 'options.html'
 }
 
-function toggleDarkMode() {
-  isDarkMode.value = !isDarkMode.value
+function resolveInitialDarkMode(): boolean {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches
+}
+
+function applyTheme(dark: boolean) {
   const root = document.documentElement
   root.classList.remove('dark', 'light')
-  root.classList.add(isDarkMode.value ? 'dark' : 'light')
+  root.classList.add(dark ? 'dark' : 'light')
+}
+
+function toggleDarkMode() {
+  isDarkMode.value = !isDarkMode.value
+  applyTheme(isDarkMode.value)
+  const theme = isDarkMode.value ? 'dark' : 'light'
+  summary.value.uiTheme = theme
+  sendChromeMessage({ type: 'settings/saveTheme', payload: { theme } }).catch(() => {})
 }
 
 async function getActiveTab(): Promise<chrome.tabs.Tab & { id: number }> {

@@ -237,7 +237,7 @@ describe('content runtime language and progress behavior', () => {
     const loading = document.querySelector('.lingoflow-loading') as HTMLElement
     expect(loading).not.toBeNull()
     expect(loading.dataset.lingoflowLoading).toBe(translatedTasks[0].blockId)
-    expect(loading.textContent).toContain('Translating')
+    expect(loading.querySelectorAll('.lingoflow-dot').length).toBe(3)
 
     resolveProvider?.()
     await progressPromise
@@ -455,6 +455,157 @@ async function waitFor(assertion: () => boolean, timeoutMs = 1000) {
   throw new Error('Timed out waiting for runtime condition')
 }
 
+describe('dirty block retranslation', () => {
+  it('translates, detects mutation, removes old translation, retranslates, and renders new translation', async () => {
+    vi.useFakeTimers()
+    document.body.innerHTML = `
+      <article>
+        <p>This paragraph is long enough to be collected and translated by the runtime.</p>
+      </article>
+    `
+    const settings = runtimeSettings()
+    const translatedTasks: TranslationTask[][] = []
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      if (message.type === 'translation/translateBatch') {
+        const tasks: TranslationTask[] = message.payload.tasks
+        translatedTasks.push(tasks)
+        return success({
+          results: tasks.map(task => ({
+            ...successResult(task),
+            translatedText: `translated:${task.sourceText}`,
+          })),
+        })
+      }
+      throw new Error(`Unexpected message: ${message.type}`)
+    })
+
+    const runtime = createContentRuntime({ document, chromeRuntime })
+    runtime.start()
+    await runtime.translatePage()
+
+    const paragraph = document.querySelector('p') as HTMLElement
+    const firstTranslation = document.querySelector('[data-lingoflow-translation]') as HTMLElement
+    expect(firstTranslation).not.toBeNull()
+    expect(firstTranslation.textContent).toContain('translated:')
+    expect(paragraph.dataset.lingoflowBlockId).toBeTruthy()
+
+    paragraph.textContent = 'The source text has been mutated to simulate dynamic content changes.'
+
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(80)
+
+    expect(document.querySelector('[data-lingoflow-translation]')).toBeNull()
+
+    await runtime.translatePage()
+
+    expect(translatedTasks).toHaveLength(2)
+    expect(translatedTasks[1]).toHaveLength(1)
+    expect(translatedTasks[1][0].sourceText).toContain('mutated to simulate dynamic')
+
+    const newTranslation = document.querySelector('[data-lingoflow-translation]') as HTMLElement
+    expect(newTranslation).not.toBeNull()
+    expect(newTranslation.textContent).toContain('mutated to simulate dynamic')
+
+    runtime.stop()
+    vi.useRealTimers()
+  })
+
+  it('does nothing when mutating a block that has not been translated yet', async () => {
+    vi.useFakeTimers()
+    document.body.innerHTML = `
+      <article>
+        <p>This paragraph has not been translated yet so mutations should be ignored.</p>
+      </article>
+    `
+    const settings = runtimeSettings()
+    let providerCalls = 0
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      if (message.type === 'translation/translateBatch') {
+        providerCalls += 1
+        const tasks: TranslationTask[] = message.payload.tasks
+        return success({ results: tasks.map(successResult) })
+      }
+      throw new Error(`Unexpected message: ${message.type}`)
+    })
+
+    const runtime = createContentRuntime({ document, chromeRuntime })
+    runtime.start()
+
+    const paragraph = document.querySelector('p') as HTMLElement
+    paragraph.textContent = 'Mutated before any translation occurred.'
+
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(80)
+
+    expect(providerCalls).toBe(0)
+    expect(document.querySelector('[data-lingoflow-translation]')).toBeNull()
+
+    runtime.stop()
+    vi.useRealTimers()
+  })
+
+  it('debounces multiple rapid mutations into a single dirty event', async () => {
+    vi.useFakeTimers()
+    document.body.innerHTML = `
+      <article>
+        <p>This paragraph is long enough to test rapid mutation debounce behavior.</p>
+      </article>
+    `
+    const settings = runtimeSettings()
+    const translatedTasks: TranslationTask[][] = []
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      if (message.type === 'translation/translateBatch') {
+        const tasks: TranslationTask[] = message.payload.tasks
+        translatedTasks.push(tasks)
+        return success({
+          results: tasks.map(task => ({
+            ...successResult(task),
+            translatedText: `translated:${task.sourceText}`,
+          })),
+        })
+      }
+      throw new Error(`Unexpected message: ${message.type}`)
+    })
+
+    const runtime = createContentRuntime({ document, chromeRuntime })
+    runtime.start()
+    await runtime.translatePage()
+
+    expect(translatedTasks).toHaveLength(1)
+
+    const paragraph = document.querySelector('p') as HTMLElement
+    paragraph.textContent = 'First rapid mutation text.'
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(20)
+
+    paragraph.textContent = 'Second rapid mutation text.'
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(20)
+
+    paragraph.textContent = 'Third and final rapid mutation text.'
+
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(80)
+
+    expect(document.querySelector('[data-lingoflow-translation]')).toBeNull()
+
+    await runtime.translatePage()
+
+    expect(translatedTasks).toHaveLength(2)
+    expect(translatedTasks[1]).toHaveLength(1)
+    expect(translatedTasks[1][0].sourceText).toContain('Third and final rapid mutation')
+
+    const newTranslation = document.querySelector('[data-lingoflow-translation]') as HTMLElement
+    expect(newTranslation).not.toBeNull()
+
+    runtime.stop()
+    vi.useRealTimers()
+  })
+})
+
 describe("evictOldestCacheEntries", () => {
   it("Evicts the oldest entries when cache exceeds the limit", () => {
     const cache = new Map()
@@ -481,5 +632,136 @@ describe("evictOldestCacheEntries", () => {
     const cache = new Map()
     evictOldestCacheEntries(cache, 10)
     expect(cache.size).toBe(0)
+  })
+})
+
+describe('translateIncremental queuing', () => {
+  it('queues a request when called while another is in progress', async () => {
+    document.body.innerHTML = `
+      <article>
+        <p>This paragraph is long enough for the first incremental translation.</p>
+      </article>
+    `
+    const settings = runtimeSettings()
+    let resolveFirst: (() => void) | undefined
+    const batches: TranslationTask[][] = []
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      if (message.type === 'translation/translateBatch') {
+        const tasks: TranslationTask[] = message.payload.tasks
+        batches.push(tasks)
+        if (batches.length === 1) {
+          await new Promise<void>(resolve => { resolveFirst = resolve })
+        }
+        return success({ results: tasks.map(successResult) })
+      }
+      throw new Error(`Unexpected message: ${message.type}`)
+    })
+
+    const runtime = createContentRuntime({ document, chromeRuntime })
+
+    const first = runtime.translateIncremental()
+    await waitFor(() => batches.length === 1)
+
+    const dynamicP = document.createElement('p')
+    dynamicP.textContent = 'This new paragraph is long enough to be collected for incremental translation.'
+    document.querySelector('article')!.appendChild(dynamicP)
+
+    runtime.translateIncremental()
+    expect(batches).toHaveLength(1)
+
+    resolveFirst!()
+    await first
+
+    await waitFor(() => batches.length === 2)
+    expect(batches).toHaveLength(2)
+  })
+
+  it('runs queued request after the first completes', async () => {
+    document.body.innerHTML = `
+      <article>
+        <p>First incremental paragraph is long enough to be translated.</p>
+      </article>
+    `
+    const settings = runtimeSettings()
+    let resolveFirst: (() => void) | undefined
+    const batches: TranslationTask[][] = []
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      if (message.type === 'translation/translateBatch') {
+        const tasks: TranslationTask[] = message.payload.tasks
+        batches.push(tasks)
+        if (batches.length === 1) {
+          await new Promise<void>(resolve => { resolveFirst = resolve })
+        }
+        return success({ results: tasks.map(successResult) })
+      }
+      throw new Error(`Unexpected message: ${message.type}`)
+    })
+
+    const runtime = createContentRuntime({ document, chromeRuntime })
+
+    const first = runtime.translateIncremental()
+    await waitFor(() => batches.length === 1)
+
+    const dynamicP = document.createElement('p')
+    dynamicP.textContent = 'Second incremental paragraph is also long enough to be collected.'
+    document.querySelector('article')!.appendChild(dynamicP)
+
+    runtime.translateIncremental()
+    resolveFirst!()
+
+    await first
+    await waitFor(() => batches.length === 2)
+
+    expect(batches).toHaveLength(2)
+    expect(batches[0]).toHaveLength(1)
+    expect(batches[1]).toHaveLength(1)
+  })
+
+  it('keeps only the latest overrides when multiple rapid calls occur', async () => {
+    document.body.innerHTML = `
+      <article>
+        <p>Paragraph for testing rapid incremental override coalescing.</p>
+      </article>
+    `
+    const settings = runtimeSettings()
+    let resolveFirst: (() => void) | undefined
+    const batches: TranslationTask[][] = []
+    const targetLangs: string[] = []
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      if (message.type === 'translation/translateBatch') {
+        const tasks: TranslationTask[] = message.payload.tasks
+        batches.push(tasks)
+        targetLangs.push(tasks[0]?.targetLang)
+        if (batches.length === 1) {
+          await new Promise<void>(resolve => { resolveFirst = resolve })
+        }
+        return success({ results: tasks.map(successResult) })
+      }
+      throw new Error(`Unexpected message: ${message.type}`)
+    })
+
+    const runtime = createContentRuntime({ document, chromeRuntime })
+
+    const first = runtime.translateIncremental()
+    await waitFor(() => batches.length === 1)
+
+    const dynamicP = document.createElement('p')
+    dynamicP.textContent = 'Dynamic paragraph for testing coalesced override propagation.'
+    document.querySelector('article')!.appendChild(dynamicP)
+
+    runtime.translateIncremental({ targetLang: 'ja' })
+    runtime.translateIncremental({ targetLang: 'ko' })
+
+    resolveFirst!()
+    await first
+
+    await waitFor(() => batches.length === 2)
+
+    expect(batches).toHaveLength(2)
+    expect(targetLangs[0]).toBe(settings.targetLang)
+    expect(targetLangs[1]).toBe('ko')
   })
 })

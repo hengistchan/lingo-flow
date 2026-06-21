@@ -6,6 +6,8 @@ import type {
   ResolvedPageRule,
 } from '@lingoflow/types'
 
+export { SITE_RULES } from './site-rules'
+
 export type ResolvePageRuleOptions = {
   siteRules?: PageRule[]
   userRules?: PageRule[]
@@ -17,12 +19,8 @@ const DEFAULT_SELECTORS: Required<PageRuleSelectors> = {
     'main',
     'article',
     '[role="main"]',
-    '.markdown-body',
     '.prose',
     '#content',
-    '#mw-content-text',
-    '.mw-parser-output',
-    '.md-content',
   ],
   blockSelectors: [
     'h1',

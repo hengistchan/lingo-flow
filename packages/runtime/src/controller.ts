@@ -1,10 +1,11 @@
 import { buildTranslationCacheKey } from '@lingoflow/cache'
 import { collectScanResults } from '@lingoflow/dom'
-import { resolvePageRule } from '@lingoflow/rules'
+import { resolvePageRule, SITE_RULES } from '@lingoflow/rules'
 import { createBatches, processBatchesWithConcurrency } from '@lingoflow/scheduler'
 import { getDomain, getSourceLanguageOptions, getTargetLanguageOptions } from '@lingoflow/shared'
 import type {
   PageDisplayMode,
+  PageRule,
   PageTranslationProgress,
   PublicRuntimeSettings,
   RuntimeContext,
@@ -27,6 +28,7 @@ const DEFAULT_MAX_BATCH_CHARS = 12000
 export type ControllerDependencies = {
   document?: Document
   chromeRuntime?: typeof chrome.runtime
+  siteRules?: PageRule[]
 }
 
 export type PageTranslationOverrides = {
@@ -37,6 +39,7 @@ export type PageTranslationOverrides = {
 export class RuntimeController {
   private readonly root: Document
   private readonly runtime: typeof chrome.runtime
+  private readonly siteRules: PageRule[]
   private readonly memoryCache = new Map<string, TranslationResult>()
   private readonly store = new BlockStore()
   private readonly bindings = new BlockBindingStore()
@@ -49,15 +52,18 @@ export class RuntimeController {
   private translating = false
   private dynamicTranslationEnabled = false
   private started = false
+  private pendingIncremental: PageTranslationOverrides | null = null
 
   constructor(deps: ControllerDependencies) {
     this.root = deps.document ?? document
     this.runtime = deps.chromeRuntime ?? chrome.runtime
+    this.siteRules = deps.siteRules ?? SITE_RULES
     this.coordinator = new RenderCoordinator({
       store: this.store,
       bindings: this.bindings,
       events: this.events,
       version: this.version,
+      document: this.root,
     })
     this.observer = new PageObserver({
       document: this.root,
@@ -222,7 +228,10 @@ export class RuntimeController {
   }
 
   async translateIncremental(overrides: PageTranslationOverrides = {}): Promise<PageTranslationProgress> {
-    if (this.translating) return this.progress
+    if (this.translating) {
+      this.pendingIncremental = overrides
+      return this.progress
+    }
     this.translating = true
 
     try {
@@ -264,6 +273,11 @@ export class RuntimeController {
       return this.progress
     } finally {
       this.translating = false
+      const pending = this.pendingIncremental
+      this.pendingIncremental = null
+      if (pending) {
+        await this.translateIncremental(pending)
+      }
     }
   }
 
@@ -307,7 +321,7 @@ export class RuntimeController {
     pageUrl: string
     domain: string
   }): RuntimeContext {
-    const pageRule = resolvePageRule(this.root, input.pageUrl)
+    const pageRule = resolvePageRule(this.root, input.pageUrl, { siteRules: this.siteRules })
     return Object.freeze({
       runId: input.runId,
       url: input.pageUrl,
@@ -396,11 +410,21 @@ export class RuntimeController {
     settings: PublicRuntimeSettings,
   ): Promise<void> {
     const { hits: memoryHits, misses: memoryMisses } = this.resolveMemoryCache(tasks)
+
+    for (const hit of memoryHits) {
+      this.store.dispatch(hit.blockId, 'LOADING_START')
+      this.store.dispatch(hit.blockId, 'CACHE_HIT')
+    }
     this.renderResults(memoryHits, context)
     this.progress.cacheHits += memoryHits.length
     this.progress.translatedBlocks += memoryHits.length
 
     let misses = memoryMisses
+    for (const task of misses) {
+      this.store.dispatch(task.blockId, 'ENQUEUE')
+      this.store.dispatch(task.blockId, 'LOADING_START')
+    }
+
     if (settings.cacheEnabled && misses.length > 0) {
       try {
         const cache = await this.sendRuntimeMessage<{
@@ -411,6 +435,9 @@ export class RuntimeController {
           payload: { tasks: misses },
         })
 
+        for (const hit of cache.hits) {
+          this.store.dispatch(hit.blockId, 'CACHE_HIT')
+        }
         this.renderResults(cache.hits, context)
         for (const hit of cache.hits) this.memoryCache.set(hit.cacheKey, hit)
         this.evictOldestCacheEntries()

@@ -53,10 +53,11 @@ describe('BlockStore', () => {
     expect(store.get('block_1')!.state).toBe('queued')
   })
 
-  it('translates queued -> translating -> translated', () => {
+  it('translates queued -> loading -> translating -> translated', () => {
     const store = new BlockStore()
     store.add(createBlock())
     store.dispatch('block_1', 'ENQUEUE')
+    store.dispatch('block_1', 'LOADING_START')
     store.dispatch('block_1', 'TRANSLATE_START')
 
     const result = store.dispatch('block_1', 'TRANSLATE_SUCCESS')
@@ -66,10 +67,11 @@ describe('BlockStore', () => {
     expect(result!.to).toBe('translated')
   })
 
-  it('translates translating -> failed on provider failure', () => {
+  it('translates loading -> translating -> failed on provider failure', () => {
     const store = new BlockStore()
     store.add(createBlock())
     store.dispatch('block_1', 'ENQUEUE')
+    store.dispatch('block_1', 'LOADING_START')
     store.dispatch('block_1', 'TRANSLATE_START')
 
     const result = store.dispatch('block_1', 'TRANSLATE_FAIL')
@@ -79,10 +81,11 @@ describe('BlockStore', () => {
     expect(result!.to).toBe('failed')
   })
 
-  it('transitions translated -> rendering -> rendered', () => {
+  it('transitions loading -> translating -> translated -> rendering -> rendered', () => {
     const store = new BlockStore()
     store.add(createBlock())
     store.dispatch('block_1', 'ENQUEUE')
+    store.dispatch('block_1', 'LOADING_START')
     store.dispatch('block_1', 'TRANSLATE_START')
     store.dispatch('block_1', 'TRANSLATE_SUCCESS')
     store.dispatch('block_1', 'RENDER_START')
@@ -162,5 +165,102 @@ describe('BlockStore', () => {
 
     expect(store.size()).toBe(1)
     expect(store.get('b1')).toBeUndefined()
+  })
+
+  it('transitions queued -> loading on LOADING_START', () => {
+    const store = new BlockStore()
+    store.add(createBlock())
+    store.dispatch('block_1', 'ENQUEUE')
+
+    const result = store.dispatch('block_1', 'LOADING_START')
+
+    expect(result).not.toBeNull()
+    expect(result!.from).toBe('queued')
+    expect(result!.to).toBe('loading')
+    expect(store.get('block_1')!.state).toBe('loading')
+  })
+
+  it('transitions loading -> translating on TRANSLATE_START', () => {
+    const store = new BlockStore()
+    store.add(createBlock())
+    store.dispatch('block_1', 'ENQUEUE')
+    store.dispatch('block_1', 'LOADING_START')
+
+    const result = store.dispatch('block_1', 'TRANSLATE_START')
+
+    expect(result).not.toBeNull()
+    expect(result!.from).toBe('loading')
+    expect(result!.to).toBe('translating')
+    expect(store.get('block_1')!.state).toBe('translating')
+  })
+
+  it('transitions loading -> cache-hit on CACHE_HIT', () => {
+    const store = new BlockStore()
+    store.add(createBlock())
+    store.dispatch('block_1', 'ENQUEUE')
+    store.dispatch('block_1', 'LOADING_START')
+
+    const result = store.dispatch('block_1', 'CACHE_HIT')
+
+    expect(result).not.toBeNull()
+    expect(result!.from).toBe('loading')
+    expect(result!.to).toBe('cache-hit')
+    expect(store.get('block_1')!.state).toBe('cache-hit')
+  })
+
+  it('transitions cache-hit -> rendering on RENDER_START', () => {
+    const store = new BlockStore()
+    store.add(createBlock())
+    store.dispatch('block_1', 'ENQUEUE')
+    store.dispatch('block_1', 'LOADING_START')
+    store.dispatch('block_1', 'CACHE_HIT')
+
+    const result = store.dispatch('block_1', 'RENDER_START')
+
+    expect(result).not.toBeNull()
+    expect(result!.from).toBe('cache-hit')
+    expect(result!.to).toBe('rendering')
+    expect(store.get('block_1')!.state).toBe('rendering')
+  })
+
+  it('cancels loading state', () => {
+    const store = new BlockStore()
+    store.add(createBlock())
+    store.dispatch('block_1', 'ENQUEUE')
+    store.dispatch('block_1', 'LOADING_START')
+
+    const result = store.dispatch('block_1', 'CANCEL')
+
+    expect(result).not.toBeNull()
+    expect(result!.from).toBe('loading')
+    expect(result!.to).toBe('cancelled')
+  })
+
+  it('cancels cache-hit state', () => {
+    const store = new BlockStore()
+    store.add(createBlock())
+    store.dispatch('block_1', 'ENQUEUE')
+    store.dispatch('block_1', 'LOADING_START')
+    store.dispatch('block_1', 'CACHE_HIT')
+
+    const result = store.dispatch('block_1', 'CANCEL')
+
+    expect(result).not.toBeNull()
+    expect(result!.from).toBe('cache-hit')
+    expect(result!.to).toBe('cancelled')
+  })
+
+  it('marks cache-hit as stale', () => {
+    const store = new BlockStore()
+    store.add(createBlock())
+    store.dispatch('block_1', 'ENQUEUE')
+    store.dispatch('block_1', 'LOADING_START')
+    store.dispatch('block_1', 'CACHE_HIT')
+
+    const result = store.dispatch('block_1', 'MARK_STALE')
+
+    expect(result).not.toBeNull()
+    expect(result!.from).toBe('cache-hit')
+    expect(result!.to).toBe('stale')
   })
 })

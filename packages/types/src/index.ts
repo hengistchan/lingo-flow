@@ -87,8 +87,10 @@ export type ContentRootMetadata = {
 export type BlockState =
   | 'pending'
   | 'queued'
+  | 'loading'
   | 'translating'
   | 'translated'
+  | 'cache-hit'
   | 'rendering'
   | 'rendered'
   | 'failed'
@@ -171,6 +173,8 @@ export type RenderSkipReason =
 export type BlockEvent =
   | { type: 'COLLECT'; runId: string; revision: number }
   | { type: 'ENQUEUE' }
+  | { type: 'LOADING_START' }
+  | { type: 'CACHE_HIT' }
   | { type: 'TRANSLATE_START'; requestId: string }
   | { type: 'TRANSLATE_SUCCESS'; requestId: string; text: string }
   | { type: 'TRANSLATE_FAIL'; requestId: string; error: string }
@@ -523,6 +527,7 @@ export type LegacyRenderMode = 'below-original'
 export type AppSettings = {
   version: number
   interfaceLocale: 'auto' | UiLocale
+  uiTheme: TranslationTheme
   targetLang: string
   sourceLang: 'auto' | string
   renderMode: LegacyRenderMode
@@ -538,6 +543,7 @@ export type SettingsSummary = {
   sourceLang: 'auto' | string
   targetLang: string
   interfaceLocale: 'auto' | UiLocale
+  uiTheme: TranslationTheme
   providerId: ProviderId
   providerName: string
   providerConfigured: boolean
@@ -619,6 +625,13 @@ export type SaveSettingsMessage = {
   }
 }
 
+export type SaveThemeMessage = {
+  type: 'settings/saveTheme'
+  payload: {
+    theme: TranslationTheme
+  }
+}
+
 export type TestProviderConnectionMessage = {
   type: 'provider/testConnection'
   payload: {
@@ -678,6 +691,7 @@ export type LingoFlowMessage =
   | GetRuntimeSettingsMessage
   | GetSettingsSummaryMessage
   | SaveSettingsMessage
+  | SaveThemeMessage
   | TestProviderConnectionMessage
   | ClearCacheByDomainMessage
   | ClearAllCacheMessage

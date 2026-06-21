@@ -1,4 +1,4 @@
-import { NORMALIZE_VERSION, resolveSupportedLanguage } from '@lingoflow/shared'
+import { NORMALIZE_VERSION, resolveSupportedLanguage, isProviderConfigured } from '@lingoflow/shared'
 import type {
   AppSettings,
   ProviderConfig,
@@ -6,7 +6,6 @@ import type {
   SettingsSummary,
   UiLocale,
 } from '@lingoflow/types'
-import { isProviderConfigured } from '@lingoflow/providers'
 
 const SETTINGS_KEY = 'lingoflow:settings'
 const CURRENT_SETTINGS_VERSION = 4
@@ -23,6 +22,7 @@ type SettingsInput = Partial<Omit<AppSettings, 'providers'>> & {
 export const DEFAULT_SETTINGS: AppSettings = {
   version: CURRENT_SETTINGS_VERSION,
   interfaceLocale: 'auto',
+  uiTheme: 'system',
   targetLang: 'zh-Hans',
   sourceLang: 'auto',
   renderMode: 'below-original',
@@ -169,6 +169,7 @@ export function getSettingsSummary(settings: AppSettings): SettingsSummary {
     sourceLang: settings.sourceLang,
     targetLang: settings.targetLang,
     interfaceLocale: settings.interfaceLocale,
+    uiTheme: settings.uiTheme,
     providerId,
     providerName: providerConfig?.name ?? providerId,
     providerConfigured: providerConfig ? isProviderConfigured(providerConfig) : false,

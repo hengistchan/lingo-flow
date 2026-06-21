@@ -1,5 +1,6 @@
 import type { PageRule } from '@lingoflow/types'
 import { defaultPageRule, resolvePageRule } from './index'
+import { SITE_RULES, wikipediaRule, githubRule } from './site-rules'
 
 describe('page rule resolution', () => {
   beforeEach(() => {
@@ -140,5 +141,83 @@ describe('page rule resolution', () => {
     expect(resolved.thresholds.minTextLength).toBe(12)
     expect(lowPriorityRule).toEqual(originalLowPriorityRule)
     expect(userRule).toEqual(originalUserRule)
+  })
+})
+
+describe('site rules registry', () => {
+  beforeEach(() => {
+    document.head.innerHTML = ''
+    document.body.innerHTML = ''
+  })
+
+  it('matches Wikipedia URL to the wikipedia site rule', () => {
+    document.body.innerHTML = '<div id="mw-content-text"><p>Article content</p></div>'
+    const resolved = resolvePageRule(document, 'https://en.wikipedia.org/wiki/LingoFlow', {
+      siteRules: SITE_RULES,
+    })
+
+    expect(resolved.matchedRuleIds).toContain('wikipedia')
+    expect(resolved.selectors.contentRoots).toContain('#mw-content-text')
+    expect(resolved.selectors.contentRoots).toContain('.mw-parser-output')
+  })
+
+  it('matches GitHub URL to the github site rule', () => {
+    document.body.innerHTML = '<main class="markdown-body"><p>README content</p></main>'
+    const resolved = resolvePageRule(document, 'https://github.com/org/repo', {
+      siteRules: SITE_RULES,
+    })
+
+    expect(resolved.matchedRuleIds).toContain('github')
+    expect(resolved.selectors.contentRoots).toContain('.markdown-body')
+    expect(resolved.selectors.contentRoots).toContain('.md-content')
+  })
+
+  it('excludes Wikipedia Special: and Talk: pages', () => {
+    document.body.innerHTML = '<div id="mw-content-text"><p>Special page</p></div>'
+    const special = resolvePageRule(document, 'https://en.wikipedia.org/wiki/Special:Random', {
+      siteRules: SITE_RULES,
+    })
+    const talk = resolvePageRule(document, 'https://en.wikipedia.org/wiki/Talk:LingoFlow', {
+      siteRules: SITE_RULES,
+    })
+
+    expect(special.matchedRuleIds).not.toContain('wikipedia')
+    expect(talk.matchedRuleIds).not.toContain('wikipedia')
+  })
+
+  it('merges site rule selectors into the resolved rule', () => {
+    document.body.innerHTML = '<div id="mw-content-text"><p>Content</p></div>'
+    const resolved = resolvePageRule(document, 'https://en.wikipedia.org/wiki/Test', {
+      siteRules: SITE_RULES,
+    })
+
+    expect(resolved.selectors.contentRoots[0]).toBe('#mw-content-text')
+    expect(resolved.selectors.contentRoots).toContain('.mw-parser-output')
+    expect(resolved.selectors.blockSelectors).toEqual(expect.arrayContaining(['h1', 'p']))
+    expect(resolved.selectors.excludeSelectors).toEqual(expect.arrayContaining(['script', 'style']))
+  })
+
+  it('site rules take priority over default rule but are overridden by user rules', () => {
+    document.body.innerHTML = '<div id="mw-content-text"><p>Content</p></div>'
+    const userRule: PageRule = {
+      id: 'user-wiki',
+      match: { matches: ['*://*.wikipedia.org/*'] },
+      selectors: {
+        contentRoots: ['#custom-root'],
+      },
+    }
+
+    const resolved = resolvePageRule(document, 'https://en.wikipedia.org/wiki/Test', {
+      siteRules: SITE_RULES,
+      userRules: [userRule],
+    })
+
+    expect(resolved.matchedRuleIds).toEqual([
+      defaultPageRule.id,
+      'wikipedia',
+      'user-wiki',
+    ])
+    expect(resolved.selectors.contentRoots[0]).toBe('#custom-root')
+    expect(resolved.selectors.contentRoots).toContain('#mw-content-text')
   })
 })

@@ -10,6 +10,8 @@ import type {
   TranslationProvider,
 } from '@lingoflow/types'
 
+export { isProviderConfigured } from '@lingoflow/shared'
+
 export const REQUEST_TIMEOUT_MS = 30000
 export const GOOGLE_FREE_TRANSLATE_ENDPOINT = 'https://translate.googleapis.com/translate_a/single'
 
@@ -84,12 +86,6 @@ export function extractOpenAIConfig(config: ProviderConfig): OpenAICompatibleCon
     reasoningEffort: normalizeReasoningEffort(config.values.reasoningEffort),
     disableThinking: config.values.disableThinking === 'true',
   }
-}
-
-export function isProviderConfigured(config: ProviderConfig): boolean {
-  const preset = BUILT_IN_PRESETS.find(p => p.id === config.presetId)
-  if (!preset) return Object.values(config.values).some(v => v.trim())
-  return preset.fields.filter(f => f.required).every(f => (config.values[f.key] || "").trim())
 }
 
 export class ProviderRegistry {

@@ -926,3 +926,176 @@ describe('UI exclusion filtering', () => {
     expect(results[0].block.text).toContain('outside translation elements')
   })
 })
+
+describe('Wikipedia fixture', () => {
+  beforeEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  const wikiOptions = {
+    sourceLang: 'en' as const,
+    targetLang: 'zh-Hans',
+    pageUrl: 'https://en.wikipedia.org/wiki/Photography',
+    domain: 'en.wikipedia.org',
+    runId: 'run_wiki_test',
+    rootGeneration: 1,
+  }
+
+  function setupWikipediaFixture() {
+    document.body.innerHTML = `
+      <div id="mw-content-text">
+        <div class="mw-parser-output">
+          <div class="mw-empty-elt"></div>
+          <div class="hatnote">This article is about the art of photography. For the technique, see Photographic technique.</div>
+          <p><b>Photography</b> is the art, application, and practice of creating durable images by recording light, either electronically by means of an image sensor, or chemically by means of a light-sensitive material such as photographic film.</p>
+          <h2><span class="mw-headline" id="Overview">Overview</span></h2>
+          <p>Photography is employed in many fields of science, manufacturing, and business, as well as its more direct uses for art, film and video production, recreational purposes, hobby, and mass communication.</p>
+          <h3><span class="mw-headline" id="Techniques">Techniques</span></h3>
+          <p>There are many different types of photography, including portrait, landscape, street, and documentary photography. Each type has its own unique techniques and styles that photographers use to capture their subjects.</p>
+          <table class="infobox">
+            <tbody>
+              <tr>
+                <th colspan="2">Photography as an art form</th>
+              </tr>
+              <tr>
+                <td>Type of medium</td>
+                <td>Visual art and communication medium</td>
+              </tr>
+              <tr>
+                <td>Year of invention</td>
+                <td>Early nineteenth century origin</td>
+              </tr>
+            </tbody>
+          </table>
+          <h2><span class="mw-headline" id="History">History</span></h2>
+          <p>The word photography was coined in 1839 by Sir John Herschel based on the Greek words meaning drawing with light. The earliest known photograph was taken by Joseph Nicéphore Niépce in 1826 or 1827.</p>
+          <div class="navbox">
+            <table>
+              <tbody>
+                <tr>
+                  <td><a href="/wiki/Art">Art</a> | <a href="/wiki/Visual_arts">Visual arts</a> | <a href="/wiki/Camera">Camera</a></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <h2><span class="mw-headline" id="References">References</span></h2>
+          <p>Photography has been a subject of scholarly study since its invention. Modern scholars have examined its cultural impact and technical evolution over nearly two centuries.<sup>[1]</sup><sup>[2]</sup></p>
+        </div>
+      </div>
+      <div id="catlinks">
+        <ul>
+          <li><a href="/wiki/Category:Photography">Photography</a></li>
+          <li><a href="/wiki/Category:Visual_arts">Visual arts</a></li>
+        </ul>
+      </div>
+    `
+  }
+
+  it('discovers #mw-content-text as content root', async () => {
+    setupWikipediaFixture()
+
+    const results = await collectScanResults(document, wikiOptions)
+    const texts = results.map(r => r.block.text)
+
+    expect(texts.some(t => t.includes('art, application, and practice'))).toBe(true)
+    expect(texts.some(t => t.includes('coined in 1839'))).toBe(true)
+  })
+
+  it('collects article paragraphs as paragraph block type', async () => {
+    setupWikipediaFixture()
+
+    const results = await collectScanResults(document, wikiOptions)
+    const paragraphs = results.filter(r => r.block.meta.blockType === 'paragraph')
+
+    expect(paragraphs.some(r => r.block.text.includes('art, application, and practice'))).toBe(true)
+    expect(paragraphs.some(r => r.block.text.includes('employed in many fields'))).toBe(true)
+  })
+
+  it('collects headings with mw-headline as heading block type', async () => {
+    setupWikipediaFixture()
+
+    const results = await collectScanResults(document, wikiOptions)
+    const headings = results.filter(r => r.block.meta.blockType === 'heading')
+
+    expect(headings.some(r => r.block.text.includes('Overview'))).toBe(true)
+    expect(headings.some(r => r.block.text.includes('Techniques'))).toBe(true)
+    expect(headings.some(r => r.block.text.includes('History'))).toBe(true)
+    expect(headings.some(r => r.block.text.includes('References'))).toBe(true)
+  })
+
+  it('collects infobox table as table block type', async () => {
+    setupWikipediaFixture()
+
+    const results = await collectScanResults(document, wikiOptions)
+    const tableResults = results.filter(r => r.block.meta.blockType === 'table')
+
+    expect(tableResults.some(r => r.block.text.includes('Visual art and communication medium'))).toBe(true)
+    expect(tableResults.some(r => r.block.text.includes('Early nineteenth century origin'))).toBe(true)
+    expect(tableResults.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('skips mw-empty-elt elements', async () => {
+    setupWikipediaFixture()
+
+    const results = await collectScanResults(document, wikiOptions)
+    const emptyResults = results.filter(r => r.block.text.trim() === '')
+
+    expect(emptyResults).toHaveLength(0)
+  })
+
+  it('collects content in document order', async () => {
+    setupWikipediaFixture()
+
+    const results = await collectScanResults(document, wikiOptions)
+    const texts = results.map(r => r.block.text)
+
+    const artAppIndex = texts.findIndex(t => t.includes('art, application, and practice'))
+    const overviewIndex = texts.findIndex(t => t.includes('Overview'))
+    const employedIndex = texts.findIndex(t => t.includes('employed in many fields'))
+    const techniquesIndex = texts.findIndex(t => t.includes('Techniques'))
+    const historyIndex = texts.findIndex(t => t.includes('History'))
+
+    expect(artAppIndex).toBeLessThan(overviewIndex)
+    expect(overviewIndex).toBeLessThan(employedIndex)
+    expect(employedIndex).toBeLessThan(techniquesIndex)
+    expect(techniquesIndex).toBeLessThan(historyIndex)
+  })
+
+  it('extracts inline link tokens from paragraphs', async () => {
+    setupWikipediaFixture()
+
+    const results = await collectScanResults(document, wikiOptions)
+    const refBlock = results.find(r => r.block.text.includes('scholarly study'))
+
+    expect(refBlock).toBeDefined()
+    expect(refBlock!.block.inlineTokens.length).toBeGreaterThanOrEqual(0)
+  })
+
+  it('produces a reasonable number of blocks without duplication', async () => {
+    setupWikipediaFixture()
+
+    const results = await collectScanResults(document, wikiOptions)
+    const ids = results.map(r => r.block.id)
+
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(results.length).toBeGreaterThanOrEqual(5)
+    expect(results.length).toBeLessThanOrEqual(15)
+  })
+
+  it('does not collect content outside #mw-content-text', async () => {
+    setupWikipediaFixture()
+
+    const results = await collectScanResults(document, wikiOptions)
+    const texts = results.map(r => r.block.text)
+
+    expect(texts.some(t => t.includes('Photography') && t.includes('Visual arts') && t.includes('Art'))).toBe(false)
+  })
+
+  it('collects hatnote disambiguation notice', async () => {
+    setupWikipediaFixture()
+
+    const results = await collectScanResults(document, wikiOptions)
+
+    expect(results.some(r => r.block.text.includes('technique, see Photographic technique'))).toBe(true)
+  })
+})

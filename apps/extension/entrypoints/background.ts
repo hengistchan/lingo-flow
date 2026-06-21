@@ -16,6 +16,7 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'settings/getRuntime',
   'settings/getSummary',
   'settings/save',
+  'settings/saveTheme',
   'provider/testConnection',
   'translation-cache/resolve',
   'translation/translateBatch',
@@ -52,6 +53,12 @@ async function handleMessage(message: LingoFlowMessage, _sender: chrome.runtime.
     case 'settings/save':
       await saveSettings(message.payload.settings)
       return { saved: true }
+    case 'settings/saveTheme': {
+      const current = await getSettings()
+      current.uiTheme = message.payload.theme
+      await saveSettings(current)
+      return { saved: true }
+    }
     case 'provider/testConnection':
       return testProviderConnection(message.payload.config)
     case 'translation-cache/resolve':

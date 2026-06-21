@@ -4,6 +4,7 @@ export * from './i18n'
 export * from './inline-tokens'
 export * from './languages'
 export * from './messages'
+export * from './provider-utils'
 
 export function normalizeText(text: string): string {
   return text.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim()

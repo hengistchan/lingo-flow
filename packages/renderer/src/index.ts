@@ -16,6 +16,7 @@ export type RenderInput = {
 }
 
 export function injectLingoFlowStyles(root: Document = document) {
+  if (typeof root.getElementById !== 'function') return
   if (root.getElementById('lingoflow-style')) return
 
   const style = root.createElement('style')
@@ -47,8 +48,22 @@ export function injectLingoFlowStyles(root: Document = document) {
       white-space: pre-wrap;
     }
     .lingoflow-loading {
-      opacity: 0.72;
-      font-style: italic;
+      opacity: 0.5;
+    }
+    .lingoflow-dot {
+      display: inline-block;
+      width: 4px;
+      height: 4px;
+      margin: 0 2px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: lingoflow-dot-pulse 1.4s ease-in-out infinite;
+    }
+    .lingoflow-dot:nth-child(2) { animation-delay: 0.16s; }
+    .lingoflow-dot:nth-child(3) { animation-delay: 0.32s; }
+    @keyframes lingoflow-dot-pulse {
+      0%, 80%, 100% { opacity: 0.3; transform: scale(1); }
+      40% { opacity: 1; transform: scale(1); }
     }
     .lingoflow-error {
       border-left-color: #b3261e;
