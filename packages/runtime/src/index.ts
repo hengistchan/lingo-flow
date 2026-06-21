@@ -20,7 +20,11 @@ export function createContentRuntime(dependencies: ControllerDependencies = {}) 
   const controller = new RuntimeController(dependencies)
   return {
     start: () => controller.start(),
+    stop: () => controller.stop(),
     translatePage: (overrides?: PageTranslationOverrides) => controller.translatePage(overrides),
+    translateIncremental: (overrides?: PageTranslationOverrides) => controller.translateIncremental(overrides),
+    enableDynamicTranslation: () => controller.enableDynamicTranslation(),
+    disableDynamicTranslation: () => controller.disableDynamicTranslation(),
     getProgress: () => controller.getProgress(),
   }
 }

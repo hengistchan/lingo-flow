@@ -291,6 +291,56 @@ describe('content runtime language and progress behavior', () => {
     expect(document.querySelector('.lingoflow-loading')).toBeNull()
   })
 
+  it('incrementally translates new content while dynamic translation is enabled', async () => {
+    document.body.innerHTML = `
+      <article>
+        <p>This first paragraph is long enough to be translated before dynamic content arrives.</p>
+      </article>
+    `
+    const settings = runtimeSettings()
+    const batches: TranslationTask[][] = []
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      if (message.type === 'translation/translateBatch') {
+        const tasks: TranslationTask[] = message.payload.tasks
+        batches.push(tasks)
+        return success({
+          results: tasks.map(successResult),
+        })
+      }
+      throw new Error(`Unexpected message: ${message.type}`)
+    })
+
+    const runtime = createContentRuntime({ document, chromeRuntime })
+    runtime.start()
+    await runtime.translatePage()
+
+    const firstTranslation = document.querySelector('[data-lingoflow-translation]') as HTMLElement
+    expect(firstTranslation.textContent).toContain('first paragraph')
+
+    runtime.enableDynamicTranslation()
+    const dynamicParagraph = document.createElement('p')
+    dynamicParagraph.textContent = 'This newly appended paragraph is long enough to be translated incrementally.'
+    document.querySelector('article')!.appendChild(dynamicParagraph)
+
+    await waitFor(() => document.querySelectorAll('[data-lingoflow-translation]').length === 2, 2000)
+
+    expect(batches).toHaveLength(2)
+    expect(batches[1]).toHaveLength(1)
+    expect(batches[1][0].sourceText).toContain('newly appended paragraph')
+    expect(document.body.contains(firstTranslation)).toBe(true)
+
+    runtime.disableDynamicTranslation()
+    const ignoredParagraph = document.createElement('p')
+    ignoredParagraph.textContent = 'This disabled dynamic paragraph is long enough but should not be translated automatically.'
+    document.querySelector('article')!.appendChild(ignoredParagraph)
+
+    await new Promise(resolve => setTimeout(resolve, 700))
+
+    expect(document.querySelectorAll('[data-lingoflow-translation]')).toHaveLength(2)
+    runtime.stop()
+  })
+
   it('sends translation batches with bounded concurrency', async () => {
     document.body.innerHTML = `
       <article>
@@ -396,8 +446,9 @@ function successResult(task: TranslationTask): TranslationResult {
   }
 }
 
-async function waitFor(assertion: () => boolean) {
-  for (let index = 0; index < 100; index += 1) {
+async function waitFor(assertion: () => boolean, timeoutMs = 1000) {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < timeoutMs) {
     if (assertion()) return
     await new Promise(resolve => setTimeout(resolve, 0))
   }

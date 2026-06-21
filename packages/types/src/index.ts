@@ -658,6 +658,14 @@ export type PageStatusMessage = {
   type: 'page/status'
 }
 
+export type PageEnableDynamicTranslationMessage = {
+  type: 'page/enableDynamicTranslation'
+}
+
+export type PageDisableDynamicTranslationMessage = {
+  type: 'page/disableDynamicTranslation'
+}
+
 export type PageProgressUpdateMessage = {
   type: 'page/progressUpdate'
   payload: PageTranslationProgress
@@ -677,6 +685,8 @@ export type LingoFlowMessage =
   | PageClearMessage
   | PageClearCacheMessage
   | PageStatusMessage
+  | PageEnableDynamicTranslationMessage
+  | PageDisableDynamicTranslationMessage
   | PageProgressUpdateMessage
 
 export type MessageResponse<T> =

@@ -46,6 +46,8 @@ export class RuntimeController {
   private readonly observer: PageObserver
   private progress: PageTranslationProgress
   private translating = false
+  private dynamicTranslationEnabled = false
+  private started = false
 
   constructor(deps: ControllerDependencies) {
     this.root = deps.document ?? document
@@ -112,70 +114,7 @@ export class RuntimeController {
         return this.progress
       }
 
-      const { hits: memoryHits, misses: memoryMisses } = this.resolveMemoryCache(tasks)
-      this.renderResults(memoryHits, context)
-      this.progress.cacheHits += memoryHits.length
-      this.progress.translatedBlocks += memoryHits.length
-
-      let misses = memoryMisses
-      if (settings.cacheEnabled && misses.length > 0) {
-        try {
-          const cache = await this.sendRuntimeMessage<{
-            hits: TranslationResult[]
-            misses: TranslationTask[]
-          }>({
-            type: 'translation-cache/resolve',
-            payload: { tasks: misses },
-          })
-
-          this.renderResults(cache.hits, context)
-          for (const hit of cache.hits) this.memoryCache.set(hit.cacheKey, hit)
-          this.evictOldestCacheEntries()
-          this.progress.cacheHits += cache.hits.length
-          this.progress.translatedBlocks += cache.hits.length
-          misses = cache.misses
-        } catch (error) {
-          console.warn('[LingoFlow] Cache resolve degraded to misses', error)
-        }
-      }
-
-      const batches = this.createBatches(misses)
-      for (const task of misses) {
-        this.coordinator.renderLoading(task.blockId)
-      }
-
-      await this.processBatchesWithConcurrency(batches, settings.translationConcurrency, async batch => {
-        try {
-          const response = await this.sendRuntimeMessage<{ results: TranslationResult[] }>({
-            type: 'translation/translateBatch',
-            payload: { tasks: batch },
-          })
-
-          this.renderResults(response.results, context)
-          for (const result of response.results) {
-            if (result.status === 'success') {
-              this.memoryCache.set(result.cacheKey, result)
-              this.evictOldestCacheEntries()
-              this.progress.translatedBlocks += 1
-            } else {
-              this.progress.failedBlocks += 1
-              this.coordinator.renderError(result.blockId, result.error.message)
-            }
-          }
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error)
-          for (const task of batch) {
-            this.progress.failedBlocks += 1
-            this.coordinator.renderError(task.blockId, message)
-          }
-          console.warn('[LingoFlow] Batch translation failed', error)
-        }
-
-        this.runtime.sendMessage({
-          type: 'page/progressUpdate',
-          payload: { ...this.progress },
-        }).catch(() => {})
-      })
+      await this.translateTasks(tasks, context, settings)
 
       this.progress.status = this.deriveProgressStatus({
         translated: this.progress.translatedBlocks,
@@ -194,6 +133,8 @@ export class RuntimeController {
   }
 
   start(): void {
+    if (this.started) return
+    this.started = true
     this.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (message?.type === 'page/status') {
         sendResponse({ ok: true, data: this.progress })
@@ -225,10 +166,27 @@ export class RuntimeController {
         return false
       }
 
+      if (message?.type === 'page/enableDynamicTranslation') {
+        this.enableDynamicTranslation()
+        sendResponse({ ok: true, data: { enabled: true } })
+        return false
+      }
+
+      if (message?.type === 'page/disableDynamicTranslation') {
+        this.disableDynamicTranslation()
+        sendResponse({ ok: true, data: { enabled: false } })
+        return false
+      }
+
       return false
     })
 
     this.observer.start()
+  }
+
+  stop(): void {
+    this.observer.stop()
+    this.started = false
   }
 
   getProgress(): PageTranslationProgress {
@@ -254,6 +212,60 @@ export class RuntimeController {
     this.coordinator.setDisplayMode(mode)
   }
 
+  enableDynamicTranslation(): void {
+    this.dynamicTranslationEnabled = true
+  }
+
+  disableDynamicTranslation(): void {
+    this.dynamicTranslationEnabled = false
+  }
+
+  async translateIncremental(overrides: PageTranslationOverrides = {}): Promise<PageTranslationProgress> {
+    if (this.translating) return this.progress
+    this.translating = true
+
+    try {
+      const settings = await this.sendRuntimeMessage<PublicRuntimeSettings>({ type: 'settings/getRuntime' })
+      const sourceLang = this.resolveLanguage(overrides.sourceLang, settings.sourceLang, getSourceLanguageOptions())
+      const targetLang = this.resolveLanguage(overrides.targetLang, settings.targetLang, getTargetLanguageOptions())
+      const effectiveSettings = { ...settings, sourceLang, targetLang }
+      const runId = this.version.beginRun()
+      const pageUrl = this.root.location.href
+      const domain = getDomain(pageUrl)
+      const context = this.createRuntimeContext({
+        runId,
+        settings: effectiveSettings,
+        pageUrl,
+        domain,
+      })
+      const scanResults = await collectScanResults(this.root, context)
+      if (scanResults.length === 0) return this.progress
+
+      this.materializeBlocks(scanResults, context)
+      const tasks = this.createTasks(scanResults, context)
+      this.progress = {
+        ...this.progress,
+        status: 'translating',
+        sourceLang,
+        targetLang,
+        totalBlocks: this.progress.totalBlocks + tasks.length,
+      }
+
+      await this.translateTasks(tasks, context, effectiveSettings)
+      this.progress.status = this.deriveProgressStatus({
+        translated: this.progress.translatedBlocks,
+        failed: this.progress.failedBlocks,
+        total: this.progress.totalBlocks,
+      })
+      return this.progress
+    } catch (error) {
+      console.warn('[LingoFlow] Incremental translation failed', error)
+      return this.progress
+    } finally {
+      this.translating = false
+    }
+  }
+
   private subscribeToEvents(): void {
     this.events.on('block:dirty', event => {
       const { blockId } = event
@@ -272,6 +284,13 @@ export class RuntimeController {
       if (event.cause === 'route-change') {
         this.queue.clear()
         this.version.nextRootGeneration()
+        return
+      }
+
+      if (this.dynamicTranslationEnabled) {
+        this.translateIncremental().catch(error => {
+          console.warn('[LingoFlow] Dynamic translation failed', error)
+        })
       }
     })
 
@@ -367,6 +386,77 @@ export class RuntimeController {
           rootGeneration: context.rootGeneration,
         },
       }
+    })
+  }
+
+  private async translateTasks(
+    tasks: TranslationTask[],
+    context: RuntimeContext,
+    settings: PublicRuntimeSettings,
+  ): Promise<void> {
+    const { hits: memoryHits, misses: memoryMisses } = this.resolveMemoryCache(tasks)
+    this.renderResults(memoryHits, context)
+    this.progress.cacheHits += memoryHits.length
+    this.progress.translatedBlocks += memoryHits.length
+
+    let misses = memoryMisses
+    if (settings.cacheEnabled && misses.length > 0) {
+      try {
+        const cache = await this.sendRuntimeMessage<{
+          hits: TranslationResult[]
+          misses: TranslationTask[]
+        }>({
+          type: 'translation-cache/resolve',
+          payload: { tasks: misses },
+        })
+
+        this.renderResults(cache.hits, context)
+        for (const hit of cache.hits) this.memoryCache.set(hit.cacheKey, hit)
+        this.evictOldestCacheEntries()
+        this.progress.cacheHits += cache.hits.length
+        this.progress.translatedBlocks += cache.hits.length
+        misses = cache.misses
+      } catch (error) {
+        console.warn('[LingoFlow] Cache resolve degraded to misses', error)
+      }
+    }
+
+    const batches = this.createBatches(misses)
+    for (const task of misses) {
+      this.coordinator.renderLoading(task.blockId)
+    }
+
+    await this.processBatchesWithConcurrency(batches, settings.translationConcurrency, async batch => {
+      try {
+        const response = await this.sendRuntimeMessage<{ results: TranslationResult[] }>({
+          type: 'translation/translateBatch',
+          payload: { tasks: batch },
+        })
+
+        this.renderResults(response.results, context)
+        for (const result of response.results) {
+          if (result.status === 'success') {
+            this.memoryCache.set(result.cacheKey, result)
+            this.evictOldestCacheEntries()
+            this.progress.translatedBlocks += 1
+          } else {
+            this.progress.failedBlocks += 1
+            this.coordinator.renderError(result.blockId, result.error.message)
+          }
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        for (const task of batch) {
+          this.progress.failedBlocks += 1
+          this.coordinator.renderError(task.blockId, message)
+        }
+        console.warn('[LingoFlow] Batch translation failed', error)
+      }
+
+      this.runtime.sendMessage({
+        type: 'page/progressUpdate',
+        payload: { ...this.progress },
+      }).catch(() => {})
     })
   }
 
