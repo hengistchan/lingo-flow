@@ -1,4 +1,5 @@
 import type { BlockBinding } from '@lingoflow/types'
+import { restoreSourceNodes } from '@lingoflow/renderer'
 
 export class BlockBindingStore {
   private readonly bindings = new Map<string, BlockBinding>()
@@ -61,12 +62,7 @@ export class BlockBindingStore {
       for (const node of binding.insertedNodes) {
         node.parentNode?.removeChild(node)
       }
-      for (const source of binding.hiddenSourceNodes) {
-        source.hidden = false
-        delete source.dataset.lingoflowSourceHidden
-        delete source.dataset.lingoflowSourceWasHidden
-        delete source.dataset.lingoflowSourceWasNotranslate
-      }
+      restoreSourceNodes(binding.hiddenSourceNodes)
       delete binding.carrierElement.dataset.lingoflowBlockId
       binding.carrierElement.removeAttribute('data-lingoflow-block-id')
     }

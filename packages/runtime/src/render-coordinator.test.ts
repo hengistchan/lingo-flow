@@ -296,12 +296,17 @@ describe('RenderCoordinator', () => {
     })
 
     coordinator.setDisplayMode('translation')
-    expect(carrier.hidden).toBe(true)
+    const translation = document.querySelector('[data-lingoflow-translation="block_1"]') as HTMLElement
+    const sourceWrapper = carrier.querySelector('[data-lingoflow-source-wrapper]') as HTMLElement
+    expect(carrier.hidden).toBe(false)
+    expect(sourceWrapper.hidden).toBe(true)
+    expect(translation.hidden).toBe(false)
+    expect(hasHiddenAncestor(translation)).toBe(false)
 
     coordinator.setDisplayMode('original')
     expect(carrier.hidden).toBe(false)
-    const translation = document.querySelector('[data-lingoflow-translation="block_1"]') as HTMLElement
     expect(translation.hidden).toBe(true)
+    expect(carrier.querySelector('[data-lingoflow-source-wrapper]')).toBeNull()
 
     coordinator.setDisplayMode('dual')
     expect(carrier.hidden).toBe(false)
@@ -317,4 +322,13 @@ function createCoordinator() {
   const registry = StrategyRegistry.withBuiltIns()
   const coordinator = new RenderCoordinator({ store, bindings, events, version, registry })
   return { coordinator, store, bindings, events, version, registry }
+}
+
+function hasHiddenAncestor(node: Node): boolean {
+  let current = node.parentElement
+  while (current) {
+    if (current.hidden) return true
+    current = current.parentElement
+  }
+  return false
 }

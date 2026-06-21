@@ -128,6 +128,39 @@ describe('BlockBindingStore', () => {
     expect(carrier.hidden).toBe(false)
   })
 
+  it('clears hidden source wrappers by restoring original children', () => {
+    const store = new BlockBindingStore()
+    const carrier = document.createElement('p')
+    carrier.dataset.lingoflowBlockId = 'block_1'
+    document.body.appendChild(carrier)
+
+    const wrapper = document.createElement('span')
+    wrapper.dataset.lingoflowSourceWrapper = 'true'
+    wrapper.dataset.lingoflowSourceHidden = 'true'
+    wrapper.hidden = true
+    wrapper.textContent = 'Original text.'
+    carrier.appendChild(wrapper)
+
+    const translation = document.createElement('span')
+    translation.dataset.lingoflowGenerated = 'true'
+    translation.dataset.lingoflowTranslation = 'block_1'
+    translation.textContent = '译文'
+    carrier.appendChild(translation)
+
+    store.set(createBinding({
+      carrierElement: carrier,
+      insertedNodes: [translation],
+      hiddenSourceNodes: [wrapper],
+    }))
+
+    store.clear()
+
+    expect(store.size()).toBe(0)
+    expect(translation.parentNode).toBeNull()
+    expect(carrier.querySelector('[data-lingoflow-source-wrapper]')).toBeNull()
+    expect(carrier.textContent).toBe('Original text.')
+  })
+
   it('sweeps disconnected carriers', () => {
     const store = new BlockBindingStore()
     const carrier = document.createElement('p')

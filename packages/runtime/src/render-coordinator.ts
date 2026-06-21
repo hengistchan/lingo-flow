@@ -131,13 +131,15 @@ export class RenderCoordinator {
       if (!translation) continue
 
       if (mode === 'translation') {
-        hideSourceNodes([binding.carrierElement])
+        binding.hiddenSourceNodes = hideSourceNodes([binding.carrierElement])
         translation.hidden = false
       } else if (mode === 'original') {
-        restoreSourceNodes([binding.carrierElement])
+        restoreSourceNodes(binding.hiddenSourceNodes.length > 0 ? binding.hiddenSourceNodes : [binding.carrierElement])
+        binding.hiddenSourceNodes = []
         translation.hidden = true
       } else {
-        restoreSourceNodes([binding.carrierElement])
+        restoreSourceNodes(binding.hiddenSourceNodes.length > 0 ? binding.hiddenSourceNodes : [binding.carrierElement])
+        binding.hiddenSourceNodes = []
         translation.hidden = false
       }
     }

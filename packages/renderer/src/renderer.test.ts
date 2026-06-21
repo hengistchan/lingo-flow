@@ -333,6 +333,31 @@ describe('renderer insertion strategies', () => {
     expect(source.dataset.lingoflowSourceHidden).toBeUndefined()
   })
 
+  it('translation mode keeps linebreak-inside translations visible by hiding only source content', () => {
+    document.body.innerHTML = '<p>Original paragraph text.</p>'
+    const carrier = document.querySelector('p') as HTMLElement
+    const block = createBlock('linebreak-inside')
+    const binding = createBinding(block, carrier)
+    const strategy = new LinebreakInsideStrategy()
+
+    const result = strategy.apply(strategy.plan(block, binding, 'translation'))
+    const translation = document.querySelector(`[data-lingoflow-translation="${block.id}"]`) as HTMLElement
+
+    expect(carrier.hidden).toBe(false)
+    expect(translation.hidden).toBe(false)
+    expect(hasHiddenAncestor(translation)).toBe(false)
+    expect(result.hiddenSourceNodes).toHaveLength(1)
+    expect(result.hiddenSourceNodes[0]).not.toBe(carrier)
+    expect(result.hiddenSourceNodes[0].dataset.lingoflowSourceWrapper).toBe('true')
+    expect(result.hiddenSourceNodes[0].hidden).toBe(true)
+
+    strategy.revert(result)
+
+    expect(document.querySelector(`[data-lingoflow-translation="${block.id}"]`)).toBeNull()
+    expect(carrier.textContent).toBe('Original paragraph text.')
+    expect(carrier.querySelector('[data-lingoflow-source-wrapper]')).toBeNull()
+  })
+
   it.each([
     createStrategyFixture('linebreak-inside', () => '<p>Original paragraph text.</p>', 'p', new LinebreakInsideStrategy()),
     createStrategyFixture('inline-inside', () => '<h2>Original heading</h2>', 'h2', new InlineInsideStrategy()),
@@ -413,9 +438,22 @@ describe('renderer insertion strategies', () => {
 
     const result = strategy.apply(strategy.plan(block, binding, mode))
 
-    expect(carrier.hidden).toBe(sourceHidden)
-    expect(carrier.dataset.lingoflowSourceHidden).toBe(sourceHidden ? 'true' : undefined)
-    expect(result.hiddenSourceNodes).toEqual(resultHasHiddenSource ? [carrier] : [])
+    const insertedInsideCarrier = result.insertedNodes.some(node => carrier.contains(node))
+    const carrierShouldBeHidden = sourceHidden && !insertedInsideCarrier
+
+    expect(carrier.hidden).toBe(carrierShouldBeHidden)
+    expect(carrier.dataset.lingoflowSourceHidden).toBe(carrierShouldBeHidden ? 'true' : undefined)
+    if (resultHasHiddenSource) {
+      expect(result.hiddenSourceNodes).toHaveLength(1)
+      if (carrierShouldBeHidden) {
+        expect(result.hiddenSourceNodes[0]).toBe(carrier)
+      } else {
+        expect(result.hiddenSourceNodes[0]).not.toBe(carrier)
+        expect(result.hiddenSourceNodes[0].dataset.lingoflowSourceWrapper).toBe('true')
+      }
+    } else {
+      expect(result.hiddenSourceNodes).toEqual([])
+    }
     for (const node of result.insertedNodes) {
       expect(node).toBeInstanceOf(HTMLElement)
       expect((node as HTMLElement).hidden).toBe(insertedHidden)
@@ -474,6 +512,62 @@ describe('renderer display modes', () => {
       expect(result.hiddenSourceNodes).toEqual(sourceHidden ? [source] : [])
     },
   )
+
+  it('hides source content without hiding inserted translations inside the source ancestor', () => {
+    document.body.innerHTML = '<p data-lingoflow-block-id="block_mode">Original source text.</p>'
+    const source = document.querySelector('p') as HTMLElement
+    const translation = document.createElement('span')
+    translation.dataset.lingoflowGenerated = 'true'
+    translation.dataset.lingoflowTranslation = 'block_mode'
+    translation.textContent = '译文'
+    source.appendChild(document.createElement('br')).dataset.lingoflowGenerated = 'true'
+    source.appendChild(translation)
+
+    const result = applyDisplayMode({
+      mode: 'translation',
+      sourceNodes: [source],
+      insertedNodes: [translation],
+    })
+
+    expect(source.hidden).toBe(false)
+    expect(translation.hidden).toBe(false)
+    expect(hasHiddenAncestor(translation)).toBe(false)
+    expect(result.hiddenSourceNodes).toHaveLength(1)
+    expect(result.hiddenSourceNodes[0]).not.toBe(source)
+    expect(result.hiddenSourceNodes[0].dataset.lingoflowSourceWrapper).toBe('true')
+    expect(result.hiddenSourceNodes[0].hidden).toBe(true)
+
+    restoreSourceNodes(result.hiddenSourceNodes)
+
+    expect(source.querySelector('[data-lingoflow-source-wrapper]')).toBeNull()
+    expect(source.firstChild?.textContent).toBe('Original source text.')
+  })
+
+  it('restores hidden source wrappers when display mode receives the original source ancestor', () => {
+    document.body.innerHTML = '<p data-lingoflow-block-id="block_mode">Original source text.</p>'
+    const source = document.querySelector('p') as HTMLElement
+    const translation = document.createElement('span')
+    translation.dataset.lingoflowGenerated = 'true'
+    translation.dataset.lingoflowTranslation = 'block_mode'
+    translation.textContent = '译文'
+    source.appendChild(translation)
+
+    applyDisplayMode({
+      mode: 'translation',
+      sourceNodes: [source],
+      insertedNodes: [translation],
+    })
+
+    applyDisplayMode({
+      mode: 'dual',
+      sourceNodes: [source],
+      insertedNodes: [translation],
+    })
+
+    expect(source.querySelector('[data-lingoflow-source-wrapper]')).toBeNull()
+    expect(source.firstChild?.textContent).toBe('Original source text.')
+    expect(translation.hidden).toBe(false)
+  })
 })
 
 function createPlan(overrides: {
@@ -510,6 +604,15 @@ function expectGeneratedNodes(result: { insertedNodes: Node[] }, blockId: string
         element.dataset.lingoflowTranslationSpacer
     ).toBe(blockId)
   }
+}
+
+function hasHiddenAncestor(node: Node): boolean {
+  let current = node.parentElement
+  while (current) {
+    if (current.hidden) return true
+    current = current.parentElement
+  }
+  return false
 }
 
 function createStrategyFixture(
