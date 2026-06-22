@@ -245,6 +245,19 @@ export type PageRule = {
   thresholds?: PageRuleThresholds
 }
 
+export type SiteRule = PageRule & {
+  version: number
+  source: 'built-in'
+}
+
+export type UserSiteRule = PageRule & {
+  version: number
+  source: 'user'
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
+}
+
 export type ResolvedPageRule = {
   id: string
   matchedRuleIds: string[]
@@ -537,6 +550,7 @@ export type AppSettings = {
   defaultProviderId: ProviderId
   fallbackProviderId?: ProviderId | ''
   providers: Record<string, ProviderConfig>
+  userRules: UserSiteRule[]
 }
 
 export type SettingsSummary = {
@@ -576,6 +590,7 @@ export type PublicRuntimeSettings = {
   model?: string
   promptVersion?: string
   normalizeVersion: string
+  userRules?: UserSiteRule[]
 }
 
 export type PageTranslationStatus = 'idle' | 'translating' | 'done' | 'partial' | 'failed'

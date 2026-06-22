@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS, getPublicRuntimeSettings, migrateSettings } from './index'
+import type { SiteRule, UserSiteRule } from '@lingoflow/types'
 
 describe('settings', () => {
   it('defaults to auto-detect, Simplified Chinese, and Google Free provider', () => {
@@ -7,6 +8,7 @@ describe('settings', () => {
     expect(DEFAULT_SETTINGS.renderMode).toBe('below-original')
     expect(DEFAULT_SETTINGS.defaultProviderId).toBe('google-free-translate')
     expect(DEFAULT_SETTINGS.translationConcurrency).toBe(3)
+    expect(DEFAULT_SETTINGS.userRules).toEqual([])
     expect(DEFAULT_SETTINGS.providers['google-free-translate']).toMatchObject({
       id: 'google-free-translate',
       presetId: 'google-free-translate',
@@ -23,7 +25,62 @@ describe('settings', () => {
 
     expect(migrated.sourceLang).toBe('auto')
     expect(migrated.targetLang).toBe('ja')
+    expect(migrated.userRules).toEqual([])
     expect(migrated.version).toBe(DEFAULT_SETTINGS.version)
+  })
+
+  it('migrates existing settings to userRules without changing saved preferences or provider secrets', () => {
+    const migrated = migrateSettings({
+      version: DEFAULT_SETTINGS.version - 1,
+      interfaceLocale: 'en',
+      uiTheme: 'dark',
+      sourceLang: 'ja',
+      targetLang: 'fr',
+      cacheEnabled: false,
+      maxCacheItems: 321,
+      translationConcurrency: 4,
+      defaultProviderId: 'openai-compatible',
+      fallbackProviderId: 'azure-translator',
+      providers: {
+        'openai-compatible': {
+          id: 'openai-compatible',
+          presetId: 'openai-compatible',
+          name: 'OpenAI-compatible',
+          values: {
+            baseUrl: 'https://api.openai.com/v1',
+            apiKey: 'secret-openai-key',
+            model: 'gpt-4.1-mini',
+            reasoningEffort: 'low',
+            disableThinking: 'true',
+          },
+        },
+        'azure-translator': {
+          id: 'azure-translator',
+          presetId: 'azure-translator',
+          name: 'Azure Translator',
+          values: {
+            endpoint: 'https://example.cognitiveservices.azure.com',
+            key: 'secret-azure-key',
+            region: 'eastasia',
+          },
+        },
+      },
+    })
+
+    expect(migrated).toMatchObject({
+      interfaceLocale: 'en',
+      uiTheme: 'dark',
+      sourceLang: 'ja',
+      targetLang: 'fr',
+      cacheEnabled: false,
+      maxCacheItems: 321,
+      translationConcurrency: 4,
+      defaultProviderId: 'openai-compatible',
+      fallbackProviderId: 'azure-translator',
+      userRules: [],
+    })
+    expect(migrated.providers['openai-compatible'].values.apiKey).toBe('secret-openai-key')
+    expect(migrated.providers['azure-translator'].values.key).toBe('secret-azure-key')
   })
 
   it('Migrates version 0 settings with legacy sourceLang en to auto', () => {
@@ -89,6 +146,74 @@ describe('settings', () => {
     expect(JSON.stringify(runtime)).not.toContain('secret')
     expect(runtime.providerId).toBe('google-free-translate')
     expect(runtime.translationConcurrency).toBe(3)
+  })
+
+  it('public runtime settings expose only enabled user rules without provider secrets', () => {
+    const enabledRule: UserSiteRule = {
+      id: 'user:docs',
+      version: 1,
+      source: 'user',
+      enabled: true,
+      createdAt: '2026-06-22T00:00:00.000Z',
+      updatedAt: '2026-06-22T00:00:00.000Z',
+      priority: 50,
+      match: { matches: ['https://example.com/docs/*'] },
+      selectors: { contentRoots: ['main.docs'] },
+    }
+    const disabledRule: UserSiteRule = {
+      ...enabledRule,
+      id: 'user:disabled',
+      enabled: false,
+      match: { matches: ['https://example.com/disabled/*'] },
+    }
+
+    const runtime = getPublicRuntimeSettings({
+      ...DEFAULT_SETTINGS,
+      defaultProviderId: 'openai-compatible',
+      userRules: [enabledRule, disabledRule],
+      providers: {
+        ...DEFAULT_SETTINGS.providers,
+        'openai-compatible': {
+          id: 'openai-compatible',
+          presetId: 'openai-compatible',
+          name: 'OpenAI-compatible',
+          values: {
+            baseUrl: 'https://api.openai.com/v1',
+            apiKey: 'secret-openai-key',
+            model: 'gpt-4.1-mini',
+          },
+        },
+      },
+    })
+
+    expect(runtime.userRules).toEqual([enabledRule])
+    expect(JSON.stringify(runtime)).not.toContain('secret-openai-key')
+  })
+
+  it('keeps SiteRule for bundled rules separate from persisted UserSiteRule', () => {
+    const builtInRule = {
+      id: 'github-markdown',
+      version: 1,
+      source: 'built-in',
+      priority: 20,
+      match: { matches: ['*://github.com/*'] },
+      selectors: { contentRoots: ['.markdown-body'] },
+    } satisfies SiteRule
+
+    const userRule = {
+      id: 'user:github-markdown',
+      version: 1,
+      source: 'user',
+      enabled: true,
+      createdAt: '2026-06-22T00:00:00.000Z',
+      updatedAt: '2026-06-22T00:00:00.000Z',
+      priority: 80,
+      match: { matches: ['*://github.com/*'] },
+      selectors: { excludeSelectors: ['.file-navigation'] },
+    } satisfies UserSiteRule
+
+    expect('enabled' in builtInRule).toBe(false)
+    expect(userRule.enabled).toBe(true)
   })
 
   it('clamps translation concurrency to a safe range', () => {

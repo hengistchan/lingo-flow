@@ -8,7 +8,7 @@ import type {
 } from '@lingoflow/types'
 
 const SETTINGS_KEY = 'lingoflow:settings'
-const CURRENT_SETTINGS_VERSION = 4
+const CURRENT_SETTINGS_VERSION = 5
 const DEFAULT_TRANSLATION_CONCURRENCY = 3
 const MIN_TRANSLATION_CONCURRENCY = 1
 const MAX_TRANSLATION_CONCURRENCY = 6
@@ -31,6 +31,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   translationConcurrency: DEFAULT_TRANSLATION_CONCURRENCY,
   defaultProviderId: 'google-free-translate',
   fallbackProviderId: '',
+  userRules: [],
   providers: {
     'azure-translator': {
       id: 'azure-translator',
@@ -117,6 +118,11 @@ export function migrateSettings(input?: SettingsInput): AppSettings {
     }
   }
 
+  // Migration v4 -> v5: add local user-authored site rules.
+  if (version < 5 || !Array.isArray(merged.userRules)) {
+    merged.userRules = Array.isArray(merged.userRules) ? merged.userRules : []
+  }
+
   merged.version = CURRENT_SETTINGS_VERSION
   merged.sourceLang = resolveSupportedLanguage(merged.sourceLang, DEFAULT_SETTINGS.sourceLang)
   merged.targetLang = resolveSupportedLanguage(merged.targetLang, DEFAULT_SETTINGS.targetLang)
@@ -158,6 +164,7 @@ export function getPublicRuntimeSettings(settings: AppSettings): PublicRuntimeSe
     model,
     promptVersion: providerId === 'openai-compatible' ? 'prompt-v1' : undefined,
     normalizeVersion: NORMALIZE_VERSION,
+    userRules: settings.userRules.filter(rule => rule.enabled),
   }
 }
 
