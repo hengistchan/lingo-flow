@@ -266,6 +266,15 @@ export type ResolvedPageRule = {
   thresholds: Required<PageRuleThresholds>
 }
 
+export type RuleValidationError = {
+  field: string
+  message: string
+}
+
+export type RuleValidationResult =
+  | { ok: true }
+  | { ok: false; errors: RuleValidationError[] }
+
 export type RuntimeContext = {
   runId: string
   url: string

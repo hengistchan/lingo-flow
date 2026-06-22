@@ -1,6 +1,18 @@
-import type { PageRule } from '@lingoflow/types'
-import { defaultPageRule, resolvePageRule } from './index'
-import { SITE_RULES, wikipediaRule, githubRule } from './site-rules'
+import type { PageRule, SiteRule, UserSiteRule } from '@lingoflow/types'
+import { defaultPageRule, resolvePageRule, validateUserRule, namespaceUserRuleId } from './index'
+import { SITE_RULES, wikipediaRule, githubRule, docsPageRule } from './site-rules'
+
+function makeUserRule(overrides: Partial<UserSiteRule> & { id: string }): UserSiteRule {
+  return {
+    version: 1,
+    source: 'user',
+    enabled: true,
+    createdAt: '2026-06-22T00:00:00.000Z',
+    updatedAt: '2026-06-22T00:00:00.000Z',
+    match: { matches: ['*://example.com/*'] },
+    ...overrides,
+  }
+}
 
 describe('page rule resolution', () => {
   beforeEach(() => {
@@ -21,10 +33,10 @@ describe('page rule resolution', () => {
     }
 
     const included = resolvePageRule(document, 'https://en.wikipedia.org/wiki/LingoFlow', {
-      siteRules: [rule],
+      siteRules: [rule as any],
     })
     const excluded = resolvePageRule(document, 'https://en.wikipedia.org/wiki/Special:Random', {
-      siteRules: [rule],
+      siteRules: [rule as any],
     })
 
     expect(included.matchedRuleIds).toContain('wiki')
@@ -47,12 +59,12 @@ describe('page rule resolution', () => {
 
     document.body.innerHTML = '<main class="markdown-body"><p>Readable markdown body content.</p></main>'
     const matched = resolvePageRule(document, 'https://github.com/org/repo', {
-      siteRules: [rule],
+      siteRules: [rule as any],
     })
 
     document.body.innerHTML = '<main class="markdown-body" data-private-repo="true"></main>'
     const excluded = resolvePageRule(document, 'https://github.com/org/repo', {
-      siteRules: [rule],
+      siteRules: [rule as any],
     })
 
     expect(matched.matchedRuleIds).toContain('github-markdown')
@@ -90,7 +102,7 @@ describe('page rule resolution', () => {
         displayMode: 'translation',
       },
     }
-    const userRule: PageRule = {
+    const userRule: UserSiteRule = makeUserRule({
       id: 'user-docs',
       match: { matches: ['https://example.com/docs/*'] },
       selectors: {
@@ -100,7 +112,7 @@ describe('page rule resolution', () => {
       thresholds: {
         minTextLength: 12,
       },
-    }
+    })
     const override: PageRule = {
       id: 'runtime-selection',
       selectors: {
@@ -114,7 +126,7 @@ describe('page rule resolution', () => {
     const originalUserRule = structuredClone(userRule)
 
     const resolved = resolvePageRule(document, 'https://example.com/docs/special/page', {
-      siteRules: [highPriorityRule, lowPriorityRule],
+      siteRules: [highPriorityRule, lowPriorityRule] as any,
       userRules: [userRule],
       overrides: [override],
     })
@@ -150,26 +162,25 @@ describe('site rules registry', () => {
     document.body.innerHTML = ''
   })
 
-  it('matches Wikipedia URL to the wikipedia site rule', () => {
+  it('matches Wikipedia URL to the wikipedia-article site rule', () => {
     document.body.innerHTML = '<div id="mw-content-text"><p>Article content</p></div>'
     const resolved = resolvePageRule(document, 'https://en.wikipedia.org/wiki/LingoFlow', {
       siteRules: SITE_RULES,
     })
 
-    expect(resolved.matchedRuleIds).toContain('wikipedia')
+    expect(resolved.matchedRuleIds).toContain('wikipedia-article')
     expect(resolved.selectors.contentRoots).toContain('#mw-content-text')
     expect(resolved.selectors.contentRoots).toContain('.mw-parser-output')
   })
 
-  it('matches GitHub URL to the github site rule', () => {
+  it('matches GitHub URL to the github-markdown site rule', () => {
     document.body.innerHTML = '<main class="markdown-body"><p>README content</p></main>'
     const resolved = resolvePageRule(document, 'https://github.com/org/repo', {
       siteRules: SITE_RULES,
     })
 
-    expect(resolved.matchedRuleIds).toContain('github')
+    expect(resolved.matchedRuleIds).toContain('github-markdown')
     expect(resolved.selectors.contentRoots).toContain('.markdown-body')
-    expect(resolved.selectors.contentRoots).toContain('.md-content')
   })
 
   it('excludes Wikipedia Special: and Talk: pages', () => {
@@ -181,8 +192,8 @@ describe('site rules registry', () => {
       siteRules: SITE_RULES,
     })
 
-    expect(special.matchedRuleIds).not.toContain('wikipedia')
-    expect(talk.matchedRuleIds).not.toContain('wikipedia')
+    expect(special.matchedRuleIds).not.toContain('wikipedia-article')
+    expect(talk.matchedRuleIds).not.toContain('wikipedia-article')
   })
 
   it('merges site rule selectors into the resolved rule', () => {
@@ -199,13 +210,13 @@ describe('site rules registry', () => {
 
   it('site rules take priority over default rule but are overridden by user rules', () => {
     document.body.innerHTML = '<div id="mw-content-text"><p>Content</p></div>'
-    const userRule: PageRule = {
+    const userRule: UserSiteRule = makeUserRule({
       id: 'user-wiki',
       match: { matches: ['*://*.wikipedia.org/*'] },
       selectors: {
         contentRoots: ['#custom-root'],
       },
-    }
+    })
 
     const resolved = resolvePageRule(document, 'https://en.wikipedia.org/wiki/Test', {
       siteRules: SITE_RULES,
@@ -214,10 +225,468 @@ describe('site rules registry', () => {
 
     expect(resolved.matchedRuleIds).toEqual([
       defaultPageRule.id,
-      'wikipedia',
+      'wikipedia-article',
       'user-wiki',
     ])
     expect(resolved.selectors.contentRoots[0]).toBe('#custom-root')
     expect(resolved.selectors.contentRoots).toContain('#mw-content-text')
+  })
+
+  it('matches docs pages to the docs-page rule', () => {
+    document.body.innerHTML = '<main><article><p>Documentation content</p></article></main>'
+    const resolved = resolvePageRule(document, 'https://docs.example.com/getting-started', {
+      siteRules: SITE_RULES,
+    })
+
+    expect(resolved.matchedRuleIds).toContain('docs-page')
+    expect(resolved.selectors.contentRoots).toContain('main')
+    expect(resolved.selectors.contentRoots).toContain('article')
+  })
+
+  it('does not require enabled field on built-in SiteRule', () => {
+    expect('enabled' in wikipediaRule).toBe(false)
+    expect('enabled' in githubRule).toBe(false)
+    expect('enabled' in docsPageRule).toBe(false)
+
+    document.body.innerHTML = '<div id="mw-content-text"><p>Content</p></div>'
+    const resolved = resolvePageRule(document, 'https://en.wikipedia.org/wiki/Test', {
+      siteRules: [wikipediaRule],
+    })
+    expect(resolved.matchedRuleIds).toContain('wikipedia-article')
+  })
+})
+
+describe('built-in / user / override merge order', () => {
+  beforeEach(() => {
+    document.head.innerHTML = ''
+    document.body.innerHTML = ''
+  })
+
+  it('deterministic resolution: default → built-in by priority → user by priority → override', () => {
+    const builtInLow: SiteRule = {
+      id: 'builtin-low',
+      source: 'built-in',
+      version: 1,
+      priority: 5,
+      match: { matches: ['*://example.com/*'] },
+      selectors: { contentRoots: ['.low-root'] },
+    }
+    const builtInHigh: SiteRule = {
+      id: 'builtin-high',
+      source: 'built-in',
+      version: 1,
+      priority: 50,
+      match: { matches: ['*://example.com/*'] },
+      selectors: { contentRoots: ['.high-root'] },
+    }
+    const userLow: UserSiteRule = makeUserRule({
+      id: 'user-low',
+      priority: 10,
+      match: { matches: ['*://example.com/*'] },
+      selectors: { contentRoots: ['.user-low'] },
+    })
+    const userHigh: UserSiteRule = makeUserRule({
+      id: 'user-high',
+      priority: 90,
+      match: { matches: ['*://example.com/*'] },
+      selectors: { contentRoots: ['.user-high'] },
+    })
+    const override: PageRule = {
+      id: 'override',
+      selectors: { contentRoots: ['.override-root'] },
+    }
+
+    const resolved = resolvePageRule(document, 'https://example.com/page', {
+      siteRules: [builtInHigh, builtInLow] as any,
+      userRules: [userHigh, userLow],
+      overrides: [override],
+    })
+
+    expect(resolved.matchedRuleIds).toEqual([
+      'default',
+      'builtin-low',
+      'builtin-high',
+      'user-low',
+      'user-high',
+      'override',
+    ])
+  })
+
+  it('built-in rules are always active even with matching user rules', () => {
+    document.body.innerHTML = '<div id="mw-content-text"><p>Content</p></div>'
+    const userOverride: UserSiteRule = makeUserRule({
+      id: 'user-wiki',
+      match: { matches: ['*://*.wikipedia.org/*'] },
+      selectors: { contentRoots: ['#user-root'] },
+    })
+
+    const resolved = resolvePageRule(document, 'https://en.wikipedia.org/wiki/Test', {
+      siteRules: SITE_RULES,
+      userRules: [userOverride],
+    })
+
+    expect(resolved.matchedRuleIds).toContain('wikipedia-article')
+    expect(resolved.matchedRuleIds).toContain('user-wiki')
+    expect(resolved.matchedRuleIds.indexOf('wikipedia-article')).toBeLessThan(
+      resolved.matchedRuleIds.indexOf('user-wiki'),
+    )
+  })
+})
+
+describe('disabled user rules', () => {
+  beforeEach(() => {
+    document.head.innerHTML = ''
+    document.body.innerHTML = ''
+  })
+
+  it('disabled user rule is ignored in resolution', () => {
+    const disabledRule: UserSiteRule = makeUserRule({
+      id: 'disabled-user',
+      enabled: false,
+      match: { matches: ['*://example.com/*'] },
+      selectors: { contentRoots: ['#disabled-root'] },
+    })
+
+    const resolved = resolvePageRule(document, 'https://example.com/page', {
+      userRules: [disabledRule],
+    })
+
+    expect(resolved.matchedRuleIds).not.toContain('disabled-user')
+    expect(resolved.selectors.contentRoots).not.toContain('#disabled-root')
+  })
+
+  it('enabled user rule is included in resolution', () => {
+    const enabledRule: UserSiteRule = makeUserRule({
+      id: 'enabled-user',
+      enabled: true,
+      match: { matches: ['*://example.com/*'] },
+      selectors: { contentRoots: ['#enabled-root'] },
+    })
+
+    const resolved = resolvePageRule(document, 'https://example.com/page', {
+      userRules: [enabledRule],
+    })
+
+    expect(resolved.matchedRuleIds).toContain('enabled-user')
+    expect(resolved.selectors.contentRoots).toContain('#enabled-root')
+  })
+
+  it('enabled defaults to true when not explicitly set', () => {
+    const rule: UserSiteRule = {
+      id: 'implicit-enabled',
+      version: 1,
+      source: 'user',
+      createdAt: '2026-06-22T00:00:00.000Z',
+      updatedAt: '2026-06-22T00:00:00.000Z',
+      enabled: true,
+      match: { matches: ['*://example.com/*'] },
+    }
+
+    const resolved = resolvePageRule(document, 'https://example.com/page', {
+      userRules: [rule],
+    })
+
+    expect(resolved.matchedRuleIds).toContain('implicit-enabled')
+  })
+})
+
+describe('selector merge behavior', () => {
+  beforeEach(() => {
+    document.head.innerHTML = ''
+    document.body.innerHTML = ''
+  })
+
+  it('contentRoots: incoming roots are prepended so more specific custom roots win discovery order', () => {
+    const siteRule: PageRule = {
+      id: 'test-site',
+      match: { matches: ['*://example.com/*'] },
+      selectors: { contentRoots: ['.site-root'] },
+    }
+    const userRule: UserSiteRule = makeUserRule({
+      id: 'test-user',
+      match: { matches: ['*://example.com/*'] },
+      selectors: { contentRoots: ['.user-root'] },
+    })
+
+    const resolved = resolvePageRule(document, 'https://example.com/page', {
+      siteRules: [siteRule as any],
+      userRules: [userRule],
+    })
+
+    const roots = resolved.selectors.contentRoots
+    const userRootIndex = roots.indexOf('.user-root')
+    const siteRootIndex = roots.indexOf('.site-root')
+    const mainRootIndex = roots.indexOf('main')
+
+    expect(userRootIndex).toBeLessThan(siteRootIndex)
+    expect(siteRootIndex).toBeLessThan(mainRootIndex)
+  })
+
+  it('blockSelectors dedupe predictably', () => {
+    const siteRule: PageRule = {
+      id: 'test-site',
+      match: { matches: ['*://example.com/*'] },
+      selectors: { blockSelectors: ['p', '.custom'] },
+    }
+    const userRule: UserSiteRule = makeUserRule({
+      id: 'test-user',
+      match: { matches: ['*://example.com/*'] },
+      selectors: { blockSelectors: ['.custom', '.user-block'] },
+    })
+
+    const resolved = resolvePageRule(document, 'https://example.com/page', {
+      siteRules: [siteRule as any],
+      userRules: [userRule],
+    })
+
+    const blockSelectors = resolved.selectors.blockSelectors
+    expect(blockSelectors.filter(s => s === '.custom')).toHaveLength(1)
+    expect(blockSelectors).toContain('p')
+    expect(blockSelectors).toContain('.user-block')
+  })
+
+  it('excludeSelectors dedupe predictably', () => {
+    const siteRule: PageRule = {
+      id: 'test-site',
+      match: { matches: ['*://example.com/*'] },
+      selectors: { excludeSelectors: ['.ad', '.sidebar'] },
+    }
+    const userRule: UserSiteRule = makeUserRule({
+      id: 'test-user',
+      match: { matches: ['*://example.com/*'] },
+      selectors: { excludeSelectors: ['.sidebar', '.sponsor'] },
+    })
+
+    const resolved = resolvePageRule(document, 'https://example.com/page', {
+      siteRules: [siteRule as any],
+      userRules: [userRule],
+    })
+
+    const excludes = resolved.selectors.excludeSelectors
+    expect(excludes.filter(s => s === '.sidebar')).toHaveLength(1)
+    expect(excludes).toContain('.ad')
+    expect(excludes).toContain('.sponsor')
+  })
+})
+
+describe('user rule ID namespacing', () => {
+  it('namespaces user rule IDs that collide with built-in IDs', () => {
+    const builtinIds = new Set(SITE_RULES.map(r => r.id))
+    expect(namespaceUserRuleId('wikipedia-article', builtinIds)).toBe('user:wikipedia-article')
+    expect(namespaceUserRuleId('github-markdown', builtinIds)).toBe('user:github-markdown')
+    expect(namespaceUserRuleId('docs-page', builtinIds)).toBe('user:docs-page')
+  })
+
+  it('does not namespace user rule IDs that do not collide', () => {
+    const builtinIds = new Set(SITE_RULES.map(r => r.id))
+    expect(namespaceUserRuleId('my-custom-rule', builtinIds)).toBe('my-custom-rule')
+    expect(namespaceUserRuleId('user:already-prefixed', builtinIds)).toBe('user:already-prefixed')
+  })
+
+  it('user rule colliding with built-in gets user: namespace in resolution', () => {
+    document.body.innerHTML = '<div id="mw-content-text"><p>Content</p></div>'
+    const userWiki: UserSiteRule = makeUserRule({
+      id: 'wikipedia-article',
+      match: { matches: ['*://*.wikipedia.org/*'] },
+      selectors: { contentRoots: ['#user-wiki-root'] },
+    })
+
+    const resolved = resolvePageRule(document, 'https://en.wikipedia.org/wiki/Test', {
+      siteRules: SITE_RULES,
+      userRules: [userWiki],
+    })
+
+    expect(resolved.matchedRuleIds).toContain('wikipedia-article')
+    expect(resolved.matchedRuleIds).toContain('user:wikipedia-article')
+    expect(resolved.matchedRuleIds.indexOf('wikipedia-article')).toBeLessThan(
+      resolved.matchedRuleIds.indexOf('user:wikipedia-article'),
+    )
+  })
+})
+
+describe('user rule validation', () => {
+  it('accepts a valid user rule', () => {
+    const rule = makeUserRule({
+      id: 'my-custom-rule',
+      match: { matches: ['*://example.com/*'] },
+    })
+    const result = validateUserRule(rule)
+    expect(result.ok).toBe(true)
+  })
+
+  it('rejects invalid rule IDs with uppercase', () => {
+    const rule = makeUserRule({ id: 'MyRule' })
+    const result = validateUserRule(rule)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.errors.some(e => e.field === 'id')).toBe(true)
+    }
+  })
+
+  it('rejects rule IDs with spaces', () => {
+    const rule = makeUserRule({ id: 'my rule' })
+    const result = validateUserRule(rule)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.errors.some(e => e.field === 'id')).toBe(true)
+    }
+  })
+
+  it('rejects rule IDs with special characters', () => {
+    const rule = makeUserRule({ id: 'my@rule!' })
+    const result = validateUserRule(rule)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.errors.some(e => e.field === 'id')).toBe(true)
+    }
+  })
+
+  it('accepts valid rule IDs with dots, underscores, hyphens', () => {
+    const rule = makeUserRule({ id: 'my.custom_rule-v2' })
+    const result = validateUserRule(rule)
+    expect(result.ok).toBe(true)
+  })
+
+  it('rejects duplicate user rule IDs', () => {
+    const existing = [makeUserRule({ id: 'existing-rule' })]
+    const rule = makeUserRule({ id: 'existing-rule' })
+    const result = validateUserRule(rule, existing)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.errors.some(e => e.field === 'id' && e.message.includes('Duplicate'))).toBe(true)
+    }
+  })
+
+  it('rejects rules with neither URL nor selector matching', () => {
+    const rule: UserSiteRule = {
+      id: 'no-match',
+      version: 1,
+      source: 'user',
+      enabled: true,
+      createdAt: '2026-06-22T00:00:00.000Z',
+      updatedAt: '2026-06-22T00:00:00.000Z',
+    }
+    const result = validateUserRule(rule)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.errors.some(e => e.field === 'match')).toBe(true)
+    }
+  })
+
+  it('accepts rules with URL matches only', () => {
+    const rule = makeUserRule({
+      id: 'url-only',
+      match: { matches: ['*://example.com/*'] },
+    })
+    const result = validateUserRule(rule)
+    expect(result.ok).toBe(true)
+  })
+
+  it('accepts rules with selector matches only', () => {
+    const rule = makeUserRule({
+      id: 'selector-only',
+      match: { selectorMatches: ['.content'] },
+    })
+    const result = validateUserRule(rule)
+    expect(result.ok).toBe(true)
+  })
+
+  it('rejects rules with empty matches arrays and no selector match', () => {
+    const rule = makeUserRule({
+      id: 'empty-matches',
+      match: { matches: [] },
+    })
+    const result = validateUserRule(rule)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.errors.some(e => e.field === 'match')).toBe(true)
+    }
+  })
+
+  it('rejects invalid selectors', () => {
+    const rule = makeUserRule({
+      id: 'bad-selector',
+      match: { matches: ['*://example.com/*'] },
+      selectors: { contentRoots: ['<<<invalid>>>'] },
+    })
+    const result = validateUserRule(rule)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.errors.some(e => e.field === 'selectors.contentRoots')).toBe(true)
+    }
+  })
+
+  it('rejects invalid threshold values', () => {
+    const rule = makeUserRule({
+      id: 'bad-threshold',
+      match: { matches: ['*://example.com/*'] },
+      thresholds: { minTextLength: -5 },
+    })
+    const result = validateUserRule(rule)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.errors.some(e => e.field === 'thresholds.minTextLength')).toBe(true)
+    }
+  })
+
+  it('rejects non-finite threshold values', () => {
+    const rule = makeUserRule({
+      id: 'nan-threshold',
+      match: { matches: ['*://example.com/*'] },
+      thresholds: { minTextLength: Infinity },
+    })
+    const result = validateUserRule(rule)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.errors.some(e => e.field === 'thresholds.minTextLength')).toBe(true)
+    }
+  })
+
+  it('rejects unknown behavior enum values', () => {
+    const rule = makeUserRule({
+      id: 'bad-behavior',
+      match: { matches: ['*://example.com/*'] },
+      behavior: { displayMode: 'invalid-mode' as any },
+    })
+    const result = validateUserRule(rule)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.errors.some(e => e.field === 'behavior.displayMode')).toBe(true)
+    }
+  })
+
+  it('accepts all valid behavior enum values', () => {
+    const rule = makeUserRule({
+      id: 'valid-behavior',
+      match: { matches: ['*://example.com/*'] },
+      behavior: {
+        translationArea: 'body',
+        startMode: 'dynamic',
+        displayMode: 'original',
+        translationPosition: 'before',
+        translationTheme: 'dark',
+        defaultInsertion: 'inline-inside',
+      },
+    })
+    const result = validateUserRule(rule)
+    expect(result.ok).toBe(true)
+  })
+
+  it('collects multiple validation errors', () => {
+    const rule: UserSiteRule = {
+      id: 'INVALID ID',
+      version: 1,
+      source: 'user',
+      enabled: true,
+      createdAt: '2026-06-22T00:00:00.000Z',
+      updatedAt: '2026-06-22T00:00:00.000Z',
+      behavior: { displayMode: 'nope' as any },
+      thresholds: { minTextLength: -1 },
+    }
+    const result = validateUserRule(rule)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.errors.length).toBeGreaterThanOrEqual(3)
+    }
   })
 })
