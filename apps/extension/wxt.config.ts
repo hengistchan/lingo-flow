@@ -61,6 +61,13 @@ export default defineConfig({
     optional_host_permissions: ['https://*/*', 'http://*/*'],
     action: {
       default_title: 'LingoFlow',
+      default_icon: 'lingoflow-icon.svg',
+    },
+    icons: {
+      '16': 'lingoflow-icon.svg',
+      '32': 'lingoflow-icon.svg',
+      '48': 'lingoflow-icon.svg',
+      '128': 'lingoflow-icon.svg',
     },
   },
   outDir: 'output',

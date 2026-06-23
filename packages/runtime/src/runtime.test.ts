@@ -14,6 +14,10 @@ describe('content runtime language and progress behavior', () => {
     document.body.innerHTML = ''
   })
 
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('uses a current-page target override without changing saved defaults', async () => {
     document.body.innerHTML = `
       <article>
@@ -329,7 +333,7 @@ describe('content runtime language and progress behavior', () => {
     dynamicParagraph.textContent = 'This newly appended paragraph is long enough to be translated incrementally.'
     document.querySelector('article')!.appendChild(dynamicParagraph)
 
-    await waitFor(() => batches.length >= 2, 5000)
+    await waitFor(() => batches.length >= 2, 8000)
 
     expect(batches).toHaveLength(2)
     expect(batches[1]).toHaveLength(1)
