@@ -18,6 +18,9 @@ LingoFlow is a local-first, BYOK (Bring Your Own Key), provider-agnostic browser
 - **Shadow DOM support** — Works inside open Shadow DOM trees
 - **Dark mode** — Automatic dark theme via `prefers-color-scheme`
 - **Privacy-focused** — API keys never leave your browser, no tracking, no analytics
+- **User rules** — Define per-site rules for content roots, exclusions, and behavior
+- **Diagnostics** — Inspect rule matching, block collection, skip reasons, and translation status
+- **Dynamic translation** — Optionally translate new content as it appears (SPA navigation, infinite scroll)
 
 ## Installation
 
@@ -35,15 +38,29 @@ Load `apps/extension/output/chrome-mv3` as an unpacked extension in Chrome:
 2. Enable "Developer mode"
 3. Click "Load unpacked" and select the `apps/extension/output/chrome-mv3` directory
 
-### Development
+### Packaged ZIP
+
+```bash
+pnpm package
+```
+
+Output: `apps/extension/output/lingoflowextension-<version>-chrome.zip`
+
+Extract and load as unpacked, or upload to the Chrome Web Store.
+
+## Development
 
 ```bash
 pnpm dev          # Start dev server with hot reload
+pnpm build        # Production build
+pnpm package      # Build + package as distributable ZIP
 pnpm test         # Run unit tests (Vitest)
-pnpm test:e2e     # Run E2E browser tests (Playwright)
+pnpm test:e2e     # Build + run E2E browser tests (Playwright)
 pnpm typecheck    # Type check all packages
 pnpm lint         # Alias for typecheck
 ```
+
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for the full development guide.
 
 ## Configuration
 
@@ -68,6 +85,43 @@ For OpenAI-compatible providers, you can control translation speed vs quality:
 
 Control how many translation batches run in parallel (1-10). Higher values are faster but may hit rate limits.
 
+## User Rules
+
+User rules let you customize per-site translation behavior:
+
+- **Content roots** — CSS selectors for the main content area
+- **Exclude selectors** — CSS selectors for areas to skip (navigation, code blocks, etc.)
+- **URL patterns** — Wildcard patterns to match specific sites
+- **Priority** — Control rule merge order with built-in rules
+
+Rules are stored locally and can be imported/exported as JSON.
+
+Built-in rules exist for GitHub Markdown and Wikipedia articles.
+
+## Diagnostics
+
+After translating a page, diagnostics show:
+
+- Which rule matched
+- How many blocks were collected, skipped, translated, and rendered
+- Top skip reasons (e.g., "inside ignore selector", "too short")
+- Cache hit/miss rates
+
+Access diagnostics via:
+- Options > Site Rules > Test on current page (dry-run)
+- DevTools console: `__lingoflowInspectDom()` or `__lingoflowInspectHtml()`
+
+## Privacy
+
+LingoFlow is local-first:
+
+- API keys are stored in `chrome.storage.local` and never leave your browser
+- No backend service, no analytics, no tracking
+- Translation requests go only to your configured provider
+- Cache and rules are stored locally
+
+See [docs/PRIVACY.md](docs/PRIVACY.md) and [docs/SECURITY.md](docs/SECURITY.md).
+
 ## Architecture
 
 Monorepo with pnpm workspaces:
@@ -80,20 +134,15 @@ packages/
   dom/                   DOM text block collector with content root discovery
   renderer/              Translation rendering with insertion strategies
   runtime/               Content script translation orchestrator
-  providers/             Azure, OpenAI-compatible, experimental Google Free providers
+  providers/             Azure, OpenAI-compatible, Google Free providers
   scheduler/             Batch scheduling, retry, degradation
   cache/                 IndexedDB translation cache (Dexie)
   settings/              Extension settings management
+  rules/                 Page rules: built-in site rules, user rules, resolution
   testkit/               DOM inspection test utilities
 ```
 
-### Key Design Decisions
-
-- **Content root discovery** — Finds the main content area (article, main, .markdown-body) before collecting blocks
-- **Insertion strategies** — 5 modes: `linebreak-inside`, `inline-inside`, `inside-container`, `before-nested-structure`, `after-block`
-- **Inline token protection** — Code/links/URLs replaced with `⟦LF:N⟧` placeholders, restored after translation
-- **Provider abstraction** — Providers register by ID, settings store generic `ProviderConfig` with `presetId` routing
-- **Settings versioning** — Sequential migration (v0→v1→v2) for forward compatibility
+See [docs/01-architecture.md](docs/01-architecture.md) for the architecture overview.
 
 ## Tech Stack
 
@@ -102,6 +151,22 @@ packages/
 - [Dexie](https://dexie.org) — IndexedDB wrapper
 - [Vitest](https://vitest.dev) — Unit testing
 - [Playwright](https://playwright.dev) — E2E browser testing
+
+## Roadmap / Non-goals
+
+Current non-goals for this phase:
+
+- Cloud sync or backend service
+- User accounts or authentication
+- Analytics or telemetry
+- Remote rule distribution
+- Glossary or terminology system
+- Adaptive batching or cost analytics
+- Chrome Web Store submission (packaging is ready, submission is a separate step)
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

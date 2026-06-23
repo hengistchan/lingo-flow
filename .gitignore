@@ -9,3 +9,7 @@ test-results/
 *.log
 .DS_Store
 .claude/
+*.zip
+.env
+.env.*
+!.env.example

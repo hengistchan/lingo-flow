@@ -24,7 +24,8 @@
     "test": "vitest run",
     "test:e2e": "pnpm build && playwright test",
     "typecheck": "pnpm --filter @lingoflow/extension compile && tsc -p tsconfig.json --noEmit",
-    "lint": "pnpm typecheck"
+    "lint": "pnpm typecheck",
+    "package": "pnpm --filter @lingoflow/extension package"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

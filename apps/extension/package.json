@@ -6,7 +6,8 @@
   "scripts": {
     "build": "wxt build --mv3",
     "compile": "vue-tsc --noEmit -p tsconfig.json",
-    "dev": "wxt --mv3"
+    "dev": "wxt --mv3",
+    "package": "wxt zip --mv3"
   },
   "dependencies": {
     "dexie": "^4.0.11",
