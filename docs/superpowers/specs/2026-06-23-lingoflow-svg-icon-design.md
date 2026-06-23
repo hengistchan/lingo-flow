@@ -46,6 +46,4 @@ Dark mode via `prefers-color-scheme: dark`:
 
 - `apps/extension/assets/lingoflow-icon.svg`
 
-## Review Note
 
-The normal brainstorming spec-review subagent loop was not run because this session's tool policy only permits spawning subagents when the user explicitly asks for delegation or subagent work.

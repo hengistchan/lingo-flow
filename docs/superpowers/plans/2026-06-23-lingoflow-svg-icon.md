@@ -33,6 +33,4 @@ PY`
 
 Expected: `svg xml ok`
 
-### Review Note
 
-The normal plan-review subagent loop was not run because this session's tool policy only permits spawning subagents when the user explicitly asks for delegation or subagent work.
