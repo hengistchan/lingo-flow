@@ -388,6 +388,12 @@ function getPreviewSafeChrome() {
     <p v-if="userMessage" class="message" aria-live="polite">{{ userMessage }}</p>
     <p v-if="cacheMessage" class="message" aria-live="polite">{{ cacheMessage }}</p>
 
+    <div v-if="hasTranslations || progress.status === 'failed'" class="diagnostics-affordance">
+      <button class="diagnostics-link" type="button" @click="openSettings">
+        {{ copy('popup.viewDetails') }}
+      </button>
+    </div>
+
     <div class="actions">
       <lf-button
         v-if="summary.providerConfigured"
@@ -525,5 +531,25 @@ h1 {
   text-align: center;
   color: var(--lf-ghost);
   font-size: 13px;
+}
+
+.diagnostics-affordance {
+  margin-top: 10px;
+  text-align: center;
+}
+
+.diagnostics-link {
+  border: none;
+  background: transparent;
+  color: var(--lf-whisper);
+  font-family: var(--lf-font-sans);
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.diagnostics-link:hover {
+  color: var(--lf-ghost);
 }
 </style>

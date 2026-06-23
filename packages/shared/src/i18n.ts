@@ -81,6 +81,41 @@ export type UiCopyKey =
   | 'options.customOpenAI'
   | 'options.customProviderName'
   | 'options.cancel'
+  | 'options.siteRules'
+  | 'options.builtInRules'
+  | 'options.userRules'
+  | 'options.noUserRules'
+  | 'options.createUserRule'
+  | 'options.editUserRule'
+  | 'options.duplicateRule'
+  | 'options.deleteRule'
+  | 'options.ruleId'
+  | 'options.ruleEnabled'
+  | 'options.rulePriority'
+  | 'options.ruleUrlMatches'
+  | 'options.ruleUrlExcludes'
+  | 'options.ruleSelectorMatches'
+  | 'options.ruleContentRoots'
+  | 'options.ruleExcludeSelectors'
+  | 'options.ruleJson'
+  | 'options.importRules'
+  | 'options.exportRules'
+  | 'options.testOnCurrentPage'
+  | 'options.testingPage'
+  | 'options.ruleValidationFailed'
+  | 'options.ruleSaved'
+  | 'options.ruleDeleted'
+  | 'options.rulesImported'
+  | 'options.rulesExported'
+  | 'options.importFailed'
+  | 'options.noActiveTab'
+  | 'options.diagnosticsReport'
+  | 'options.matchedRule'
+  | 'options.rootsSelected'
+  | 'options.candidatesCollected'
+  | 'options.candidatesSkipped'
+  | 'options.topSkipReasons'
+  | 'popup.viewDetails'
 
 const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
   'zh-Hans': {
@@ -163,6 +198,41 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.customOpenAI': '自定义 OpenAI 兼容',
     'options.customProviderName': '名称',
     'options.cancel': '取消',
+    'options.siteRules': '站点规则',
+    'options.builtInRules': '内置规则',
+    'options.userRules': '自定义规则',
+    'options.noUserRules': '暂无自定义规则。您可以为特定网站创建规则来优化翻译行为。',
+    'options.createUserRule': '创建规则',
+    'options.editUserRule': '编辑规则',
+    'options.duplicateRule': '复制',
+    'options.deleteRule': '删除',
+    'options.ruleId': '规则 ID',
+    'options.ruleEnabled': '启用',
+    'options.rulePriority': '优先级',
+    'options.ruleUrlMatches': 'URL 匹配（每行一个）',
+    'options.ruleUrlExcludes': 'URL 排除（每行一个）',
+    'options.ruleSelectorMatches': '选择器匹配（每行一个）',
+    'options.ruleContentRoots': '内容根选择器（每行一个）',
+    'options.ruleExcludeSelectors': '排除选择器（每行一个）',
+    'options.ruleJson': '高级 JSON',
+    'options.importRules': '导入规则',
+    'options.exportRules': '导出规则',
+    'options.testOnCurrentPage': '在当前页面测试',
+    'options.testingPage': '正在测试…',
+    'options.ruleValidationFailed': '规则验证失败',
+    'options.ruleSaved': '规则已保存',
+    'options.ruleDeleted': '规则已删除',
+    'options.rulesImported': '规则已导入',
+    'options.rulesExported': '规则已导出',
+    'options.importFailed': '导入失败',
+    'options.noActiveTab': '无法访问当前页面。请打开一个网页后重试。',
+    'options.diagnosticsReport': '诊断报告',
+    'options.matchedRule': '匹配规则',
+    'options.rootsSelected': '内容根',
+    'options.candidatesCollected': '已收集',
+    'options.candidatesSkipped': '已跳过',
+    'options.topSkipReasons': '主要跳过原因',
+    'popup.viewDetails': '查看详情',
   },
   en: {
     'popup.autoDetect': 'Auto-detect page language',
@@ -244,6 +314,41 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.customOpenAI': 'Custom OpenAI-compatible',
     'options.customProviderName': 'Name',
     'options.cancel': 'Cancel',
+    'options.siteRules': 'Site rules',
+    'options.builtInRules': 'Built-in rules',
+    'options.userRules': 'Custom rules',
+    'options.noUserRules': 'No custom rules yet. Create rules to optimize translation behavior for specific websites.',
+    'options.createUserRule': 'Create rule',
+    'options.editUserRule': 'Edit rule',
+    'options.duplicateRule': 'Duplicate',
+    'options.deleteRule': 'Delete',
+    'options.ruleId': 'Rule ID',
+    'options.ruleEnabled': 'Enabled',
+    'options.rulePriority': 'Priority',
+    'options.ruleUrlMatches': 'URL matches (one per line)',
+    'options.ruleUrlExcludes': 'URL excludes (one per line)',
+    'options.ruleSelectorMatches': 'Selector matches (one per line)',
+    'options.ruleContentRoots': 'Content root selectors (one per line)',
+    'options.ruleExcludeSelectors': 'Exclude selectors (one per line)',
+    'options.ruleJson': 'Advanced JSON',
+    'options.importRules': 'Import rules',
+    'options.exportRules': 'Export rules',
+    'options.testOnCurrentPage': 'Test on current page',
+    'options.testingPage': 'Testing…',
+    'options.ruleValidationFailed': 'Rule validation failed',
+    'options.ruleSaved': 'Rule saved',
+    'options.ruleDeleted': 'Rule deleted',
+    'options.rulesImported': 'Rules imported',
+    'options.rulesExported': 'Rules exported',
+    'options.importFailed': 'Import failed',
+    'options.noActiveTab': 'Cannot access the current page. Open a web page and try again.',
+    'options.diagnosticsReport': 'Diagnostics report',
+    'options.matchedRule': 'Matched rule',
+    'options.rootsSelected': 'Roots selected',
+    'options.candidatesCollected': 'Collected',
+    'options.candidatesSkipped': 'Skipped',
+    'options.topSkipReasons': 'Top skip reasons',
+    'popup.viewDetails': 'View details',
   },
 }
 

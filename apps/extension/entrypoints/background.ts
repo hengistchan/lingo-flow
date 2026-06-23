@@ -3,11 +3,14 @@ import { createDefaultProviderRegistry, extractBuiltInProviderConfig, testProvid
 import { isFallbackEligible, retry, translateBatchWithDegrade } from '@lingoflow/scheduler'
 import { getPublicRuntimeSettings, getSettings, getSettingsSummary, saveSettings } from '@lingoflow/settings'
 import { failure, restoreInlineTokens, success } from '@lingoflow/shared'
+import { namespaceUserRuleId, validateUserRule, SITE_RULES } from '@lingoflow/rules'
 import type {
   AppSettings,
   LingoFlowMessage,
   TranslationResult,
   TranslationTask,
+  UserRulesExportDocument,
+  UserSiteRule,
 } from '@lingoflow/types'
 import { defineBackground } from 'wxt/utils/define-background'
 
@@ -22,6 +25,11 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'translation/translateBatch',
   'cache/clearByDomain',
   'cache/clearAll',
+  'userRules/get',
+  'userRules/save',
+  'userRules/validate',
+  'userRules/import',
+  'userRules/export',
 ])
 
 const registry = createDefaultProviderRegistry()
@@ -72,6 +80,16 @@ async function handleMessage(message: LingoFlowMessage, _sender: chrome.runtime.
       await clearAllCache()
       await clearAllPageMemoryCaches()
       return { cleared: true }
+    case 'userRules/get':
+      return getUserRules()
+    case 'userRules/save':
+      return saveUserRules(message.payload.rules)
+    case 'userRules/validate':
+      return validateUserRuleMessage(message.payload.rule)
+    case 'userRules/import':
+      return importUserRules(message.payload.document, message.payload.mode)
+    case 'userRules/export':
+      return exportUserRules()
     case 'page/progressUpdate':
       return { received: true }
     case 'page/translate':
@@ -220,4 +238,88 @@ async function clearAllPageMemoryCaches() {
       : [chrome.tabs.sendMessage(tab.id, { type: 'page/clearCache' })],
   )
   await Promise.allSettled(messages)
+}
+
+function getBuiltinIds(): Set<string> {
+  return new Set(SITE_RULES.map(r => r.id))
+}
+
+async function getUserRules(): Promise<UserSiteRule[]> {
+  const settings = await getSettings()
+  return settings.userRules ?? []
+}
+
+async function saveUserRules(rules: UserSiteRule[]): Promise<{ saved: boolean }> {
+  const settings = await getSettings()
+  settings.userRules = rules
+  await saveSettings(settings)
+  return { saved: true }
+}
+
+function validateUserRuleMessage(rule: UserSiteRule) {
+  const builtinIds = getBuiltinIds()
+  const existingRules = [] as UserSiteRule[]
+  return validateUserRule(rule, existingRules, builtinIds)
+}
+
+async function importUserRules(
+  document: UserRulesExportDocument,
+  mode: 'add' | 'replace' | 'skip-duplicates',
+): Promise<{ imported: number; skipped: number }> {
+  if (document.schema !== 'lingoflow.userRules.v1') {
+    throw new Error('Invalid import document schema.')
+  }
+
+  const builtinIds = getBuiltinIds()
+  const settings = await getSettings()
+  const existing = settings.userRules ?? []
+  const existingIds = new Set(existing.map(r => r.id))
+  let imported = 0
+  let skipped = 0
+
+  const newRules: UserSiteRule[] = mode === 'replace' ? [] : [...existing]
+
+  for (const rule of document.rules) {
+    const namespaced = namespaceUserRuleId(rule.id, builtinIds)
+    const validation = validateUserRule({ ...rule, id: namespaced }, newRules, builtinIds)
+    if (!validation.ok) {
+      skipped++
+      continue
+    }
+
+    if (mode === 'skip-duplicates' && existingIds.has(namespaced)) {
+      skipped++
+      continue
+    }
+
+    const idx = newRules.findIndex(r => r.id === namespaced)
+    const now = new Date().toISOString()
+    const entry: UserSiteRule = {
+      ...rule,
+      id: namespaced,
+      source: 'user',
+      enabled: rule.enabled ?? true,
+      createdAt: rule.createdAt ?? now,
+      updatedAt: now,
+    }
+
+    if (idx >= 0) {
+      newRules[idx] = entry
+    } else {
+      newRules.push(entry)
+    }
+    imported++
+  }
+
+  settings.userRules = newRules
+  await saveSettings(settings)
+  return { imported, skipped }
+}
+
+function exportUserRules(): Promise<UserRulesExportDocument> {
+  return getSettings().then(settings => ({
+    schema: 'lingoflow.userRules.v1' as const,
+    exportedAt: new Date().toISOString(),
+    rules: settings.userRules ?? [],
+  }))
 }

@@ -832,6 +832,42 @@ export type PageSetDynamicTranslationMessage = {
   }
 }
 
+export type UserRulesGetMessage = {
+  type: 'userRules/get'
+}
+
+export type UserRulesSaveMessage = {
+  type: 'userRules/save'
+  payload: {
+    rules: UserSiteRule[]
+  }
+}
+
+export type UserRulesValidateMessage = {
+  type: 'userRules/validate'
+  payload: {
+    rule: UserSiteRule
+  }
+}
+
+export type UserRulesExportDocument = {
+  schema: 'lingoflow.userRules.v1'
+  exportedAt: string
+  rules: UserSiteRule[]
+}
+
+export type UserRulesImportMessage = {
+  type: 'userRules/import'
+  payload: {
+    document: UserRulesExportDocument
+    mode: 'add' | 'replace' | 'skip-duplicates'
+  }
+}
+
+export type UserRulesExportMessage = {
+  type: 'userRules/export'
+}
+
 export type LingoFlowMessage =
   | ResolveCacheMessage
   | TranslateBatchMessage
@@ -854,6 +890,11 @@ export type LingoFlowMessage =
   | PageDiagnoseMessage
   | PageSetDisplayModeMessage
   | PageSetDynamicTranslationMessage
+  | UserRulesGetMessage
+  | UserRulesSaveMessage
+  | UserRulesValidateMessage
+  | UserRulesImportMessage
+  | UserRulesExportMessage
 
 export type MessageResponse<T> =
   | {
