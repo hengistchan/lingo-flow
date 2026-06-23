@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">LingoFlow icon</title>
+  <desc id="desc">Source text flows through an accent arrow into translated text.</desc>
+  <style>
+    :root {
+      --lf-paper: #faf8f5;
+      --lf-ink: #1a1a1a;
+      --lf-ghost: #6b6560;
+      --lf-accent: #c05a2e;
+      --lf-rule: #e0dbd3;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --lf-paper: #1c1b19;
+        --lf-ink: #e8e4de;
+        --lf-ghost: #9e978c;
+        --lf-accent: #d4764e;
+        --lf-rule: #3a3830;
+      }
+    }
+
+    .paper {
+      fill: var(--lf-paper, #faf8f5);
+    }
+
+    .source {
+      stroke: var(--lf-ink, #1a1a1a);
+    }
+
+    .target {
+      stroke: var(--lf-ghost, #6b6560);
+    }
+
+    .flow {
+      stroke: var(--lf-accent, #c05a2e);
+    }
+
+    .rule {
+      stroke: var(--lf-rule, #e0dbd3);
+    }
+  </style>
+  <rect class="paper" width="128" height="128" />
+  <path class="rule" d="M18 18h92v92H18z" fill="none" stroke-width="3" />
+  <path class="source" d="M29 33h31M29 49h24M29 65h31" fill="none" stroke-width="8" stroke-linecap="square" />
+  <path class="target" d="M70 66h29M70 82h21M70 98h29" fill="none" stroke-width="8" stroke-linecap="square" />
+  <path class="flow" d="M34 89c18-1 28-9 33-23 5-13 16-21 32-23" fill="none" stroke-width="10" stroke-linecap="square" />
+  <path class="flow" d="M88 32l16 11-16 11" fill="none" stroke-width="9" stroke-linecap="square" stroke-linejoin="miter" />
+</svg>
