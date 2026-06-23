@@ -1,3 +1,4 @@
+import type { PageDiagnostics } from '@lingoflow/types'
 import type { TranslationInspectionOptions, TranslationInspectionReport } from '@lingoflow/testkit'
 
 export const LINGOFLOW_INSPECT_REQUEST = 'lingoflow/dev-inspect/request'
@@ -46,6 +47,8 @@ declare global {
     __lingoFlowDevInspectorResponderStarted?: boolean
     __lingoflowInspectDom?: (input?: string | Element | null, options?: PageInspectionOptions) => Promise<PageInspectionResult>
     __lingoflowInspectHtml?: (html: string, options?: PageInspectionOptions) => Promise<PageInspectionResult>
+    __lingoflowGetDiagnostics?: () => Promise<PageDiagnostics | null>
+    __lingoflowPrintDiagnostics?: () => Promise<string>
   }
 }
 
@@ -115,6 +118,9 @@ export function installDevInspectorResponder(options: InstallResponderOptions = 
   }
 
   win.addEventListener('message', handler)
+
+  installDiagnosticsBridge(win)
+
   return () => {
     win.removeEventListener('message', handler)
     win.__lingoFlowDevInspectorResponderStarted = false
@@ -185,4 +191,57 @@ function isInspectRequest(value: unknown): value is DevInspectRequest {
     message.type === LINGOFLOW_INSPECT_REQUEST &&
     typeof message.id === 'string'
   )
+}
+
+function installDiagnosticsBridge(win: Window): void {
+  if (win.__lingoflowGetDiagnostics) return
+
+  win.__lingoflowGetDiagnostics = async () => {
+    const response = await chrome.runtime.sendMessage({
+      type: 'page/getDiagnostics',
+      payload: { includeBlocks: true, includeEvents: true, maxEvents: 50 },
+    })
+    if (response?.ok) return response.data as PageDiagnostics
+    return null
+  }
+
+  win.__lingoflowPrintDiagnostics = async () => {
+    const diagnostics = await win.__lingoflowGetDiagnostics?.()
+    if (!diagnostics) return 'No diagnostics available. Run a translation first.'
+    return printDiagnosticsSummary(diagnostics)
+  }
+}
+
+function printDiagnosticsSummary(d: PageDiagnostics): string {
+  const lines: string[] = [
+    `=== LingoFlow Diagnostics ===`,
+    `URL: ${d.pageUrl}`,
+    `Domain: ${d.domain}`,
+    `Run: ${d.runId}`,
+    `Root Generation: ${d.rootGeneration}`,
+    `Rule: ${d.rule.id} (matched: ${d.rule.matchedRuleIds.join(', ')})`,
+    `Dynamic: ${d.dynamicTranslationEnabled}`,
+    `Display Mode: ${d.displayMode}`,
+    ``,
+    `--- Counts ---`,
+    `Roots: ${d.counts.rootsSelected}/${d.counts.rootsConsidered} selected`,
+    `Candidates: ${d.counts.candidates}, Collected: ${d.counts.collected}, Skipped: ${d.counts.skipped}`,
+    `Queued: ${d.counts.queued}, Cache Hit: ${d.counts.cacheHit}`,
+    `Translated: ${d.counts.translated}, Failed: ${d.counts.failed}`,
+    `Rendered: ${d.counts.rendered}, Render Skipped: ${d.counts.renderSkipped}`,
+    `Stale: ${d.counts.stale}, Discarded: ${d.counts.discarded}`,
+  ]
+
+  if (d.topSkipReasons && d.topSkipReasons.length > 0) {
+    lines.push('', '--- Top Skip Reasons ---')
+    for (const entry of d.topSkipReasons.slice(0, 5)) {
+      lines.push(`  ${entry.reason}: ${entry.count}`)
+    }
+  }
+
+  if (d.userMessageCode) {
+    lines.push('', `User Message: ${d.userMessageCode}`)
+  }
+
+  return lines.join('\n')
 }

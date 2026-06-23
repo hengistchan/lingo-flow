@@ -40,6 +40,7 @@ export class RenderCoordinator {
   private readonly version: VersionTracker
   private readonly registry: StrategyRegistry
   private displayMode: PageDisplayMode = 'dual'
+  private renderSkipCount = 0
 
   constructor(deps: RenderCoordinatorDeps) {
     this.store = deps.store
@@ -48,6 +49,18 @@ export class RenderCoordinator {
     this.version = deps.version
     this.registry = deps.registry ?? defaultStrategyRegistry
     injectLingoFlowStyles(deps.document)
+  }
+
+  getRenderSkipCount(): number {
+    return this.renderSkipCount
+  }
+
+  resetRenderSkipCount(): void {
+    this.renderSkipCount = 0
+  }
+
+  getDisplayMode(): PageDisplayMode {
+    return this.displayMode
   }
 
   renderTranslation(input: RenderInput): RenderResult {
@@ -162,6 +175,7 @@ export class RenderCoordinator {
   }
 
   private skip(blockId: string, reason: RenderSkipReason): RenderResult {
+    this.renderSkipCount++
     const block = this.store.get(blockId)
     this.events.emit({
       type: 'render:skipped',

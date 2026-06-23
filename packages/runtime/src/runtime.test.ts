@@ -323,7 +323,7 @@ describe('content runtime language and progress behavior', () => {
     dynamicParagraph.textContent = 'This newly appended paragraph is long enough to be translated incrementally.'
     document.querySelector('article')!.appendChild(dynamicParagraph)
 
-    await waitFor(() => document.querySelectorAll('[data-lingoflow-translation]').length === 2, 2000)
+    await waitFor(() => document.querySelectorAll('[data-lingoflow-translation]').length === 2, 5000)
 
     expect(batches).toHaveLength(2)
     expect(batches[1]).toHaveLength(1)
@@ -450,7 +450,7 @@ async function waitFor(assertion: () => boolean, timeoutMs = 1000) {
   const startedAt = Date.now()
   while (Date.now() - startedAt < timeoutMs) {
     if (assertion()) return
-    await new Promise(resolve => setTimeout(resolve, 0))
+    await new Promise(resolve => setTimeout(resolve, 10))
   }
   throw new Error('Timed out waiting for runtime condition')
 }

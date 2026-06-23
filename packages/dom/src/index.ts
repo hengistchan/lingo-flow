@@ -1,6 +1,8 @@
 import { sha256 } from '@lingoflow/shared'
 import type {
   BlockBindingDraft,
+  CollectionDiagnostics,
+  CollectionSkipReason,
   ContentRootKind,
   InlineToken,
   RuntimeContext,
@@ -9,7 +11,7 @@ import type {
   TranslationBlock,
   TranslationInsertion,
 } from '@lingoflow/types'
-import { ScanResult } from '@lingoflow/types'
+import { CollectScanResultsOutput, ScanResult } from '@lingoflow/types'
 import { discoverContentRoots } from './content-root'
 import { extractInlineText } from './inline-tokenization'
 import { findAllShadowRoots } from './page-adapters'
@@ -51,6 +53,7 @@ export type CollectTextBlockOptions = {
 export type CollectScanResultOptions = CollectTextBlockOptions & {
   runId: string
   rootGeneration: number
+  dryRun?: boolean
 }
 
 type CollectionConfig = {
@@ -70,20 +73,22 @@ type CollectionConfig = {
   minRootTextLength: number
   minRootParagraphCount: number
   linkDensityPenalty: number
+  dryRun: boolean
 }
 
 export async function collectScanResults(
   root: Document | HTMLElement,
   options: CollectScanResultOptions | RuntimeContext,
-): Promise<ScanResult[]> {
+): Promise<CollectScanResultsOutput> {
   const config = resolveCollectionConfig(options)
-  const contentRoots = discoverContentRoots(root, {
+  const rootDiscovery = discoverContentRoots(root, {
     contentRootSelectors: config.contentRootSelectors,
     excludeSelectors: config.excludeSelectors,
     minRootTextLength: config.minRootTextLength,
     minRootParagraphCount: config.minRootParagraphCount,
     linkDensityPenalty: config.linkDensityPenalty,
   })
+  const contentRoots = rootDiscovery.roots
   let candidates = uniqueElements(
     contentRoots.flatMap(contentRoot =>
       queryCandidateElements(contentRoot, config.blockSelectors.join(','))
@@ -101,34 +106,79 @@ export async function collectScanResults(
 
   const results: ScanResult[] = []
   const acceptedElements: HTMLElement[] = []
+  const skipReasons: Partial<Record<CollectionSkipReason, number>> = {}
+  const textHashOccurrences = new Map<string, number>()
 
   for (const element of candidates) {
-    if (isInsideAcceptedStructuralBoundary(element, acceptedElements)) continue
-    if (isGeneratedByLingoFlow(element)) continue
-    if (matchesSelfOrClosest(element, config.excludeSelectors)) continue
-    if (element.tagName.toLowerCase() === 'div' && hasBlockLevelChildren(element)) continue
-    if (isInsideUIExclusion(element)) continue
-    if (!isTranslatableTableCell(element, config.maxInteractiveElements)) continue
-    if (hasTooManyInteractiveElements(element, config.maxInteractiveElements)) continue
-    if (!isTranslatableElement(element, { minTextLength: config.minTextLength })) continue
+    if (isInsideAcceptedStructuralBoundary(element, acceptedElements)) {
+      incrementSkipReason(skipReasons, 'structural-parent-accepted')
+      continue
+    }
+    if (isGeneratedByLingoFlow(element)) {
+      incrementSkipReason(skipReasons, 'generated-node')
+      continue
+    }
+    if (matchesSelfOrClosest(element, config.excludeSelectors)) {
+      incrementSkipReason(skipReasons, 'inside-ignore-selector')
+      continue
+    }
+    if (element.tagName.toLowerCase() === 'div' && hasBlockLevelChildren(element)) {
+      incrementSkipReason(skipReasons, 'block-level-children')
+      continue
+    }
+    if (isInsideUIExclusion(element)) {
+      incrementSkipReason(skipReasons, 'inside-ui-exclusion')
+      continue
+    }
+    if (!isTranslatableTableCell(element, config.maxInteractiveElements)) {
+      incrementSkipReason(skipReasons, 'table-cell-too-interactive')
+      continue
+    }
+    if (hasTooManyInteractiveElements(element, config.maxInteractiveElements)) {
+      incrementSkipReason(skipReasons, 'too-many-interactive-elements')
+      continue
+    }
+
+    if (!isVisible(element)) {
+      incrementSkipReason(skipReasons, 'not-visible')
+      continue
+    }
+    if (element.closest(IGNORE_SELECTORS.join(','))) {
+      incrementSkipReason(skipReasons, 'inside-ignore-selector')
+      continue
+    }
+    if (element.dataset.lingoflowBlockId) {
+      incrementSkipReason(skipReasons, 'already-bound')
+      continue
+    }
+
+    const text = getElementPlainText(element)
+    const blockType = detectBlockType(element)
+    const minTextLength = config.minTextLength
+    if (!meetsTextThreshold(element, text, blockType, minTextLength)) {
+      incrementSkipReason(skipReasons, 'too-short')
+      continue
+    }
 
     const carrier = resolveTextCarrier(element)
     const inlineText = extractInlineText(carrier)
-    const text = inlineText.text
-    const normalizedText = text
+    const normalizedText = inlineText.text
     const textHash = await sha256(normalizedText)
-    const id = `block_${textHash.slice(0, 16)}`
-    const blockType = detectBlockType(element)
+    const occurrenceIndex = textHashOccurrences.get(textHash) ?? 0
+    textHashOccurrences.set(textHash, occurrenceIndex + 1)
+    const id = `block_${textHash.slice(0, 12)}_${occurrenceIndex}`
     const rootKind = resolveRootKind(element, contentRoots, shadowRoots)
 
-    carrier.dataset.lingoflowBlockId = id
+    if (!config.dryRun) {
+      carrier.dataset.lingoflowBlockId = id
+    }
     acceptedElements.push(carrier)
 
     const block: TranslationBlock = {
       id,
       revision: 1,
       runId: config.runId,
-      text,
+      text: inlineText.text,
       normalizedText,
       textHash,
       requestText: inlineText.requestText,
@@ -163,16 +213,52 @@ export async function collectScanResults(
     results.push({ block, binding })
   }
 
-  return results
+  const diagnostics: CollectionDiagnostics = {
+    rootsConsidered: rootDiscovery.diagnostics.considered.length,
+    rootsSelected: rootDiscovery.diagnostics.selected.length,
+    rejectedRoots: rootDiscovery.diagnostics.rejected.length,
+    candidateCount: candidates.length,
+    acceptedBlockCount: results.length,
+    skippedCandidateCount: candidates.length - results.length,
+    skipReasons,
+    selectedRoots: rootDiscovery.diagnostics.selected,
+    rejectedRootDetails: rootDiscovery.diagnostics.rejected,
+  }
+
+  return { blocks: results, diagnostics }
 }
 
 export async function collectTextBlocks(root: Document, options: CollectTextBlockOptions): Promise<TextBlock[]> {
-  const results = await collectScanResults(root, {
+  const output = await collectScanResults(root, {
     ...options,
     runId: 'legacy-run',
     rootGeneration: 1,
   })
-  return results.map(result => toLegacyTextBlock(result.block))
+  return output.blocks.map(result => toLegacyTextBlock(result.block))
+}
+
+function incrementSkipReason(skipReasons: Partial<Record<CollectionSkipReason, number>>, reason: CollectionSkipReason): void {
+  skipReasons[reason] = (skipReasons[reason] ?? 0) + 1
+}
+
+function meetsTextThreshold(element: HTMLElement, text: string, blockType: TextBlockType, minTextLength: number): boolean {
+  if (blockType === 'heading') return text.length > 0
+  if (blockType === 'table') return text.length >= minTextLength
+  if (blockType === 'caption' || blockType === 'description') return text.length > 0
+  if (text.length < minTextLength) return false
+
+  if (blockType !== 'list' && element.children.length > 0) {
+    const childTextLength = Array.from(element.children)
+      .map(child => ((child as HTMLElement).innerText || child.textContent || '').trim().length)
+      .reduce((sum, length) => sum + length, 0)
+    if (childTextLength > text.length * 0.8) return false
+  }
+
+  return true
+}
+
+function getElementPlainText(element: HTMLElement): string {
+  return (element.innerText || element.textContent || '').trim()
 }
 
 function toLegacyTextBlock(block: TranslationBlock): TextBlock {
@@ -223,6 +309,7 @@ function resolveCollectionConfig(options: CollectScanResultOptions | RuntimeCont
       minRootTextLength: options.pageRule.thresholds.minRootTextLength,
       minRootParagraphCount: options.pageRule.thresholds.minRootParagraphCount,
       linkDensityPenalty: options.pageRule.thresholds.linkDensityPenalty,
+      dryRun: false,
     }
   }
 
@@ -243,6 +330,7 @@ function resolveCollectionConfig(options: CollectScanResultOptions | RuntimeCont
     minRootTextLength: 80,
     minRootParagraphCount: 1,
     linkDensityPenalty: 400,
+    dryRun: options.dryRun ?? false,
   }
 }
 

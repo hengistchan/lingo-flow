@@ -8,6 +8,7 @@ type EventMap = {
 
 export class RuntimeEventBus {
   private readonly listeners = new Map<string, Set<EventHandler<any>>>()
+  private readonly anyListeners = new Set<EventHandler<RuntimeEvent>>()
 
   on<T extends RuntimeEvent['type']>(
     type: T,
@@ -26,7 +27,17 @@ export class RuntimeEventBus {
     }
   }
 
+  onAny(handler: EventHandler<RuntimeEvent>): () => void {
+    this.anyListeners.add(handler)
+    return () => {
+      this.anyListeners.delete(handler)
+    }
+  }
+
   emit<T extends RuntimeEvent>(event: T): void {
+    for (const handler of this.anyListeners) {
+      handler(event)
+    }
     const set = this.listeners.get(event.type)
     if (!set) return
     for (const handler of set) {
@@ -36,5 +47,6 @@ export class RuntimeEventBus {
 
   removeAll(): void {
     this.listeners.clear()
+    this.anyListeners.clear()
   }
 }

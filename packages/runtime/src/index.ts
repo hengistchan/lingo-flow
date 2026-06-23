@@ -11,6 +11,7 @@ export type { ControllerDependencies, PageTranslationOverrides } from './control
 export { BlockStore } from './store'
 export { BlockBindingStore } from './bindings'
 export { RuntimeEventBus } from './events'
+export { EventRingBuffer } from './event-ring-buffer'
 export { VersionTracker } from './version'
 export { BlockQueue } from './queue'
 export { RenderCoordinator } from './render-coordinator'
@@ -26,6 +27,9 @@ export function createContentRuntime(dependencies: ControllerDependencies = {}) 
     enableDynamicTranslation: () => controller.enableDynamicTranslation(),
     disableDynamicTranslation: () => controller.disableDynamicTranslation(),
     getProgress: () => controller.getProgress(),
+    getDiagnostics: (options?: { includeBlocks?: boolean; includeEvents?: boolean; maxEvents?: number }) => controller.getDiagnostics(options),
+    runDryDiagnostics: (payload?: { ruleOverride?: import('@lingoflow/types').PageRule; includeSkipped?: boolean }) => controller.runDryDiagnostics(payload),
+    clearPage: () => controller.clearPage(),
   }
 }
 

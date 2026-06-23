@@ -80,6 +80,10 @@ async function handleMessage(message: LingoFlowMessage, _sender: chrome.runtime.
     case 'page/status':
     case 'page/enableDynamicTranslation':
     case 'page/disableDynamicTranslation':
+    case 'page/getDiagnostics':
+    case 'page/diagnose':
+    case 'page/setDynamicTranslation':
+    case 'page/setDisplayMode':
       return { delegated: true }
     default: {
       const _exhaustive: never = message

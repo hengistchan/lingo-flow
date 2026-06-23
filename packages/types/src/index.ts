@@ -170,6 +170,99 @@ export type RenderSkipReason =
   | 'unsupported-strategy'
   | 'mode-hidden'
 
+export type CollectionSkipReason =
+  | 'inside-ignore-selector'
+  | 'inside-ui-exclusion'
+  | 'generated-node'
+  | 'already-bound'
+  | 'not-visible'
+  | 'too-short'
+  | 'too-many-interactive-elements'
+  | 'structural-parent-accepted'
+  | 'block-level-children'
+  | 'table-cell-too-interactive'
+  | 'content-root-threshold'
+
+export type RootDiagnostic = {
+  selector: string
+  tagName: string
+  id?: string
+  classes?: string
+  selected: boolean
+  rejectReason?: string
+}
+
+export type CollectionDiagnostics = {
+  rootsConsidered: number
+  rootsSelected: number
+  rejectedRoots: number
+  candidateCount: number
+  acceptedBlockCount: number
+  skippedCandidateCount: number
+  skipReasons: Partial<Record<CollectionSkipReason, number>>
+  selectedRoots: RootDiagnostic[]
+  rejectedRootDetails: RootDiagnostic[]
+}
+
+export type CollectScanResultsOutput = {
+  blocks: ScanResult[]
+  diagnostics: CollectionDiagnostics
+}
+
+export type BlockDiagnostic = {
+  blockId: string
+  revision: number
+  state: BlockState
+  textLength: number
+  blockType: TextBlockType
+  tagName: string
+  carrierTagName: string
+  insertion: TranslationInsertion
+  rootKind: ContentRootKind
+  rootGeneration?: number
+  cacheStatus: 'memory-hit' | 'indexeddb-hit' | 'miss' | 'disabled'
+  translationStatus: 'not-requested' | 'requested' | 'success' | 'failed' | 'discarded'
+  renderStatus: 'not-rendered' | 'rendered' | 'skipped'
+  skipReason?: string
+}
+
+export type PageDiagnostics = {
+  pageUrl: string
+  domain: string
+  runId: string
+  rootGeneration: number
+  rule: {
+    id: string
+    matchedRuleIds: string[]
+    selectors?: unknown
+    thresholds?: unknown
+    behavior?: unknown
+  }
+  dynamicTranslationEnabled: boolean
+  dynamicTranslationMode: string
+  displayMode: PageDisplayMode
+  counts: {
+    rootsConsidered: number
+    rootsSelected: number
+    candidates: number
+    collected: number
+    skipped: number
+    queued: number
+    cacheHit: number
+    translated: number
+    failed: number
+    rendered: number
+    renderSkipped: number
+    stale: number
+    discarded: number
+  }
+  roots?: RootDiagnostic[]
+  blocks?: BlockDiagnostic[]
+  events?: RuntimeEvent[]
+  topSkipReasons?: Array<{ reason: string; count: number }>
+  userMessageCode?: string
+}
+
 export type BlockEvent =
   | { type: 'COLLECT'; runId: string; revision: number }
   | { type: 'ENQUEUE' }
@@ -708,6 +801,37 @@ export type PageProgressUpdateMessage = {
   payload: PageTranslationProgress
 }
 
+export type PageGetDiagnosticsMessage = {
+  type: 'page/getDiagnostics'
+  payload?: {
+    includeBlocks?: boolean
+    includeEvents?: boolean
+    maxEvents?: number
+  }
+}
+
+export type PageDiagnoseMessage = {
+  type: 'page/diagnose'
+  payload?: {
+    ruleOverride?: PageRule
+    includeSkipped?: boolean
+  }
+}
+
+export type PageSetDisplayModeMessage = {
+  type: 'page/setDisplayMode'
+  payload?: {
+    mode?: PageDisplayMode
+  }
+}
+
+export type PageSetDynamicTranslationMessage = {
+  type: 'page/setDynamicTranslation'
+  payload: {
+    enabled: boolean
+  }
+}
+
 export type LingoFlowMessage =
   | ResolveCacheMessage
   | TranslateBatchMessage
@@ -726,6 +850,10 @@ export type LingoFlowMessage =
   | PageEnableDynamicTranslationMessage
   | PageDisableDynamicTranslationMessage
   | PageProgressUpdateMessage
+  | PageGetDiagnosticsMessage
+  | PageDiagnoseMessage
+  | PageSetDisplayModeMessage
+  | PageSetDynamicTranslationMessage
 
 export type MessageResponse<T> =
   | {

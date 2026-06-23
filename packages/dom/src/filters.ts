@@ -64,7 +64,9 @@ export function isGeneratedByLingoFlow(element: HTMLElement): boolean {
   if (element.dataset.lingoflowTranslation) return true
   if (element.dataset.lingoflowTranslationBreak) return true
   if (element.dataset.lingoflowTranslationSpacer) return true
-  return !!element.closest('[data-lingoflow-generated="true"], [data-lingoflow-translation]')
+  return !!element.closest(
+    '[data-lingoflow-generated="true"], [data-lingoflow-translation], [data-lingoflow-translation-break], [data-lingoflow-translation-spacer]',
+  )
 }
 
 export function hasTooManyInteractiveElements(element: HTMLElement, maxInteractiveElements = 5): boolean {

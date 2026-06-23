@@ -1,7 +1,7 @@
 import { collectScanResults, collectTextBlocks, detectBlockType, isTranslatableElement, isVisible } from './index'
 import { NORMALIZE_VERSION } from '@lingoflow/shared'
 import { resolvePageRule } from '@lingoflow/rules'
-import type { PageRule, PublicRuntimeSettings, RuntimeContext, ScanResult } from '@lingoflow/types'
+import type { CollectionDiagnostics, PageRule, PublicRuntimeSettings, RuntimeContext, ScanResult } from '@lingoflow/types'
 
 describe('DOM collector', () => {
   beforeEach(() => {
@@ -502,15 +502,15 @@ describe('collectScanResults with RuntimeContext page rules', () => {
       </section>
     `
 
-    const results = await collectScanResults(document, createRuntimeContext({
+    const output = await collectScanResults(document, createRuntimeContext({
       selectors: {
         contentRoots: ['#reader'],
       },
     }))
 
-    expect(results).toHaveLength(1)
-    expect(results[0].block.text).toContain('reader paragraph')
-    expect(results[0].block.meta).toMatchObject({
+    expect(output.blocks).toHaveLength(1)
+    expect(output.blocks[0].block.text).toContain('reader paragraph')
+    expect(output.blocks[0].block.meta).toMatchObject({
       ruleId: 'test-rule',
       rootGeneration: 7,
     })
@@ -523,14 +523,14 @@ describe('collectScanResults with RuntimeContext page rules', () => {
       </article>
     `
 
-    const results = await collectScanResults(document, createRuntimeContext({
+    const output = await collectScanResults(document, createRuntimeContext({
       selectors: {
         blockSelectors: ['.custom-block'],
       },
     }))
 
-    expect(results).toHaveLength(1)
-    expect(results[0].block.text).toContain('custom inline block')
+    expect(output.blocks).toHaveLength(1)
+    expect(output.blocks[0].block.text).toContain('custom inline block')
   })
 
   it('uses rule exclude selectors and skips generated or notranslate nodes', async () => {
@@ -544,14 +544,14 @@ describe('collectScanResults with RuntimeContext page rules', () => {
       </article>
     `
 
-    const results = await collectScanResults(document, createRuntimeContext({
+    const output = await collectScanResults(document, createRuntimeContext({
       selectors: {
         excludeSelectors: ['.sponsor'],
       },
     }))
 
-    expect(results).toHaveLength(1)
-    expect(results[0].block.text).toContain('readable paragraph')
+    expect(output.blocks).toHaveLength(1)
+    expect(output.blocks[0].block.text).toContain('readable paragraph')
   })
 
   it('accepts an HTMLElement root for incremental scans', async () => {
@@ -565,10 +565,10 @@ describe('collectScanResults with RuntimeContext page rules', () => {
     `
     const incrementalRoot = document.querySelector('#new-root') as HTMLElement
 
-    const results = await collectScanResults(incrementalRoot, createRuntimeContext())
+    const output = await collectScanResults(incrementalRoot, createRuntimeContext())
 
-    expect(results).toHaveLength(1)
-    expect(results[0].block.text).toContain('newly inserted paragraph')
+    expect(output.blocks).toHaveLength(1)
+    expect(output.blocks[0].block.text).toContain('newly inserted paragraph')
   })
 })
 
@@ -621,10 +621,10 @@ describe('collectScanResults', () => {
   it('returns serializable blocks and separate DOM binding drafts', async () => {
     document.body.innerHTML = '<main><p>Readable source paragraph long enough for translation.</p></main>'
 
-    const results = await collectScanResults(document, scanOptions)
+    const output = await collectScanResults(document, scanOptions)
 
-    expect(results).toHaveLength(1)
-    const { block, binding } = results[0]
+    expect(output.blocks).toHaveLength(1)
+    const { block, binding } = output.blocks[0]
 
     expect(JSON.stringify(block)).toContain('Readable source paragraph')
     expect(binding.carrierElement.tagName.toLowerCase()).toBe('p')
@@ -636,8 +636,8 @@ describe('collectScanResults', () => {
   it('block is serializable and has no DOM references', async () => {
     document.body.innerHTML = '<main><p>This block must be pure data with no DOM references at all.</p></main>'
 
-    const results = await collectScanResults(document, scanOptions)
-    const block = results[0].block
+    const output = await collectScanResults(document, scanOptions)
+    const block = output.blocks[0].block
     const serialized = JSON.parse(JSON.stringify(block))
 
     expect(serialized.id).toBe(block.id)
@@ -651,10 +651,10 @@ describe('collectScanResults', () => {
   it('does not call provider, enqueue work, or render', async () => {
     document.body.innerHTML = '<main><p>The scanner must not call any provider or rendering APIs at all.</p></main>'
 
-    const results = await collectScanResults(document, scanOptions)
+    const output = await collectScanResults(document, scanOptions)
 
-    expect(results[0].block.state).toBe('pending')
-    expect(results[0].block.translatedText).toBeUndefined()
+    expect(output.blocks[0].block.state).toBe('pending')
+    expect(output.blocks[0].block.translatedText).toBeUndefined()
     expect(document.querySelector('[data-lingoflow-translation]')).toBeNull()
   })
 
@@ -668,9 +668,9 @@ describe('collectScanResults', () => {
       </main>
     `
 
-    const results = await collectScanResults(document, scanOptions)
+    const output = await collectScanResults(document, scanOptions)
 
-    const captionResult = results.find(r => r.block.meta.blockType === 'caption')
+    const captionResult = output.blocks.find(r => r.block.meta.blockType === 'caption')
     expect(captionResult).toBeDefined()
     expect(captionResult!.block.meta.tagName).toBe('figcaption')
     expect(captionResult!.binding.carrierElement.tagName.toLowerCase()).toBe('figcaption')
@@ -686,9 +686,9 @@ describe('collectScanResults', () => {
       </main>
     `
 
-    const results = await collectScanResults(document, scanOptions)
+    const output = await collectScanResults(document, scanOptions)
 
-    const ddResult = results.find(r => r.block.meta.tagName === 'dd')
+    const ddResult = output.blocks.find(r => r.block.meta.tagName === 'dd')
     expect(ddResult).toBeDefined()
     expect(ddResult!.block.meta.blockType).toBe('description')
     expect(ddResult!.binding.carrierElement.tagName.toLowerCase()).toBe('dd')
@@ -703,10 +703,10 @@ describe('collectScanResults', () => {
     document.body.innerHTML = '<main></main>'
     document.querySelector('main')!.appendChild(host)
 
-    const results = await collectScanResults(document, scanOptions)
+    const output = await collectScanResults(document, scanOptions)
 
-    expect(results.length).toBeGreaterThanOrEqual(1)
-    const shadowResult = results.find(r => r.block.text.includes('shadow root'))
+    expect(output.blocks.length).toBeGreaterThanOrEqual(1)
+    const shadowResult = output.blocks.find(r => r.block.text.includes('shadow root'))
     expect(shadowResult).toBeDefined()
     expect(shadowResult!.block.meta.rootKind).toBe('shadow')
   })
@@ -718,11 +718,11 @@ describe('collectScanResults', () => {
       </main>
     `
 
-    const results = await collectScanResults(document, scanOptions)
+    const output = await collectScanResults(document, scanOptions)
 
-    expect(results).toHaveLength(1)
-    expect(results[0].block.text).toContain('OpenTUI')
-    expect(results[0].block.meta.blockType).toBe('paragraph')
+    expect(output.blocks).toHaveLength(1)
+    expect(output.blocks[0].block.text).toContain('OpenTUI')
+    expect(output.blocks[0].block.meta.blockType).toBe('paragraph')
   })
 
   it('skips divs that contain block-level children', async () => {
@@ -734,11 +734,11 @@ describe('collectScanResults', () => {
       </main>
     `
 
-    const results = await collectScanResults(document, scanOptions)
+    const output = await collectScanResults(document, scanOptions)
 
-    expect(results).toHaveLength(1)
-    expect(results[0].block.text).toContain('paragraph inside a container')
-    expect(results[0].binding.carrierElement.tagName.toLowerCase()).toBe('p')
+    expect(output.blocks).toHaveLength(1)
+    expect(output.blocks[0].block.text).toContain('paragraph inside a container')
+    expect(output.blocks[0].binding.carrierElement.tagName.toLowerCase()).toBe('p')
   })
 
   it('collects div descriptions from GitHub feed cards alongside paragraphs', async () => {
@@ -755,10 +755,10 @@ describe('collectScanResults', () => {
       </main>
     `
 
-    const results = await collectScanResults(document, scanOptions)
+    const output = await collectScanResults(document, scanOptions)
 
-    expect(results).toHaveLength(2)
-    const texts = results.map(r => r.block.text)
+    expect(output.blocks).toHaveLength(2)
+    const texts = output.blocks.map(r => r.block.text)
     expect(texts.some(t => t.includes('OpenTUI'))).toBe(true)
     expect(texts.some(t => t.includes('paragraph inside'))).toBe(true)
   })
@@ -777,10 +777,10 @@ describe('UI exclusion filtering', () => {
       </main>
     `
 
-    const results = await collectScanResults(document, scanOptions)
+    const output = await collectScanResults(document, scanOptions)
 
-    expect(results).toHaveLength(1)
-    expect(results[0].block.text).toContain('outside buttons')
+    expect(output.blocks).toHaveLength(1)
+    expect(output.blocks[0].block.text).toContain('outside buttons')
   })
 
   it('skips content inside menus and toolbars', async () => {
@@ -792,10 +792,10 @@ describe('UI exclusion filtering', () => {
       </main>
     `
 
-    const results = await collectScanResults(document, scanOptions)
+    const output = await collectScanResults(document, scanOptions)
 
-    expect(results).toHaveLength(1)
-    expect(results[0].block.text).toContain('pass all scanner')
+    expect(output.blocks).toHaveLength(1)
+    expect(output.blocks[0].block.text).toContain('pass all scanner')
   })
 
   it('skips content inside tablist and dialog', async () => {
@@ -807,10 +807,10 @@ describe('UI exclusion filtering', () => {
       </main>
     `
 
-    const results = await collectScanResults(document, scanOptions)
+    const output = await collectScanResults(document, scanOptions)
 
-    expect(results).toHaveLength(1)
-    expect(results[0].block.text).toContain('pass the filtering')
+    expect(output.blocks).toHaveLength(1)
+    expect(output.blocks[0].block.text).toContain('pass the filtering')
   })
 
   it('skips content inside nav, form, and status', async () => {
@@ -823,10 +823,10 @@ describe('UI exclusion filtering', () => {
       </main>
     `
 
-    const results = await collectScanResults(document, scanOptions)
+    const output = await collectScanResults(document, scanOptions)
 
-    expect(results).toHaveLength(1)
-    expect(results[0].block.text).toContain('pass all filtering')
+    expect(output.blocks).toHaveLength(1)
+    expect(output.blocks[0].block.text).toContain('pass all filtering')
   })
 
   it('skips elements with badge or action roles', async () => {
@@ -838,10 +838,10 @@ describe('UI exclusion filtering', () => {
       </main>
     `
 
-    const results = await collectScanResults(document, scanOptions)
+    const output = await collectScanResults(document, scanOptions)
 
-    expect(results).toHaveLength(1)
-    expect(results[0].block.text).toContain('accepted by the scanner')
+    expect(output.blocks).toHaveLength(1)
+    expect(output.blocks[0].block.text).toContain('accepted by the scanner')
   })
 
   it('skips table cells with many interactive children', async () => {
@@ -865,9 +865,9 @@ describe('UI exclusion filtering', () => {
       </main>
     `
 
-    const results = await collectScanResults(document, scanOptions)
+    const output = await collectScanResults(document, scanOptions)
 
-    const cellResults = results.filter(r => r.block.meta.blockType === 'table')
+    const cellResults = output.blocks.filter(r => r.block.meta.blockType === 'table')
     expect(cellResults.length).toBeGreaterThanOrEqual(1)
     expect(cellResults.some(r => r.block.text.includes('normal text'))).toBe(true)
   })
@@ -889,9 +889,9 @@ describe('UI exclusion filtering', () => {
       </main>
     `
 
-    const results = await collectScanResults(document, scanOptions)
+    const output = await collectScanResults(document, scanOptions)
 
-    expect(results.some(r => r.block.text.includes('normal text density'))).toBe(true)
+    expect(output.blocks.some(r => r.block.text.includes('normal text density'))).toBe(true)
   })
 
   it('skips generated LingoFlow nodes and nodes inside them', async () => {
@@ -904,10 +904,10 @@ describe('UI exclusion filtering', () => {
       </main>
     `
 
-    const results = await collectScanResults(document, scanOptions)
+    const output = await collectScanResults(document, scanOptions)
 
-    expect(results).toHaveLength(1)
-    expect(results[0].block.text).toContain('outside generated nodes')
+    expect(output.blocks).toHaveLength(1)
+    expect(output.blocks[0].block.text).toContain('outside generated nodes')
   })
 
   it('skips elements with data-lingoflow-translation attribute', async () => {
@@ -920,10 +920,10 @@ describe('UI exclusion filtering', () => {
       </main>
     `
 
-    const results = await collectScanResults(document, scanOptions)
+    const output = await collectScanResults(document, scanOptions)
 
-    expect(results).toHaveLength(1)
-    expect(results[0].block.text).toContain('outside translation elements')
+    expect(output.blocks).toHaveLength(1)
+    expect(output.blocks[0].block.text).toContain('outside translation elements')
   })
 })
 
@@ -994,8 +994,8 @@ describe('Wikipedia fixture', () => {
   it('discovers #mw-content-text as content root', async () => {
     setupWikipediaFixture()
 
-    const results = await collectScanResults(document, wikiOptions)
-    const texts = results.map(r => r.block.text)
+    const output = await collectScanResults(document, wikiOptions)
+    const texts = output.blocks.map(r => r.block.text)
 
     expect(texts.some(t => t.includes('art, application, and practice'))).toBe(true)
     expect(texts.some(t => t.includes('coined in 1839'))).toBe(true)
@@ -1004,8 +1004,8 @@ describe('Wikipedia fixture', () => {
   it('collects article paragraphs as paragraph block type', async () => {
     setupWikipediaFixture()
 
-    const results = await collectScanResults(document, wikiOptions)
-    const paragraphs = results.filter(r => r.block.meta.blockType === 'paragraph')
+    const output = await collectScanResults(document, wikiOptions)
+    const paragraphs = output.blocks.filter(r => r.block.meta.blockType === 'paragraph')
 
     expect(paragraphs.some(r => r.block.text.includes('art, application, and practice'))).toBe(true)
     expect(paragraphs.some(r => r.block.text.includes('employed in many fields'))).toBe(true)
@@ -1014,8 +1014,8 @@ describe('Wikipedia fixture', () => {
   it('collects headings with mw-headline as heading block type', async () => {
     setupWikipediaFixture()
 
-    const results = await collectScanResults(document, wikiOptions)
-    const headings = results.filter(r => r.block.meta.blockType === 'heading')
+    const output = await collectScanResults(document, wikiOptions)
+    const headings = output.blocks.filter(r => r.block.meta.blockType === 'heading')
 
     expect(headings.some(r => r.block.text.includes('Overview'))).toBe(true)
     expect(headings.some(r => r.block.text.includes('Techniques'))).toBe(true)
@@ -1026,8 +1026,8 @@ describe('Wikipedia fixture', () => {
   it('collects infobox table as table block type', async () => {
     setupWikipediaFixture()
 
-    const results = await collectScanResults(document, wikiOptions)
-    const tableResults = results.filter(r => r.block.meta.blockType === 'table')
+    const output = await collectScanResults(document, wikiOptions)
+    const tableResults = output.blocks.filter(r => r.block.meta.blockType === 'table')
 
     expect(tableResults.some(r => r.block.text.includes('Visual art and communication medium'))).toBe(true)
     expect(tableResults.some(r => r.block.text.includes('Early nineteenth century origin'))).toBe(true)
@@ -1037,8 +1037,8 @@ describe('Wikipedia fixture', () => {
   it('skips mw-empty-elt elements', async () => {
     setupWikipediaFixture()
 
-    const results = await collectScanResults(document, wikiOptions)
-    const emptyResults = results.filter(r => r.block.text.trim() === '')
+    const output = await collectScanResults(document, wikiOptions)
+    const emptyResults = output.blocks.filter(r => r.block.text.trim() === '')
 
     expect(emptyResults).toHaveLength(0)
   })
@@ -1046,8 +1046,8 @@ describe('Wikipedia fixture', () => {
   it('collects content in document order', async () => {
     setupWikipediaFixture()
 
-    const results = await collectScanResults(document, wikiOptions)
-    const texts = results.map(r => r.block.text)
+    const output = await collectScanResults(document, wikiOptions)
+    const texts = output.blocks.map(r => r.block.text)
 
     const artAppIndex = texts.findIndex(t => t.includes('art, application, and practice'))
     const overviewIndex = texts.findIndex(t => t.includes('Overview'))
@@ -1064,8 +1064,8 @@ describe('Wikipedia fixture', () => {
   it('extracts inline link tokens from paragraphs', async () => {
     setupWikipediaFixture()
 
-    const results = await collectScanResults(document, wikiOptions)
-    const refBlock = results.find(r => r.block.text.includes('scholarly study'))
+    const output = await collectScanResults(document, wikiOptions)
+    const refBlock = output.blocks.find(r => r.block.text.includes('scholarly study'))
 
     expect(refBlock).toBeDefined()
     expect(refBlock!.block.inlineTokens.length).toBeGreaterThanOrEqual(0)
@@ -1074,19 +1074,19 @@ describe('Wikipedia fixture', () => {
   it('produces a reasonable number of blocks without duplication', async () => {
     setupWikipediaFixture()
 
-    const results = await collectScanResults(document, wikiOptions)
-    const ids = results.map(r => r.block.id)
+    const output = await collectScanResults(document, wikiOptions)
+    const ids = output.blocks.map(r => r.block.id)
 
     expect(new Set(ids).size).toBe(ids.length)
-    expect(results.length).toBeGreaterThanOrEqual(5)
-    expect(results.length).toBeLessThanOrEqual(15)
+    expect(output.blocks.length).toBeGreaterThanOrEqual(5)
+    expect(output.blocks.length).toBeLessThanOrEqual(15)
   })
 
   it('does not collect content outside #mw-content-text', async () => {
     setupWikipediaFixture()
 
-    const results = await collectScanResults(document, wikiOptions)
-    const texts = results.map(r => r.block.text)
+    const output = await collectScanResults(document, wikiOptions)
+    const texts = output.blocks.map(r => r.block.text)
 
     expect(texts.some(t => t.includes('Photography') && t.includes('Visual arts') && t.includes('Art'))).toBe(false)
   })
@@ -1094,8 +1094,461 @@ describe('Wikipedia fixture', () => {
   it('collects hatnote disambiguation notice', async () => {
     setupWikipediaFixture()
 
-    const results = await collectScanResults(document, wikiOptions)
+    const output = await collectScanResults(document, wikiOptions)
 
-    expect(results.some(r => r.block.text.includes('technique, see Photographic technique'))).toBe(true)
+    expect(output.blocks.some(r => r.block.text.includes('technique, see Photographic technique'))).toBe(true)
+  })
+})
+
+describe('Phase 3: blockId/textHash identity contract', () => {
+  beforeEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('two identical paragraphs in different locations produce distinct blockId values', async () => {
+    document.body.innerHTML = `
+      <main>
+        <p>This is a repeated paragraph that appears in two different locations on the page.</p>
+        <section>
+          <p>This is a repeated paragraph that appears in two different locations on the page.</p>
+        </section>
+      </main>
+    `
+
+    const output = await collectScanResults(document, scanOptions)
+
+    expect(output.blocks).toHaveLength(2)
+    expect(output.blocks[0].block.id).not.toBe(output.blocks[1].block.id)
+  })
+
+  it('identical paragraphs share the same textHash', async () => {
+    document.body.innerHTML = `
+      <main>
+        <p>This is a repeated paragraph that appears in two different locations on the page.</p>
+        <section>
+          <p>This is a repeated paragraph that appears in two different locations on the page.</p>
+        </section>
+      </main>
+    `
+
+    const output = await collectScanResults(document, scanOptions)
+
+    expect(output.blocks).toHaveLength(2)
+    expect(output.blocks[0].block.textHash).toBe(output.blocks[1].block.textHash)
+  })
+
+  it('repeated identical text inside lists does not collide', async () => {
+    document.body.innerHTML = `
+      <main>
+        <ul>
+          <li>This list item has identical text that should get a unique block identifier.</li>
+          <li>This list item has identical text that should get a unique block identifier.</li>
+        </ul>
+      </main>
+    `
+
+    const output = await collectScanResults(document, scanOptions)
+
+    expect(output.blocks).toHaveLength(2)
+    expect(output.blocks[0].block.id).not.toBe(output.blocks[1].block.id)
+    expect(output.blocks[0].block.textHash).toBe(output.blocks[1].block.textHash)
+  })
+
+  it('repeated identical text inside tables does not collide', async () => {
+    document.body.innerHTML = `
+      <main>
+        <table>
+          <tbody>
+            <tr>
+              <td>This table cell text is identical to the other cell in this row.</td>
+              <td>This table cell text is identical to the other cell in this row.</td>
+            </tr>
+          </tbody>
+        </table>
+      </main>
+    `
+
+    const output = await collectScanResults(document, scanOptions)
+
+    expect(output.blocks).toHaveLength(2)
+    expect(output.blocks[0].block.id).not.toBe(output.blocks[1].block.id)
+    expect(output.blocks[0].block.textHash).toBe(output.blocks[1].block.textHash)
+  })
+})
+
+describe('Phase 3: generated-node exclusion', () => {
+  beforeEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('excludes nodes with data-lingoflow-generated', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div data-lingoflow-generated="true">
+          <p>This text is inside a generated node and must not be collected.</p>
+        </div>
+        <p>This text is outside generated nodes and should be collected.</p>
+      </main>
+    `
+
+    const output = await collectScanResults(document, scanOptions)
+
+    expect(output.blocks).toHaveLength(1)
+    expect(output.blocks[0].block.text).toContain('outside generated nodes')
+  })
+
+  it('excludes nodes with data-lingoflow-translation', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div data-lingoflow-translation="block_abc">
+          <p>This text is inside a translation node and must not be collected.</p>
+        </div>
+        <p>This text is outside translation nodes and should be collected.</p>
+      </main>
+    `
+
+    const output = await collectScanResults(document, scanOptions)
+
+    expect(output.blocks).toHaveLength(1)
+    expect(output.blocks[0].block.text).toContain('outside translation nodes')
+  })
+
+  it('excludes nodes with data-lingoflow-translation-break', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div data-lingoflow-translation-break="true">
+          <p>This text is inside a translation break node and must not be collected.</p>
+        </div>
+        <p>This text is outside translation break nodes and should be collected.</p>
+      </main>
+    `
+
+    const output = await collectScanResults(document, scanOptions)
+
+    expect(output.blocks).toHaveLength(1)
+    expect(output.blocks[0].block.text).toContain('outside translation break')
+  })
+
+  it('excludes nodes with data-lingoflow-translation-spacer', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div data-lingoflow-translation-spacer="true">
+          <p>This text is inside a translation spacer node and must not be collected.</p>
+        </div>
+        <p>This text is outside translation spacer nodes and should be collected.</p>
+      </main>
+    `
+
+    const output = await collectScanResults(document, scanOptions)
+
+    expect(output.blocks).toHaveLength(1)
+    expect(output.blocks[0].block.text).toContain('outside translation spacer')
+  })
+})
+
+describe('Phase 3: dry-run mode', () => {
+  beforeEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('dry-run mode does not leave data-lingoflow-block-id in the DOM', async () => {
+    document.body.innerHTML = `
+      <main>
+        <p>This paragraph should not get a block ID attribute in dry-run mode.</p>
+      </main>
+    `
+
+    await collectScanResults(document, { ...scanOptions, dryRun: true })
+
+    expect(document.querySelector('[data-lingoflow-block-id]')).toBeNull()
+  })
+
+  it('dry-run mode does not leave generated markers in the DOM', async () => {
+    document.body.innerHTML = `
+      <main>
+        <p>This paragraph should not get any generated markers in dry-run mode.</p>
+      </main>
+    `
+
+    await collectScanResults(document, { ...scanOptions, dryRun: true })
+
+    expect(document.querySelector('[data-lingoflow-generated]')).toBeNull()
+    expect(document.querySelector('[data-lingoflow-translation]')).toBeNull()
+  })
+
+  it('dry-run mode still returns blocks and diagnostics', async () => {
+    document.body.innerHTML = `
+      <main>
+        <p>This paragraph should still be collected in dry-run mode for diagnostics.</p>
+      </main>
+    `
+
+    const output = await collectScanResults(document, { ...scanOptions, dryRun: true })
+
+    expect(output.blocks).toHaveLength(1)
+    expect(output.blocks[0].block.text).toContain('collected in dry-run')
+    expect(output.diagnostics).toBeDefined()
+    expect(output.diagnostics.acceptedBlockCount).toBe(1)
+  })
+
+  it('normal collection mode still marks accepted carriers as expected', async () => {
+    document.body.innerHTML = `
+      <main>
+        <p>This paragraph should get a block ID attribute in normal mode.</p>
+      </main>
+    `
+
+    const output = await collectScanResults(document, { ...scanOptions, dryRun: false })
+
+    expect(output.blocks).toHaveLength(1)
+    const blockId = output.blocks[0].block.id
+    expect(document.querySelector(`[data-lingoflow-block-id="${blockId}"]`)).not.toBeNull()
+  })
+})
+
+describe('Phase 3: skip reason diagnostics', () => {
+  beforeEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('records generated-node skip reason', async () => {
+    document.body.innerHTML = `
+      <main>
+        <p data-lingoflow-generated="true">This generated text should be skipped with a reason.</p>
+        <p>This normal paragraph is long enough to be collected by the scanner.</p>
+      </main>
+    `
+
+    const output = await collectScanResults(document, scanOptions)
+
+    expect(output.diagnostics.skipReasons['generated-node']).toBeGreaterThanOrEqual(1)
+    expect(output.blocks).toHaveLength(1)
+  })
+
+  it('records too-short skip reason', async () => {
+    document.body.innerHTML = `
+      <main>
+        <p>Short</p>
+        <p>This paragraph is long enough to be collected by the scanner filter.</p>
+      </main>
+    `
+
+    const output = await collectScanResults(document, scanOptions)
+
+    expect(output.diagnostics.skipReasons['too-short']).toBeGreaterThanOrEqual(1)
+    expect(output.blocks).toHaveLength(1)
+  })
+
+  it('records not-visible skip reason', async () => {
+    document.body.innerHTML = `
+      <main>
+        <p hidden>This hidden paragraph is long enough but should be skipped.</p>
+        <p>This visible paragraph is long enough to be collected by the scanner.</p>
+      </main>
+    `
+
+    const output = await collectScanResults(document, scanOptions)
+
+    expect(output.diagnostics.skipReasons['not-visible']).toBeGreaterThanOrEqual(1)
+    expect(output.blocks).toHaveLength(1)
+  })
+
+  it('records inside-ui-exclusion skip reason', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div role="menu"><p>This menu item text is long enough but should be skipped as UI exclusion.</p></div>
+        <p>This paragraph is long enough to be collected by the scanner filter.</p>
+      </main>
+    `
+
+    const output = await collectScanResults(document, scanOptions)
+
+    expect(output.diagnostics.skipReasons['inside-ui-exclusion']).toBeGreaterThanOrEqual(1)
+    expect(output.blocks).toHaveLength(1)
+  })
+
+  it('records inside-ignore-selector skip reason', async () => {
+    document.body.innerHTML = `
+      <main>
+        <nav><p>This navigation text is long enough but should be skipped by ignore selector.</p></nav>
+        <p>This paragraph is long enough to be collected by the scanner filter.</p>
+      </main>
+    `
+
+    const output = await collectScanResults(document, scanOptions)
+
+    expect(output.diagnostics.skipReasons['inside-ignore-selector']).toBeGreaterThanOrEqual(1)
+    expect(output.blocks).toHaveLength(1)
+  })
+
+  it('records block-level-children skip reason', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div>
+          <p>This paragraph inside a div should be collected directly, not the div wrapper.</p>
+        </div>
+      </main>
+    `
+
+    const output = await collectScanResults(document, scanOptions)
+
+    expect(output.diagnostics.skipReasons['block-level-children']).toBeGreaterThanOrEqual(1)
+    expect(output.blocks).toHaveLength(1)
+    expect(output.blocks[0].binding.carrierElement.tagName.toLowerCase()).toBe('p')
+  })
+
+  it('records table-cell-too-interactive skip reason', async () => {
+    document.body.innerHTML = `
+      <main>
+        <table>
+          <tbody>
+            <tr>
+              <td>
+                <button>Action 1</button>
+                <button>Action 2</button>
+                <button>Action 3</button>
+                <a href="#">Link 1</a>
+                <a href="#">Link 2</a>
+                This cell has too many interactive controls.
+              </td>
+              <td>This table cell has normal text that is long enough to collect.</td>
+            </tr>
+          </tbody>
+        </table>
+      </main>
+    `
+
+    const output = await collectScanResults(document, scanOptions)
+
+    expect(output.diagnostics.skipReasons['table-cell-too-interactive']).toBeGreaterThanOrEqual(1)
+  })
+
+  it('records too-many-interactive-elements skip reason', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div>
+          <a href="#">First link in high density area</a>
+          <a href="#">Second link in high density area</a>
+          <a href="#">Third link in high density area</a>
+          <a href="#">Fourth link in high density area</a>
+          <a href="#">Fifth link in high density area</a>
+          <a href="#">Sixth link in high density area</a>
+        </div>
+        <p>This paragraph has normal text density and should be collected.</p>
+      </main>
+    `
+
+    const output = await collectScanResults(document, scanOptions)
+
+    expect(output.diagnostics.skipReasons['too-many-interactive-elements']).toBeGreaterThanOrEqual(1)
+    expect(output.blocks).toHaveLength(1)
+  })
+})
+
+describe('Phase 3: root diagnostics', () => {
+  beforeEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('root diagnostics include selected roots', async () => {
+    document.body.innerHTML = `
+      <main>
+        <p>This paragraph is inside main and long enough to be collected.</p>
+      </main>
+    `
+
+    const output = await collectScanResults(document, scanOptions)
+
+    expect(output.diagnostics.rootsSelected).toBeGreaterThanOrEqual(1)
+    expect(output.diagnostics.selectedRoots.length).toBeGreaterThanOrEqual(1)
+    expect(output.diagnostics.selectedRoots[0].tagName).toBe('main')
+    expect(output.diagnostics.selectedRoots[0].selected).toBe(true)
+  })
+
+  it('root diagnostics include rejected roots when applicable', async () => {
+    document.body.innerHTML = `
+      <main>
+        <p>This paragraph is inside main and long enough to be collected.</p>
+      </main>
+      <nav>
+        <p>This navigation paragraph is long enough but should be rejected.</p>
+      </nav>
+    `
+
+    const output = await collectScanResults(document, createRuntimeContext({
+      selectors: {
+        contentRoots: ['main', 'nav'],
+      },
+    }))
+
+    expect(output.diagnostics.rootsSelected).toBeGreaterThanOrEqual(1)
+    expect(output.diagnostics.selectedRoots.some(r => r.tagName === 'main')).toBe(true)
+  })
+
+  it('root diagnostics record content-root-threshold for scored roots', async () => {
+    document.body.innerHTML = `
+      <div class="layout-shell">
+        <div class="story-panel">
+          <p>The first generic article paragraph is long enough to establish this panel as the main reading container.</p>
+          <p>The second generic article paragraph gives the scorer enough text density to prefer this content.</p>
+        </div>
+      </div>
+    `
+
+    const output = await collectScanResults(document, scanOptions)
+
+    expect(output.diagnostics.rootsSelected).toBeGreaterThanOrEqual(1)
+    expect(output.diagnostics.selectedRoots.length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('Phase 3: existing GitHub Markdown behavior', () => {
+  beforeEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('GitHub Markdown headings are collected correctly with new blockId format', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div class="comment-body markdown-body js-comment-body">
+          <h2 dir="auto">What</h2>
+          <p dir="auto">The top-level <code class="notranslate">README.md</code> carried a terser banner:</p>
+          <blockquote>
+            <p dir="auto"><strong>Public beta</strong> - the <code class="notranslate">@vue-tui/runtime</code> API is stabilizing.</p>
+          </blockquote>
+          <h2 dir="auto">Why</h2>
+          <p dir="auto">The homepage is the first thing people see, but it was missing the public-feedback framing.</p>
+        </div>
+      </main>
+    `
+
+    const output = await collectScanResults(document, {
+      ...scanOptions,
+      pageUrl: 'https://github.com/vuejs-ai/vue-tui/pull/1',
+      domain: 'github.com',
+    })
+
+    const texts = output.blocks.map(b => b.block.text)
+    expect(texts).toEqual(expect.arrayContaining(['What', 'Why']))
+
+    const publicBetaBlocks = output.blocks.filter(b => b.block.text.includes('Public beta'))
+    expect(publicBetaBlocks).toHaveLength(1)
+
+    const ids = output.blocks.map(b => b.block.id)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('blockId format includes occurrence index', async () => {
+    document.body.innerHTML = `
+      <main>
+        <p>This is a paragraph that should be collected with the new block ID format.</p>
+      </main>
+    `
+
+    const output = await collectScanResults(document, scanOptions)
+
+    expect(output.blocks).toHaveLength(1)
+    const id = output.blocks[0].block.id
+    expect(id).toMatch(/^block_[a-f0-9]+_\d+$/)
   })
 })
