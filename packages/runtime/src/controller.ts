@@ -18,6 +18,7 @@ import type {
   ScanResult,
   TranslationResult,
   TranslationTask,
+  UserSiteRule,
 } from '@lingoflow/types'
 import { BlockBindingStore } from './bindings'
 import { EventRingBuffer } from './event-ring-buffer'
@@ -65,6 +66,7 @@ export class RuntimeController {
   private latestDiagnostics: PageDiagnostics | null = null
   private latestCollectionDiagnostics: CollectionDiagnostics | null = null
   private lastResolvedRule: ResolvedPageRule | null = null
+  private latestUserRules: UserSiteRule[] = []
   private memoryCacheHits = 0
   private indexeddbCacheHits = 0
   private providerRequestedCount = 0
@@ -116,6 +118,7 @@ export class RuntimeController {
       const sourceLang = this.resolveLanguage(overrides.sourceLang, settings.sourceLang, getSourceLanguageOptions())
       const targetLang = this.resolveLanguage(overrides.targetLang, settings.targetLang, getTargetLanguageOptions())
       const effectiveSettings = { ...settings, sourceLang, targetLang }
+      this.latestUserRules = settings.userRules ?? []
       this.progress.sourceLang = sourceLang
       this.progress.targetLang = targetLang
       if (overrides.targetLang) {
@@ -268,6 +271,7 @@ export class RuntimeController {
     this.latestDiagnostics = null
     this.latestCollectionDiagnostics = null
     this.lastResolvedRule = null
+    this.latestUserRules = []
     this.pageTargetLangOverride = undefined
     this.coordinator.resetRenderSkipCount()
     this.progress = this.idleProgress()
@@ -302,6 +306,7 @@ export class RuntimeController {
       const sourceLang = this.resolveLanguage(overrides.sourceLang, settings.sourceLang, getSourceLanguageOptions())
       const targetLang = this.resolveLanguage(overrides.targetLang ?? this.pageTargetLangOverride, settings.targetLang, getTargetLanguageOptions())
       const effectiveSettings = { ...settings, sourceLang, targetLang }
+      this.latestUserRules = settings.userRules ?? []
       if (overrides.targetLang) {
         this.pageTargetLangOverride = overrides.targetLang
       }
@@ -397,7 +402,7 @@ export class RuntimeController {
     this.bindings.clear()
     const newRootGeneration = this.version.nextRootGeneration()
 
-    this.lastResolvedRule = resolvePageRule(this.root, this.root.location.href, { siteRules: this.siteRules })
+    this.lastResolvedRule = resolvePageRule(this.root, this.root.location.href, { siteRules: this.siteRules, userRules: this.latestUserRules })
 
     if (this.latestDiagnostics) {
       this.latestDiagnostics = {
@@ -440,7 +445,7 @@ export class RuntimeController {
     pageUrl: string
     domain: string
   }): RuntimeContext {
-    const pageRule = resolvePageRule(this.root, input.pageUrl, { siteRules: this.siteRules })
+    const pageRule = resolvePageRule(this.root, input.pageUrl, { siteRules: this.siteRules, userRules: this.latestUserRules })
     return Object.freeze({
       runId: input.runId,
       url: input.pageUrl,
@@ -733,9 +738,10 @@ export class RuntimeController {
     const settings = await this.sendRuntimeMessage<PublicRuntimeSettings>({ type: 'settings/getRuntime' })
     const pageUrl = this.root.location.href
     const domain = getDomain(pageUrl)
+    const userRules = settings.userRules ?? []
     const resolvedRule = payload?.ruleOverride
       ? resolvePageRule(this.root, pageUrl, { siteRules: [payload.ruleOverride] })
-      : resolvePageRule(this.root, pageUrl, { siteRules: this.siteRules })
+      : resolvePageRule(this.root, pageUrl, { siteRules: this.siteRules, userRules })
 
     const runId = `dry-run_${Date.now()}`
     const scanOutput = await collectScanResults(this.root, {

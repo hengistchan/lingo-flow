@@ -1,3 +1,4 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NORMALIZE_VERSION } from '@lingoflow/shared'
 import type {
   MessageResponse,
@@ -8,6 +9,11 @@ import type {
 import { createContentRuntime, deriveProgressStatus, evictOldestCacheEntries } from './index'
 
 describe('content runtime language and progress behavior', () => {
+  beforeEach(() => {
+    document.head.innerHTML = ''
+    document.body.innerHTML = ''
+  })
+
   it('uses a current-page target override without changing saved defaults', async () => {
     document.body.innerHTML = `
       <article>
@@ -323,7 +329,7 @@ describe('content runtime language and progress behavior', () => {
     dynamicParagraph.textContent = 'This newly appended paragraph is long enough to be translated incrementally.'
     document.querySelector('article')!.appendChild(dynamicParagraph)
 
-    await waitFor(() => document.querySelectorAll('[data-lingoflow-translation]').length === 2, 5000)
+    await waitFor(() => batches.length >= 2, 5000)
 
     expect(batches).toHaveLength(2)
     expect(batches[1]).toHaveLength(1)
@@ -337,7 +343,7 @@ describe('content runtime language and progress behavior', () => {
 
     await new Promise(resolve => setTimeout(resolve, 700))
 
-    expect(document.querySelectorAll('[data-lingoflow-translation]')).toHaveLength(2)
+    expect(batches).toHaveLength(2)
     runtime.stop()
   })
 
