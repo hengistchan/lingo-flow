@@ -21,7 +21,7 @@
 LingoFlow is a **local-first**, **BYOK** (Bring Your Own Key), **provider-agnostic** browser extension that translates web pages into your target language. Translations are rendered **inline** alongside the original text, preserving the page structure.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/No%20Backend-No%20Analytics-No%20Tracking-ff6b6b" alt="Local-first">
+  <img src="https://img.shields.io/badge/Local--first-No%20Backend%20%7C%20No%20Analytics%20%7C%20No%20Tracking-ff6b6b" alt="Local-first">
 </p>
 
 ## Features
