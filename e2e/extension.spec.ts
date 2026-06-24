@@ -829,10 +829,39 @@ test('production build manifest does not contain test-only host permissions', ()
   expect(manifest.optional_host_permissions).not.toContain(expect.stringMatching(/<all_urls>/))
 })
 
+test('production manifest uses raster PNG icons for Chrome toolbar surfaces', () => {
+  const manifest = JSON.parse(readFileSync(path.join(builtExtensionPath, 'manifest.json'), 'utf-8'))
+
+  expect(manifest.action.default_icon).toEqual({
+    '16': 'icons/lingoflow-icon-16.png',
+    '32': 'icons/lingoflow-icon-32.png',
+  })
+  expect(manifest.icons).toEqual({
+    '16': 'icons/lingoflow-icon-16.png',
+    '32': 'icons/lingoflow-icon-32.png',
+    '48': 'icons/lingoflow-icon-48.png',
+    '128': 'icons/lingoflow-icon-128.png',
+  })
+
+  for (const iconPath of Object.values<string>(manifest.icons)) {
+    expect(iconPath.endsWith('.png')).toBe(true)
+    expect(readFileSync(path.join(builtExtensionPath, iconPath)).subarray(1, 4).toString('ascii')).toBe('PNG')
+  }
+})
+
 test('production content script contains no Unicode noncharacters', () => {
   const contentScript = readFileSync(path.join(builtExtensionPath, 'lingoflow-content.js'), 'utf-8')
 
   expect(contentScript).not.toContain('\uFFFF')
+})
+
+test('production extension pages declare the packaged tab icon', () => {
+  for (const page of ['popup.html', 'options.html']) {
+    const html = readFileSync(path.join(builtExtensionPath, page), 'utf-8')
+
+    expect(html).toContain('rel="icon"')
+    expect(html).toContain('href="/lingoflow-icon.svg"')
+  }
 })
 
 test('production build includes the inspector console bridge', () => {

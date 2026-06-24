@@ -190,6 +190,27 @@ export type RootDiagnostic = {
   classes?: string
   selected: boolean
   rejectReason?: string
+  source?: 'rule' | 'default' | 'generic' | 'fallback'
+  sourceSelector?: string
+  score?: number
+  rank?: number
+  metrics?: {
+    textLength: number
+    normalizedTextLength: number
+    paragraphCount: number
+    headingCount: number
+    listItemCount: number
+    tableCount: number
+    linkTextLength: number
+    linkDensity: number
+    interactiveCount: number
+    interactiveDensity: number
+    visibleArea: number
+    depth: number
+    generated: boolean
+  }
+  dedupeReason?: string
+  suggestedSelector?: string
 }
 
 export type CollectionDiagnostics = {
@@ -257,6 +278,7 @@ export type PageDiagnostics = {
     discarded: number
   }
   roots?: RootDiagnostic[]
+  rejectedRoots?: RootDiagnostic[]
   blocks?: BlockDiagnostic[]
   events?: RuntimeEvent[]
   topSkipReasons?: Array<{ reason: string; count: number }>

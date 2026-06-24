@@ -115,6 +115,8 @@ export type UiCopyKey =
   | 'options.candidatesCollected'
   | 'options.candidatesSkipped'
   | 'options.topSkipReasons'
+  | 'options.selectedRoots'
+  | 'options.rejectedRoots'
   | 'popup.viewDetails'
 
 const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
@@ -232,6 +234,8 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.candidatesCollected': '已收集',
     'options.candidatesSkipped': '已跳过',
     'options.topSkipReasons': '主要跳过原因',
+    'options.selectedRoots': '已选内容根',
+    'options.rejectedRoots': '已拒绝内容根',
     'popup.viewDetails': '查看详情',
   },
   en: {
@@ -348,6 +352,8 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.candidatesCollected': 'Collected',
     'options.candidatesSkipped': 'Skipped',
     'options.topSkipReasons': 'Top skip reasons',
+    'options.selectedRoots': 'Selected roots',
+    'options.rejectedRoots': 'Rejected roots',
     'popup.viewDetails': 'View details',
   },
 }

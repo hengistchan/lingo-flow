@@ -276,6 +276,41 @@ test('infinite-scroll fixture: dynamic content translated once', async () => {
   }
 })
 
+test('popup translate enables dynamic translation for newly loaded content', async () => {
+  const server = await startFixtureServer()
+  const extension = await launchExtension({ allowLocalhost: true })
+
+  try {
+    await configureProvider(extension, server.successProviderBaseUrl)
+    const page = await extension.context.newPage()
+    await page.goto(server.url('infinite-scroll'))
+
+    const popup = await extension.context.newPage()
+    await popup.goto(extension.url('popup.html'))
+    await page.bringToFront()
+
+    await popup.getByRole('button', { name: 'Translate to Simplified Chinese' }).click()
+    await expect(popup.locator('.status')).toHaveText('Translation complete', { timeout: 8_000 })
+    const initialCount = await page.locator('[data-lingoflow-translation]').count()
+
+    await page.evaluate(() => {
+      const container = document.querySelector('.scroll-container')
+      if (!container) return
+      const newItem = document.createElement('p')
+      newItem.textContent = 'This newly loaded paragraph should translate after the popup action enables progressive translation.'
+      container.appendChild(newItem)
+    })
+
+    await expect(page.locator('[data-lingoflow-translation]')).toHaveCount(initialCount + 1, { timeout: 8_000 })
+    await expect(popup.locator('.result-summary')).toContainText(`${initialCount + 1}/${initialCount + 1}`, { timeout: 8_000 })
+
+    await clearTranslation(extension)
+  } finally {
+    await extension.close()
+    await server.close()
+  }
+})
+
 test('partially-interactive fixture: buttons and forms not translated', async () => {
   const server = await startFixtureServer()
   const extension = await launchExtension({ allowLocalhost: true })

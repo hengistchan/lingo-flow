@@ -805,6 +805,7 @@ export class RuntimeController {
         discarded: 0,
       },
       roots: scanOutput.diagnostics.selectedRoots,
+      rejectedRoots: scanOutput.diagnostics.rejectedRootDetails,
       blocks: blockDiagnostics,
       topSkipReasons,
     }
@@ -885,6 +886,7 @@ export class RuntimeController {
         renderSkipped: this.coordinator.getRenderSkipCount(),
       },
       roots: collectionDiag?.selectedRoots,
+      rejectedRoots: collectionDiag?.rejectedRootDetails,
       blocks: blockDiagnostics,
       topSkipReasons,
       userMessageCode: this.progress.messageCode,

@@ -128,6 +128,12 @@ async function translatePage() {
       type: 'page/translate',
       payload: { targetLang: pendingTargetLang.value },
     })
+    if (progress.value.translatedBlocks > 0) {
+      await sendTabMessage(tab.id, {
+        type: 'page/setDynamicTranslation',
+        payload: { enabled: true },
+      })
+    }
     contentInjected.value = true
   } catch {
     actionFailed.value = true
@@ -146,6 +152,10 @@ async function clearTranslation() {
   try {
     const tab = await getActiveTab()
     await ensureContentRuntime(tab.id)
+    await sendTabMessage(tab.id, {
+      type: 'page/setDynamicTranslation',
+      payload: { enabled: false },
+    })
     progress.value = await sendTabMessage<PageTranslationProgress>(tab.id, { type: 'page/clear' })
   } catch {
     actionFailed.value = true

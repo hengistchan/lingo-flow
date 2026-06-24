@@ -1,6 +1,7 @@
 import { collectScanResults, collectTextBlocks, detectBlockType, isTranslatableElement, isVisible } from './index'
+import { discoverContentRoots } from './content-root'
 import { NORMALIZE_VERSION } from '@lingoflow/shared'
-import { resolvePageRule } from '@lingoflow/rules'
+import { resolvePageRule, SITE_RULES } from '@lingoflow/rules'
 import type { CollectionDiagnostics, PageRule, PublicRuntimeSettings, RuntimeContext, ScanResult } from '@lingoflow/types'
 
 describe('DOM collector', () => {
@@ -460,6 +461,63 @@ describe('collectTextBlocks', () => {
     expect(block?.inlineTokens).toEqual([])
     expect(document.querySelector('a')?.getAttribute('data-lingoflow-block-id')).toBe(block?.id)
     expect(document.querySelector('h3')?.getAttribute('data-lingoflow-block-id')).toBeNull()
+  })
+
+  it('collects GitHub feed card title links when a markdown preview is present', async () => {
+    document.body.innerHTML = `
+      <article id="feed-item-10919157221" class="js-feed-item-component">
+        <div class="feed-item-content">
+          <header>
+            <h3>
+              <span><a href="/sindresorhus">sindresorhus</a> contributed to</span>
+              <span><a href="/sindresorhus/eslint-plugin-unicorn">sindresorhus/eslint-plugin-unicorn</a></span>
+            </h3>
+          </header>
+          <div>
+            <h3 class="lh-condensed">
+              <a class="Link--primary text-bold" href="/sindresorhus/eslint-plugin-unicorn/pull/3413">
+                \`comment-content\`: Don't mutate commented-out multi-line code
+                <span class="f3-light color-fg-muted">#3413</span>
+              </a>
+            </h3>
+            <section class="dashboard-break-word comment-body markdown-body color-bg-subtle">
+              <p dir="auto"><span class="issue-keyword">Fixes</span> <a href="https://github.com/sindresorhus/eslint-plugin-unicorn/issues/3387">#3387</a></p>
+            </section>
+          </div>
+        </div>
+      </article>
+    `
+    const pageRule = resolvePageRule(document, 'https://github.com/conduit/for_you_feed', {
+      siteRules: SITE_RULES,
+    })
+    const settings: PublicRuntimeSettings = {
+      sourceLang: 'auto',
+      targetLang: 'zh-Hans',
+      renderMode: 'below-original',
+      cacheEnabled: false,
+      maxCacheItems: 50000,
+      translationConcurrency: 3,
+      providerId: 'google-free-translate',
+      normalizeVersion: NORMALIZE_VERSION,
+    }
+    const output = await collectScanResults(document, {
+      runId: 'run_github_feed',
+      url: 'https://github.com/conduit/for_you_feed',
+      domain: 'github.com',
+      sourceLang: settings.sourceLang,
+      targetLang: settings.targetLang,
+      providerId: settings.providerId,
+      displayMode: 'dual',
+      settings,
+      pageRule,
+      rootGeneration: 1,
+    })
+    const title = output.blocks.find(result => result.block.text.includes('comment-content'))
+
+    expect(output.diagnostics.selectedRoots.some(root => root.tagName === 'article')).toBe(true)
+    expect(title).toBeDefined()
+    expect(title?.block.meta.tagName).toBe('a')
+    expect(title?.block.text).toContain("Don't mutate commented-out multi-line code")
   })
 
   it('Keeps reference links protected while exposing insertion metadata for paragraphs', async () => {
@@ -1499,6 +1557,120 @@ describe('Phase 3: root diagnostics', () => {
 
     expect(output.diagnostics.rootsSelected).toBeGreaterThanOrEqual(1)
     expect(output.diagnostics.selectedRoots.length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('P8: generic root discovery v2', () => {
+  beforeEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('scores all matching selectors instead of stopping at the first selector', () => {
+    document.body.innerHTML = `
+      <main id="shell">
+        <aside>
+          <p>This sidebar summary is readable but mostly exists to wrap navigation links.</p>
+        </aside>
+        <article id="story">
+          <h1>Release notes</h1>
+          <p>The first article paragraph has enough meaningful prose to be selected as the better root.</p>
+          <p>The second article paragraph gives the scorer a stronger content signal than the shell.</p>
+        </article>
+      </main>
+    `
+
+    const result = discoverContentRoots(document, {
+      contentRootSelectors: ['main', 'article'],
+    })
+
+    expect(result.roots.map(root => root.id)).toContain('story')
+    expect(result.diagnostics.selected.some(root => root.id === 'story' && typeof root.score === 'number')).toBe(true)
+    expect(result.diagnostics.considered.some(root => root.id === 'shell')).toBe(true)
+  })
+
+  it('selects multiple readable sibling roots in DOM order', () => {
+    document.body.innerHTML = `
+      <main>
+        <article id="feed-a">
+          <p>The first feed item has a readable paragraph that should be translated independently.</p>
+        </article>
+        <article id="feed-b">
+          <p>The second feed item also contains meaningful prose and should not be hidden by the first match.</p>
+        </article>
+      </main>
+    `
+
+    const result = discoverContentRoots(document, {
+      contentRootSelectors: ['main', 'article'],
+    })
+
+    expect(result.roots.map(root => root.id)).toEqual(['feed-a', 'feed-b'])
+  })
+
+  it('dedupes parent and child roots while explaining the rejected duplicate', () => {
+    document.body.innerHTML = `
+      <article id="feed-item">
+        <div class="markdown-body" id="markdown">
+          <p>This GitHub style feed item body has enough prose to be recognized as readable content.</p>
+          <p>The parent article should win so generated metadata and surrounding content can remain in one root.</p>
+        </div>
+      </article>
+    `
+
+    const result = discoverContentRoots(document, {
+      contentRootSelectors: ['article', '.markdown-body'],
+    })
+
+    expect(result.roots.map(root => root.id)).toEqual(['feed-item'])
+    expect(result.diagnostics.rejected.some(root => root.id === 'markdown' && root.rejectReason === 'deduped-by-selected-parent')).toBe(true)
+  })
+
+  it('rejects link-heavy navigation-like candidates', () => {
+    document.body.innerHTML = `
+      <main>
+        <section id="link-farm">
+          <a href="/a">Documentation index and quick link one</a>
+          <a href="/b">Documentation index and quick link two</a>
+          <a href="/c">Documentation index and quick link three</a>
+          <a href="/d">Documentation index and quick link four</a>
+        </section>
+        <article id="article">
+          <p>This ordinary article paragraph has enough non-link prose to be selected over the link farm.</p>
+          <p>Another readable sentence keeps the content density high and the root stable.</p>
+        </article>
+      </main>
+    `
+
+    const result = discoverContentRoots(document, {
+      contentRootSelectors: ['section', 'article'],
+    })
+
+    expect(result.roots.map(root => root.id)).toContain('article')
+    expect(result.roots.map(root => root.id)).not.toContain('link-farm')
+    expect(result.diagnostics.rejected.some(root => root.id === 'link-farm' && root.rejectReason === 'high-link-density')).toBe(true)
+  })
+
+  it('rejects high interactive-density roots but keeps readable forum comments', () => {
+    document.body.innerHTML = `
+      <main>
+        <section id="reply-form">
+          <p>This form contains visible explanatory text but should not become the page content root.</p>
+          <button>Reply</button><button>Preview</button><button>Attach</button><button>Cancel</button>
+        </section>
+        <section id="comment">
+          <p>This forum comment is a readable user contribution that should remain eligible for translation.</p>
+          <p>A second sentence makes the comment root substantial enough for generic discovery.</p>
+        </section>
+      </main>
+    `
+
+    const result = discoverContentRoots(document, {
+      contentRootSelectors: ['section'],
+    })
+
+    expect(result.roots.map(root => root.id)).toContain('comment')
+    expect(result.roots.map(root => root.id)).not.toContain('reply-form')
+    expect(result.diagnostics.rejected.some(root => root.id === 'reply-form' && root.rejectReason === 'high-interactive-density')).toBe(true)
   })
 })
 

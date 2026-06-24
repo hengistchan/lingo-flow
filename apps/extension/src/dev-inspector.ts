@@ -239,6 +239,24 @@ function printDiagnosticsSummary(d: PageDiagnostics): string {
     }
   }
 
+  if (d.roots && d.roots.length > 0) {
+    lines.push('', '--- Selected Roots ---')
+    for (const root of d.roots.slice(0, 5)) {
+      const score = typeof root.score === 'number' ? ` score=${root.score}` : ''
+      const source = root.sourceSelector ? ` source=${root.sourceSelector}` : ''
+      lines.push(`  ${root.selector}${score}${source}`)
+    }
+  }
+
+  if (d.rejectedRoots && d.rejectedRoots.length > 0) {
+    lines.push('', '--- Rejected Roots ---')
+    for (const root of d.rejectedRoots.slice(0, 5)) {
+      const score = typeof root.score === 'number' ? ` score=${root.score}` : ''
+      const reason = root.rejectReason ? ` reason=${root.rejectReason}` : ''
+      lines.push(`  ${root.selector}${score}${reason}`)
+    }
+  }
+
   if (d.userMessageCode) {
     lines.push('', `User Message: ${d.userMessageCode}`)
   }

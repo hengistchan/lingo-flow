@@ -21,6 +21,7 @@ import type {
   ProviderConnectionMessageCode,
   ProviderConnectionResult,
   ProviderPreset,
+  RootDiagnostic,
   UiLocale,
   UserSiteRule,
 } from '@lingoflow/types'
@@ -84,6 +85,17 @@ const connectionMessage = computed(() =>
 const availablePresets = computed(() =>
   BUILT_IN_PRESETS.filter(p => !(p.id in settings.providers)),
 )
+
+function formatRootDiagnostic(root: RootDiagnostic): string {
+  const score = typeof root.score === 'number' ? ` · score ${root.score}` : ''
+  const source = root.sourceSelector ? ` · ${root.sourceSelector}` : ''
+  return `${root.selector}${score}${source}`
+}
+
+function formatRejectedRoot(root: RootDiagnostic): string {
+  const reason = root.rejectReason ? ` · ${root.rejectReason}` : ''
+  return `${formatRootDiagnostic(root)}${reason}`
+}
 
 watch(dirty, hasUnsavedChanges => {
   if (hasUnsavedChanges) message.value = ''
@@ -915,6 +927,22 @@ async function testOnCurrentPage() {
                 </li>
               </ul>
             </div>
+            <div v-if="diagnosticsResult.roots?.length" class="root-diagnostics">
+              <strong>{{ copy('options.selectedRoots') }}</strong>
+              <ul>
+                <li v-for="root in diagnosticsResult.roots.slice(0, 5)" :key="`selected-${root.selector}-${root.rank ?? root.score ?? 0}`">
+                  {{ formatRootDiagnostic(root) }}
+                </li>
+              </ul>
+            </div>
+            <div v-if="diagnosticsResult.rejectedRoots?.length" class="root-diagnostics">
+              <strong>{{ copy('options.rejectedRoots') }}</strong>
+              <ul>
+                <li v-for="root in diagnosticsResult.rejectedRoots.slice(0, 5)" :key="`rejected-${root.selector}-${root.rejectReason ?? ''}-${root.score ?? 0}`">
+                  {{ formatRejectedRoot(root) }}
+                </li>
+              </ul>
+            </div>
           </div>
         </section>
       </div>
@@ -1370,17 +1398,20 @@ section {
   color: var(--lf-ink);
 }
 
-.skip-reasons {
+.skip-reasons,
+.root-diagnostics {
   margin-top: 12px;
 }
 
-.skip-reasons strong {
+.skip-reasons strong,
+.root-diagnostics strong {
   font-size: 12px;
   font-weight: 600;
   color: var(--lf-ghost);
 }
 
-.skip-reasons ul {
+.skip-reasons ul,
+.root-diagnostics ul {
   margin: 4px 0 0;
   padding-left: 18px;
   font-size: 12px;

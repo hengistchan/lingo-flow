@@ -183,6 +183,23 @@ describe('site rules registry', () => {
     expect(resolved.selectors.contentRoots).toContain('.markdown-body')
   })
 
+  it('prioritizes GitHub feed cards before nested markdown previews', () => {
+    document.body.innerHTML = `
+      <article id="feed-item-1" class="js-feed-item-component">
+        <h3><a href="/org/repo/pull/1">Improve the feed card title translation coverage</a></h3>
+        <section class="markdown-body"><p>Short preview.</p></section>
+      </article>
+    `
+    const resolved = resolvePageRule(document, 'https://github.com/conduit/for_you_feed', {
+      siteRules: SITE_RULES,
+    })
+
+    expect(resolved.matchedRuleIds).toContain('github-markdown')
+    expect(resolved.selectors.contentRoots.indexOf('article.js-feed-item-component')).toBeLessThan(
+      resolved.selectors.contentRoots.indexOf('.markdown-body'),
+    )
+  })
+
   it('excludes Wikipedia Special: and Talk: pages', () => {
     document.body.innerHTML = '<div id="mw-content-text"><p>Special page</p></div>'
     const special = resolvePageRule(document, 'https://en.wikipedia.org/wiki/Special:Random', {

@@ -28,7 +28,7 @@ export const githubRule: SiteRule = {
     selectorMatches: ['.markdown-body'],
   },
   selectors: {
-    contentRoots: ['.markdown-body'],
+    contentRoots: ['article.js-feed-item-component', 'article[id^="feed-item-"]', '.markdown-body'],
     excludeSelectors: [
       '.file-navigation',
       '.js-comment-form',
