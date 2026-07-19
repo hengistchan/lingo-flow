@@ -71,15 +71,29 @@ export function migrateSettings(input?: SettingsInput): AppSettings {
   const inputProviders = (input?.providers ?? {}) as Record<string, unknown>
   const providers: Record<string, ProviderConfig> = {}
   for (const [key, defaultConfig] of Object.entries(DEFAULT_SETTINGS.providers)) {
-    const inputConfig = inputProviders[key] as Partial<ProviderConfig> | undefined
-    if (inputConfig && 'id' in inputConfig) {
+    const inputConfig = inputProviders[key]
+    if (isProviderConfig(inputConfig)) {
       providers[key] = {
         ...defaultConfig,
         ...inputConfig,
+        id: key,
         values: { ...defaultConfig.values, ...(inputConfig.values ?? {}) },
       }
     } else {
       providers[key] = { ...defaultConfig }
+    }
+  }
+
+  // Custom providers are first-class persisted settings. They do not have a
+  // built-in default to merge with, so preserve every structurally valid
+  // provider entry that was supplied by the user.
+  for (const [key, inputConfig] of Object.entries(inputProviders)) {
+    if (key in providers || !isProviderConfig(inputConfig)) continue
+    providers[key] = {
+      id: key,
+      presetId: inputConfig.presetId,
+      name: inputConfig.name,
+      values: { ...inputConfig.values },
     }
   }
   merged.providers = providers
@@ -192,4 +206,17 @@ function clampTranslationConcurrency(value: unknown): number {
     ? Math.floor(value)
     : DEFAULT_TRANSLATION_CONCURRENCY
   return Math.min(MAX_TRANSLATION_CONCURRENCY, Math.max(MIN_TRANSLATION_CONCURRENCY, numeric))
+}
+
+function isProviderConfig(value: unknown): value is ProviderConfig {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<ProviderConfig>
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.name === 'string' &&
+    !!candidate.values &&
+    typeof candidate.values === 'object' &&
+    !Array.isArray(candidate.values) &&
+    Object.values(candidate.values).every(item => typeof item === 'string')
+  )
 }

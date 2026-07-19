@@ -564,6 +564,12 @@ describe('user rule validation', () => {
     expect(result.ok).toBe(true)
   })
 
+  it('accepts the internal user namespace used for built-in ID collisions', () => {
+    const rule = makeUserRule({ id: 'user:github-markdown' })
+    const result = validateUserRule(rule)
+    expect(result.ok).toBe(true)
+  })
+
   it('rejects duplicate user rule IDs', () => {
     const existing = [makeUserRule({ id: 'existing-rule' })]
     const rule = makeUserRule({ id: 'existing-rule' })

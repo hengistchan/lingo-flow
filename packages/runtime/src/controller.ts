@@ -740,17 +740,27 @@ export class RuntimeController {
     const domain = getDomain(pageUrl)
     const userRules = settings.userRules ?? []
     const resolvedRule = payload?.ruleOverride
-      ? resolvePageRule(this.root, pageUrl, { siteRules: [payload.ruleOverride] })
+      ? resolvePageRule(this.root, pageUrl, {
+          siteRules: this.siteRules,
+          userRules,
+          overrides: payload.ruleOverride,
+        })
       : resolvePageRule(this.root, pageUrl, { siteRules: this.siteRules, userRules })
 
     const runId = `dry-run_${Date.now()}`
+    const rootGeneration = this.version.currentRootGeneration()
     const scanOutput = await collectScanResults(this.root, {
+      runId,
+      url: pageUrl,
+      domain,
       sourceLang: settings.sourceLang,
       targetLang: settings.targetLang,
-      pageUrl,
-      domain,
-      runId,
-      rootGeneration: 1,
+      providerId: settings.providerId,
+      model: settings.model,
+      displayMode: settings.displayMode ?? resolvedRule.behavior.displayMode,
+      settings,
+      pageRule: resolvedRule,
+      rootGeneration,
       dryRun: true,
     })
 
@@ -778,7 +788,7 @@ export class RuntimeController {
       pageUrl,
       domain,
       runId,
-      rootGeneration: 1,
+      rootGeneration,
       rule: {
         id: resolvedRule.id,
         matchedRuleIds: resolvedRule.matchedRuleIds,

@@ -869,6 +869,7 @@ export type UserRulesValidateMessage = {
   type: 'userRules/validate'
   payload: {
     rule: UserSiteRule
+    existingRuleId?: string
   }
 }
 

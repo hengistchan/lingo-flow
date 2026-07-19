@@ -59,7 +59,7 @@ async function handleMessage(message: LingoFlowMessage, _sender: chrome.runtime.
     case 'settings/getSummary':
       return getSettingsSummary(await getSettings())
     case 'settings/save':
-      await saveSettings(message.payload.settings)
+      await saveSettingsPreservingUserRules(message.payload.settings)
       return { saved: true }
     case 'settings/saveTheme': {
       const current = await getSettings()
@@ -85,7 +85,7 @@ async function handleMessage(message: LingoFlowMessage, _sender: chrome.runtime.
     case 'userRules/save':
       return saveUserRules(message.payload.rules)
     case 'userRules/validate':
-      return validateUserRuleMessage(message.payload.rule)
+      return validateUserRuleMessage(message.payload.rule, message.payload.existingRuleId)
     case 'userRules/import':
       return importUserRules(message.payload.document, message.payload.mode)
     case 'userRules/export':
@@ -249,17 +249,53 @@ async function getUserRules(): Promise<UserSiteRule[]> {
   return settings.userRules ?? []
 }
 
-async function saveUserRules(rules: UserSiteRule[]): Promise<{ saved: boolean }> {
-  const settings = await getSettings()
-  settings.userRules = rules
-  await saveSettings(settings)
-  return { saved: true }
+async function saveSettingsPreservingUserRules(settings: AppSettings): Promise<void> {
+  const current = await getSettings()
+  await saveSettings({ ...settings, userRules: current.userRules })
 }
 
-function validateUserRuleMessage(rule: UserSiteRule) {
+async function saveUserRules(rules: UserSiteRule[]): Promise<{ saved: boolean; rules: UserSiteRule[] }> {
+  const settings = await getSettings()
+  const validatedRules = validateUserRuleList(rules)
+  settings.userRules = validatedRules
+  await saveSettings(settings)
+  return { saved: true, rules: validatedRules }
+}
+
+async function validateUserRuleMessage(rule: UserSiteRule, existingRuleId?: string) {
   const builtinIds = getBuiltinIds()
-  const existingRules = [] as UserSiteRule[]
-  return validateUserRule(rule, existingRules, builtinIds)
+  const settings = await getSettings()
+  const normalizedExistingRuleId = existingRuleId
+    ? namespaceUserRuleId(existingRuleId, builtinIds)
+    : undefined
+  const existingRules = settings.userRules.filter(existing => existing.id !== normalizedExistingRuleId)
+  const normalizedRule = {
+    ...rule,
+    id: namespaceUserRuleId(rule.id, builtinIds),
+    source: 'user' as const,
+  }
+  return validateUserRule(normalizedRule, existingRules, builtinIds)
+}
+
+function validateUserRuleList(rules: UserSiteRule[]): UserSiteRule[] {
+  const builtinIds = getBuiltinIds()
+  const validatedRules: UserSiteRule[] = []
+
+  for (const rule of rules) {
+    const normalizedRule: UserSiteRule = {
+      ...rule,
+      id: namespaceUserRuleId(rule.id, builtinIds),
+      source: 'user',
+    }
+    const validation = validateUserRule(normalizedRule, validatedRules, builtinIds)
+    if (!validation.ok) {
+      const details = validation.errors.map(error => `${error.field}: ${error.message}`).join('; ')
+      throw new Error(`Invalid user rule "${normalizedRule.id}": ${details}`)
+    }
+    validatedRules.push(normalizedRule)
+  }
+
+  return validatedRules
 }
 
 async function importUserRules(

@@ -452,6 +452,103 @@ test('installed extension connects to an explicitly authorized custom OpenAI-com
   }
 })
 
+test('installed extension creates and persists a custom OpenAI-compatible provider', async () => {
+  const extension = await launchExtension({ allowLocalhost: true })
+
+  try {
+    const options = await extension.context.newPage()
+    await options.goto(extension.url('options.html'))
+    await options.getByRole('button', { name: 'Translation service' }).click()
+    await options.getByRole('button', { name: 'Add provider' }).click()
+    await options.getByRole('button', { name: 'Custom OpenAI-compatible' }).click()
+
+    const customProviderForm = options.locator('.custom-provider-form')
+    await customProviderForm.getByLabel('Name').fill('Local LLM')
+    await customProviderForm.getByLabel('Base URL').fill('http://127.0.0.1:11434/v1')
+    await customProviderForm.getByLabel('Model').fill('qwen3')
+    await customProviderForm.getByRole('button', { name: 'Add provider' }).click()
+
+    await options.getByRole('button', { name: 'Save settings' }).click()
+    await expect(options.getByText('Settings saved')).toBeVisible()
+    await options.reload()
+    await options.getByRole('button', { name: 'Translation service' }).click()
+
+    await expect(options.getByLabel('Default provider').locator('option:checked')).toHaveText('Local LLM')
+    const savedSettings = await options.evaluate(() => chrome.runtime.sendMessage({ type: 'settings/get' }))
+    expect(savedSettings).toMatchObject({
+      ok: true,
+      data: {
+        defaultProviderId: expect.stringMatching(/^custom-/),
+      },
+    })
+    const customProviders = Object.values(savedSettings.data.providers).filter(
+      (provider: any) => provider.name === 'Local LLM',
+    )
+    expect(customProviders).toHaveLength(1)
+    expect(customProviders[0]).toMatchObject({
+      presetId: 'openai-compatible',
+      values: {
+        baseUrl: 'http://127.0.0.1:11434/v1',
+        model: 'qwen3',
+      },
+    })
+  } finally {
+    await extension.close()
+  }
+})
+
+test('background validates user-rule writes and settings saves do not clobber them', async () => {
+  const extension = await launchExtension()
+
+  try {
+    const options = await extension.context.newPage()
+    await options.goto(extension.url('options.html'))
+    const result = await options.evaluate(async () => {
+      const now = new Date().toISOString()
+      const validRule = {
+        id: 'reader-rule',
+        version: 1,
+        source: 'user',
+        enabled: true,
+        createdAt: now,
+        updatedAt: now,
+        match: { matches: ['*://example.com/*'] },
+        selectors: { contentRoots: ['main'] },
+      }
+      const initialSave = await chrome.runtime.sendMessage({
+        type: 'userRules/save',
+        payload: { rules: [validRule] },
+      })
+      const invalidSave = await chrome.runtime.sendMessage({
+        type: 'userRules/save',
+        payload: {
+          rules: [validRule, { ...validRule }],
+        },
+      })
+      const currentSettings = await chrome.runtime.sendMessage({ type: 'settings/get' })
+      const settingsSave = await chrome.runtime.sendMessage({
+        type: 'settings/save',
+        payload: { settings: { ...currentSettings.data, userRules: [] } },
+      })
+      const persistedRules = await chrome.runtime.sendMessage({ type: 'userRules/get' })
+      return { initialSave, invalidSave, settingsSave, persistedRules }
+    })
+
+    expect(result.initialSave).toMatchObject({
+      ok: true,
+      data: { saved: true, rules: [{ id: 'reader-rule' }] },
+    })
+    expect(result.invalidSave).toMatchObject({ ok: false })
+    expect(result.settingsSave).toMatchObject({ ok: true })
+    expect(result.persistedRules).toMatchObject({
+      ok: true,
+      data: [{ id: 'reader-rule' }],
+    })
+  } finally {
+    await extension.close()
+  }
+})
+
 test('installed extension connects to Azure protocol and uses it as a fallback provider', async () => {
   const articleServer = await startArticleServer()
   const extension = await launchExtension({ allowLocalhost: true })

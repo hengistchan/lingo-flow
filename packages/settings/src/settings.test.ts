@@ -221,4 +221,50 @@ describe('settings', () => {
     expect(migrateSettings({ translationConcurrency: 20 }).translationConcurrency).toBe(6)
     expect(migrateSettings({ translationConcurrency: 4 }).translationConcurrency).toBe(4)
   })
+
+  it('preserves custom provider configurations across save migrations', () => {
+    const customProviderId = 'custom-local-llm'
+    const migrated = migrateSettings({
+      ...DEFAULT_SETTINGS,
+      defaultProviderId: customProviderId,
+      providers: {
+        ...DEFAULT_SETTINGS.providers,
+        [customProviderId]: {
+          id: customProviderId,
+          presetId: 'openai-compatible',
+          name: 'Local LLM',
+          values: {
+            baseUrl: 'http://localhost:11434/v1',
+            apiKey: '',
+            model: 'qwen3',
+          },
+        },
+      },
+    })
+
+    expect(migrated.defaultProviderId).toBe(customProviderId)
+    expect(migrated.providers[customProviderId]).toEqual({
+      id: customProviderId,
+      presetId: 'openai-compatible',
+      name: 'Local LLM',
+      values: {
+        baseUrl: 'http://localhost:11434/v1',
+        apiKey: '',
+        model: 'qwen3',
+      },
+    })
+  })
+
+  it('drops malformed provider entries without breaking valid settings', () => {
+    const migrated = migrateSettings({
+      ...DEFAULT_SETTINGS,
+      providers: {
+        ...DEFAULT_SETTINGS.providers,
+        broken: 'not-a-provider',
+      },
+    })
+
+    expect(migrated.providers.broken).toBeUndefined()
+    expect(migrated.providers['google-free-translate']).toEqual(DEFAULT_SETTINGS.providers['google-free-translate'])
+  })
 })

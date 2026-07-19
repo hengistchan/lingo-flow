@@ -56,6 +56,10 @@ export type CollectScanResultOptions = CollectTextBlockOptions & {
   dryRun?: boolean
 }
 
+export type RuntimeCollectionContext = RuntimeContext & {
+  dryRun?: boolean
+}
+
 type CollectionConfig = {
   sourceLang: 'auto' | string
   targetLang: string
@@ -78,7 +82,7 @@ type CollectionConfig = {
 
 export async function collectScanResults(
   root: Document | HTMLElement,
-  options: CollectScanResultOptions | RuntimeContext,
+  options: CollectScanResultOptions | RuntimeCollectionContext,
 ): Promise<CollectScanResultsOutput> {
   const config = resolveCollectionConfig(options)
   const rootDiscovery = discoverContentRoots(root, {
@@ -290,7 +294,7 @@ function uniqueElements(elements: HTMLElement[]): HTMLElement[] {
   return [...new Set(elements)]
 }
 
-function resolveCollectionConfig(options: CollectScanResultOptions | RuntimeContext): CollectionConfig {
+function resolveCollectionConfig(options: CollectScanResultOptions | RuntimeCollectionContext): CollectionConfig {
   if (isRuntimeContext(options)) {
     return {
       sourceLang: options.sourceLang,
@@ -309,7 +313,7 @@ function resolveCollectionConfig(options: CollectScanResultOptions | RuntimeCont
       minRootTextLength: options.pageRule.thresholds.minRootTextLength,
       minRootParagraphCount: options.pageRule.thresholds.minRootParagraphCount,
       linkDensityPenalty: options.pageRule.thresholds.linkDensityPenalty,
-      dryRun: false,
+      dryRun: options.dryRun ?? false,
     }
   }
 
@@ -334,7 +338,7 @@ function resolveCollectionConfig(options: CollectScanResultOptions | RuntimeCont
   }
 }
 
-function isRuntimeContext(options: CollectScanResultOptions | RuntimeContext): options is RuntimeContext {
+function isRuntimeContext(options: CollectScanResultOptions | RuntimeCollectionContext): options is RuntimeCollectionContext {
   return 'pageRule' in options
 }
 

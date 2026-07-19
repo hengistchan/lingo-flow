@@ -49,6 +49,7 @@ const reasoningEffortOptions = ['auto', 'none', 'minimal', 'low', 'medium', 'hig
 
 const userRules = ref<UserSiteRule[]>([])
 const editingRule = ref<UserSiteRule | null>(null)
+const editingOriginalRuleId = ref<string | null>(null)
 const editingRuleJson = ref('')
 const editingRuleErrors = ref<string[]>([])
 const showRuleEditor = ref(false)
@@ -368,12 +369,14 @@ function createUserRule() {
     selectors: {},
   }
   editingRuleJson.value = JSON.stringify(editingRule.value, null, 2)
+  editingOriginalRuleId.value = null
   editingRuleErrors.value = []
   showRuleEditor.value = true
 }
 
 function editUserRule(rule: UserSiteRule) {
   editingRule.value = structuredClone(rule)
+  editingOriginalRuleId.value = rule.id
   editingRuleJson.value = JSON.stringify(rule, null, 2)
   editingRuleErrors.value = []
   showRuleEditor.value = true
@@ -388,13 +391,18 @@ function duplicateUserRule(rule: UserSiteRule) {
     updatedAt: now,
   }
   editingRuleJson.value = JSON.stringify(editingRule.value, null, 2)
+  editingOriginalRuleId.value = null
   editingRuleErrors.value = []
   showRuleEditor.value = true
 }
 
 async function deleteUserRule(ruleId: string) {
+  const previousRules = structuredClone(userRules.value)
   userRules.value = userRules.value.filter(r => r.id !== ruleId)
-  await saveUserRulesToStorage()
+  if (!(await saveUserRulesToStorage())) {
+    userRules.value = previousRules
+    return
+  }
   message.value = copy('options.ruleDeleted')
 }
 
@@ -403,13 +411,16 @@ async function toggleUserRule(ruleId: string) {
   if (rule) {
     rule.enabled = !rule.enabled
     rule.updatedAt = new Date().toISOString()
-    await saveUserRulesToStorage()
+    if (!(await saveUserRulesToStorage())) {
+      rule.enabled = !rule.enabled
+    }
   }
 }
 
 function cancelRuleEditor() {
   showRuleEditor.value = false
   editingRule.value = null
+  editingOriginalRuleId.value = null
   editingRuleErrors.value = []
 }
 
@@ -452,16 +463,19 @@ async function saveEditingRule() {
 
   const now = new Date().toISOString()
   const rule = { ...editingRule.value, updatedAt: now }
-  const idx = userRules.value.findIndex(r => r.id === rule.id)
+  const idx = editingOriginalRuleId.value
+    ? userRules.value.findIndex(r => r.id === editingOriginalRuleId.value)
+    : -1
   if (idx >= 0) {
     userRules.value[idx] = rule
   } else {
     userRules.value.push(rule)
   }
 
-  await saveUserRulesToStorage()
+  if (!(await saveUserRulesToStorage())) return
   showRuleEditor.value = false
   editingRule.value = null
+  editingOriginalRuleId.value = null
   message.value = copy('options.ruleSaved')
 }
 
@@ -472,7 +486,7 @@ async function validateRule(rule: UserSiteRule): Promise<{ valid: boolean; error
   try {
     const result = await sendChromeMessage<{ ok: true } | { ok: false; errors: { field: string; message: string }[] }>({
       type: 'userRules/validate',
-      payload: { rule },
+      payload: { rule, existingRuleId: editingOriginalRuleId.value ?? undefined },
     })
     return result.ok
       ? { valid: true, errors: [] }
@@ -482,12 +496,20 @@ async function validateRule(rule: UserSiteRule): Promise<{ valid: boolean; error
   }
 }
 
-async function saveUserRulesToStorage() {
-  if (!hasRuntimeApi()) return
+async function saveUserRulesToStorage(): Promise<boolean> {
+  if (!hasRuntimeApi()) return true
   try {
-    await sendChromeMessage({ type: 'userRules/save', payload: { rules: userRules.value } })
-  } catch {
-    // ignore
+    const result = await sendChromeMessage<{ saved: boolean; rules: UserSiteRule[] }>({
+      type: 'userRules/save',
+      payload: { rules: userRules.value },
+    })
+    userRules.value = result.rules
+    settings.userRules = structuredClone(result.rules)
+    savedSettings.value.userRules = structuredClone(result.rules)
+    return true
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : String(error)
+    return false
   }
 }
 
@@ -701,7 +723,7 @@ async function testOnCurrentPage() {
               :label="copy('options.removeProvider')"
               @click="removeProvider(settings.defaultProviderId)"
             />
-            <div class="add-provider-area" v-if="availablePresets.length > 0">
+            <div class="add-provider-area">
               <lf-button
                 variant="ghost"
                 :label="copy('options.addProvider')"

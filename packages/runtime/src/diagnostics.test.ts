@@ -252,6 +252,33 @@ describe('page/diagnose', () => {
     expect(document.querySelector('[data-lingoflow-translation]')).toBeNull()
   })
 
+  it('applies a temporary rule override to the actual dry-run collection', async () => {
+    document.body.innerHTML = `
+      <article>
+        <p>This paragraph is long enough for the default collector but shorter than the override threshold.</p>
+      </article>
+    `
+    const settings = runtimeSettings()
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      throw new Error(`Unexpected message: ${message.type}`)
+    })
+
+    const runtime = createContentRuntime({ document, chromeRuntime })
+    const result = await runtime.runDryDiagnostics({
+      ruleOverride: {
+        id: 'temporary-high-threshold',
+        thresholds: { minTextLength: 500 },
+      },
+    })
+
+    expect(result.rule.id).toBe('temporary-high-threshold')
+    expect(result.rule.matchedRuleIds).toContain('temporary-high-threshold')
+    expect(result.counts.collected).toBe(0)
+    expect(result.topSkipReasons).toContainEqual({ reason: 'too-short', count: 1 })
+    expect(document.querySelector('[data-lingoflow-block-id]')).toBeNull()
+  })
+
   it('returns block diagnostics with correct shape', async () => {
     document.body.innerHTML = `
       <article>

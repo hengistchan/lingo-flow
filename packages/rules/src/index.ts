@@ -18,7 +18,7 @@ export type ResolvePageRuleOptions = {
   overrides?: PageRule | PageRule[]
 }
 
-const VALID_ID_RE = /^[a-z0-9][a-z0-9._-]*$/
+const VALID_ID_RE = /^(?:user:)?[a-z0-9][a-z0-9._-]*$/
 
 const VALID_BEHAVIOR_ENUMS: Record<keyof PageRuleBehavior, Set<string>> = {
   translationArea: new Set(['main', 'body', 'selection']),
@@ -54,7 +54,7 @@ export function validateUserRule(
   if (!VALID_ID_RE.test(rule.id)) {
     errors.push({
       field: 'id',
-      message: 'Rule ID must be lowercase and contain only letters, numbers, dots, underscores, and hyphens',
+      message: 'Rule ID must be lowercase, may use the internal user: prefix, and otherwise contain only letters, numbers, dots, underscores, and hyphens',
     })
   }
 
