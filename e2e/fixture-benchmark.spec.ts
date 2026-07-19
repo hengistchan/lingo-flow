@@ -35,6 +35,36 @@ test('article fixture: translate, no duplicates on re-translate, clear restores 
   }
 })
 
+test('pointer shortcut translates only the hovered sentence', async () => {
+  const server = await startFixtureServer()
+  const extension = await launchExtension({ allowLocalhost: true })
+
+  try {
+    await configureProvider(extension, server.successProviderBaseUrl)
+    const page = await extension.context.newPage()
+    await page.goto(server.url('hover-sentence'))
+    await injectContent(extension)
+
+    const sentence = page.locator('[data-hover-target]')
+    const box = await sentence.boundingBox()
+    if (!box) throw new Error('Hover sentence was not visible.')
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.keyboard.press('Alt+Shift+L')
+
+    const note = page.locator('[data-lingoflow-hover-card]')
+    await expect(note).toHaveAttribute('data-state', 'success', { timeout: 8_000 })
+    await expect(note.locator('.source')).toHaveText('Translate only this sentence under the pointer.')
+    await expect(note.locator('.translation')).toHaveText('訳: Translate only this sentence under the pointer.')
+    await expect(page.locator('[data-lingoflow-translation]')).toHaveCount(0)
+
+    await page.keyboard.press('Escape')
+    await expect(note).toHaveCount(0)
+  } finally {
+    await extension.close()
+    await server.close()
+  }
+})
+
 test('docs fixture: content roots and block collection', async () => {
   const server = await startFixtureServer()
   const extension = await launchExtension({ allowLocalhost: true })
@@ -491,6 +521,16 @@ const FIXTURES: Record<string, string> = {
     <h1>Article Fixture</h1>
     <p>This article paragraph is long enough to be collected and translated by the extension runtime.</p>
     <p>A second paragraph ensures that multiple blocks are collected during a single translation run.</p>
+  </article>
+</body></html>`,
+
+  'hover-sentence': `<!doctype html>
+<html lang="en"><head><title>Hover Sentence Fixture</title>
+<style>body { margin: 60px; font: 20px/1.8 Georgia, serif; } p { max-width: 760px; }</style></head>
+<body>
+  <article>
+    <h1>Pointer Translation</h1>
+    <p><span>Keep this first sentence unchanged. </span><span data-hover-target>Translate only this sentence under the pointer.</span><span> Keep this final sentence unchanged.</span></p>
   </article>
 </body></html>`,
 

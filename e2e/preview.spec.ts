@@ -80,6 +80,8 @@ test('options preview exposes LLM translation speed controls', async ({ page }) 
   await page.goto(`/options.html?speed=${Date.now()}`)
 
   await page.getByRole('button', { name: 'Advanced' }).click()
+  await expect(page.getByText('Pointer sentence translation')).toBeVisible()
+  await expect(page.getByText('Alt + Shift + L')).toBeVisible()
   await expect(page.getByLabel('Concurrent translation batches')).toHaveValue('3')
   await page.getByLabel('Concurrent translation batches').fill('4')
   await expect(page.getByRole('button', { name: 'Save settings' })).toBeEnabled()

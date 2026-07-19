@@ -924,6 +924,12 @@ test('production build manifest does not contain test-only host permissions', ()
     expect.arrayContaining(['https://*/*', 'http://*/*']),
   )
   expect(manifest.optional_host_permissions).not.toContain(expect.stringMatching(/<all_urls>/))
+  expect(manifest.commands['translate-hovered-text']).toMatchObject({
+    suggested_key: {
+      default: 'Alt+Shift+L',
+      mac: 'Alt+Shift+L',
+    },
+  })
 })
 
 test('production manifest uses raster PNG icons for Chrome toolbar surfaces', () => {

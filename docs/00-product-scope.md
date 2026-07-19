@@ -47,6 +47,7 @@ MVP must support:
 - Translation rendering below original text
 - Clear translations
 - Cache cleanup
+- Pointer sentence translation through the `Alt/Option + Shift + L` command
 
 ## MVP Non-goals
 
@@ -59,7 +60,6 @@ Do not implement:
 - cloud sync
 - account system
 - glossary
-- selection translation
 - input box translation
 - all-site automatic translation
 - provider marketplace

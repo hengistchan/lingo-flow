@@ -64,6 +64,9 @@ export type UiCopyKey =
   | 'options.belowOriginal'
   | 'options.maxCacheItems'
   | 'options.translationConcurrency'
+  | 'options.hoverTranslation'
+  | 'options.hoverTranslationDescription'
+  | 'options.hoverTranslationShortcut'
   | 'options.reasoningEffort'
   | 'options.reasoningAuto'
   | 'options.reasoningNone'
@@ -183,6 +186,9 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.belowOriginal': '显示在原文下方',
     'options.maxCacheItems': '最大缓存条目数',
     'options.translationConcurrency': '并发翻译批次数',
+    'options.hoverTranslation': '鼠标句段翻译',
+    'options.hoverTranslationDescription': '将鼠标指向文字并按快捷键，只翻译当前句段。选中文字时会优先翻译选区。',
+    'options.hoverTranslationShortcut': '页面快捷键',
     'options.reasoningEffort': '推理强度',
     'options.reasoningAuto': '自动',
     'options.reasoningNone': '关闭',
@@ -301,6 +307,9 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.belowOriginal': 'Below original text',
     'options.maxCacheItems': 'Max cache items',
     'options.translationConcurrency': 'Concurrent translation batches',
+    'options.hoverTranslation': 'Pointer sentence translation',
+    'options.hoverTranslationDescription': 'Point to text and press the shortcut to translate only that sentence. Selected text takes priority.',
+    'options.hoverTranslationShortcut': 'Page shortcut',
     'options.reasoningEffort': 'Reasoning effort',
     'options.reasoningAuto': 'Auto',
     'options.reasoningNone': 'None',

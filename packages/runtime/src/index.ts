@@ -16,6 +16,13 @@ export { VersionTracker } from './version'
 export { BlockQueue } from './queue'
 export { RenderCoordinator } from './render-coordinator'
 export { PageObserver } from './observer'
+export {
+  HoverTranslationController,
+  isHoverTranslationShortcut,
+  resolveHoveredText,
+  resolveTextAtPoint,
+  segmentSentenceAtOffset,
+} from './hover-translation'
 
 export function createContentRuntime(dependencies: ControllerDependencies = {}) {
   const controller = new RuntimeController(dependencies)

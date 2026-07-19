@@ -67,6 +67,15 @@ export default defineConfig({
         '32': 'icons/lingoflow-icon-32.png',
       },
     },
+    commands: {
+      'translate-hovered-text': {
+        suggested_key: {
+          default: 'Alt+Shift+L',
+          mac: 'Alt+Shift+L',
+        },
+        description: 'Translate the text under the pointer',
+      },
+    },
     icons: {
       '16': 'icons/lingoflow-icon-16.png',
       '32': 'icons/lingoflow-icon-32.png',

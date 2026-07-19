@@ -22,6 +22,7 @@ import type {
 } from '@lingoflow/types'
 import { BlockBindingStore } from './bindings'
 import { EventRingBuffer } from './event-ring-buffer'
+import { HoverTranslationController } from './hover-translation'
 import { RuntimeEventBus } from './events'
 import { PageObserver } from './observer'
 import { BlockQueue } from './queue'
@@ -57,6 +58,7 @@ export class RuntimeController {
   private readonly coordinator: RenderCoordinator
   private readonly observer: PageObserver
   private readonly eventRingBuffer = new EventRingBuffer()
+  private readonly hoverTranslation: HoverTranslationController
   private progress: PageTranslationProgress
   private translating = false
   private manualTranslating = false
@@ -88,6 +90,10 @@ export class RuntimeController {
       events: this.events,
       bindings: this.bindings,
       store: this.store,
+    })
+    this.hoverTranslation = new HoverTranslationController({
+      document: this.root,
+      chromeRuntime: this.runtime,
     })
     this.progress = this.idleProgress()
     this.subscribeToEvents()
@@ -199,6 +205,13 @@ export class RuntimeController {
         return true
       }
 
+      if (message?.type === 'page/translateHoveredText') {
+        this.hoverTranslation.translateHoveredText()
+          .then(result => sendResponse({ ok: true, data: result }))
+          .catch(error => sendResponse({ ok: false, error: { message: error.message } }))
+        return true
+      }
+
       if (message?.type === 'page/setDisplayMode') {
         this.setDisplayMode(message.payload?.mode ?? 'dual')
         sendResponse({ ok: true, data: { mode: message.payload?.mode } })
@@ -249,10 +262,12 @@ export class RuntimeController {
     })
 
     this.observer.start()
+    this.hoverTranslation.start()
   }
 
   stop(): void {
     this.observer.stop()
+    this.hoverTranslation.stop()
     this.started = false
   }
 
@@ -262,6 +277,7 @@ export class RuntimeController {
 
   clearPage(): void {
     this.observer.stop()
+    this.hoverTranslation.dismiss()
     this.clearGeneratedNodes()
     this.bindings.clear()
     this.store.clear()

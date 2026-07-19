@@ -55,6 +55,7 @@ const editingRuleErrors = ref<string[]>([])
 const showRuleEditor = ref(false)
 const diagnosticsResult = ref<PageDiagnostics | null>(null)
 const testingPage = ref(false)
+const hoverTranslationShortcut = ref('Alt + Shift + L')
 
 const uiLocale = computed<UiLocale>(() =>
   settings.interfaceLocale === 'auto' ? browserLocale : settings.interfaceLocale,
@@ -111,6 +112,7 @@ watch(confirmClearAll, (val) => {
 onMounted(() => {
   loadSettings()
   loadUserRules()
+  loadHoverTranslationShortcut()
 })
 
 const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -134,6 +136,17 @@ async function loadSettings() {
     message.value = error instanceof Error ? error.message : String(error)
   } finally {
     busy.value = false
+  }
+}
+
+async function loadHoverTranslationShortcut() {
+  if (typeof globalThis.chrome?.commands?.getAll !== 'function') return
+  try {
+    const commands = await chrome.commands.getAll()
+    const shortcut = commands.find(command => command.name === 'translate-hovered-text')?.shortcut
+    if (shortcut) hoverTranslationShortcut.value = shortcut.replace(/\+/g, ' + ')
+  } catch {
+    // The static manifest default remains an accurate preview fallback.
   }
 }
 
@@ -830,6 +843,16 @@ async function testOnCurrentPage() {
         <!-- Advanced Section -->
         <section v-else-if="activeSection === 'advanced'">
           <h2>{{ copy('options.advanced') }}</h2>
+          <div class="shortcut-note">
+            <div>
+              <strong>{{ copy('options.hoverTranslation') }}</strong>
+              <p>{{ copy('options.hoverTranslationDescription') }}</p>
+            </div>
+            <div class="shortcut-note__key">
+              <span>{{ copy('options.hoverTranslationShortcut') }}</span>
+              <kbd>{{ hoverTranslationShortcut }}</kbd>
+            </div>
+          </div>
           <div class="form-grid">
             <lf-form-field
               :label="copy('options.renderMode')"
@@ -1282,6 +1305,71 @@ section {
 
 .storage-actions {
   padding-top: 4px;
+}
+
+.shortcut-note {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 22px;
+  padding: 16px 18px;
+  border: 1px solid var(--lf-rule);
+  border-left: 4px solid var(--lf-accent);
+  background: var(--lf-margin);
+}
+
+.shortcut-note strong {
+  font-family: var(--lf-font-serif);
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.shortcut-note p {
+  max-width: 520px;
+  margin: 5px 0 0;
+  color: var(--lf-ghost);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.shortcut-note__key {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.shortcut-note__key span {
+  color: var(--lf-ghost);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.shortcut-note kbd {
+  min-width: 126px;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--lf-rule);
+  border-bottom-width: 3px;
+  border-radius: 0;
+  background: var(--lf-paper);
+  color: var(--lf-ink);
+  font-family: var(--lf-font-sans);
+  font-size: 12px;
+  font-weight: 650;
+  text-align: center;
+}
+
+@media (max-width: 680px) {
+  .shortcut-note {
+    grid-template-columns: 1fr;
+  }
+
+  .shortcut-note__key {
+    justify-items: start;
+  }
 }
 
 /* ── Responsive ── */

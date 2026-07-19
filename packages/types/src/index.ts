@@ -798,6 +798,10 @@ export type PageTranslateMessage = {
   }
 }
 
+export type PageTranslateHoveredTextMessage = {
+  type: 'page/translateHoveredText'
+}
+
 export type PageClearMessage = {
   type: 'page/clear'
 }
@@ -903,6 +907,7 @@ export type LingoFlowMessage =
   | ClearCacheByDomainMessage
   | ClearAllCacheMessage
   | PageTranslateMessage
+  | PageTranslateHoveredTextMessage
   | PageClearMessage
   | PageClearCacheMessage
   | PageStatusMessage

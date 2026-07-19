@@ -36,7 +36,17 @@ export type ClearPageMessage = {
     tabId: number
   }
 }
+
+export type TranslateHoveredTextMessage = {
+  type: 'page/translateHoveredText'
+}
 ```
+
+`translate-hovered-text` is also registered as an MV3 command. The background
+service worker uses the command's `activeTab` user gesture to inject the content
+runtime when needed, then delegates `page/translateHoveredText` to the page.
+The content runtime owns pointer tracking, sentence resolution, and the isolated
+translation note; provider and persistent-cache work remain in the background.
 
 ## Content to Background
 

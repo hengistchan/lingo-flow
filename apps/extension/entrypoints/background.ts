@@ -46,6 +46,14 @@ export default defineBackground(() => {
 
     return true
   })
+
+  chrome.commands.onCommand.addListener(command => {
+    if (command !== 'translate-hovered-text') return
+    activateHoveredTextTranslation().catch(() => {
+      // Restricted browser pages cannot be scripted. Keep the command silent;
+      // the shortcut works as soon as the user points at a normal web page.
+    })
+  })
 })
 
 async function handleMessage(message: LingoFlowMessage, _sender: chrome.runtime.MessageSender): Promise<unknown> {
@@ -93,6 +101,7 @@ async function handleMessage(message: LingoFlowMessage, _sender: chrome.runtime.
     case 'page/progressUpdate':
       return { received: true }
     case 'page/translate':
+    case 'page/translateHoveredText':
     case 'page/clear':
     case 'page/clearCache':
     case 'page/status':
@@ -108,6 +117,16 @@ async function handleMessage(message: LingoFlowMessage, _sender: chrome.runtime.
       throw new Error(`Unsupported LingoFlow message: ${(message as { type?: string }).type ?? 'unknown'}`)
     }
   }
+}
+
+async function activateHoveredTextTranslation(): Promise<void> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+  if (tab?.id === undefined) return
+  await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    files: ['lingoflow-content.js'],
+  })
+  await chrome.tabs.sendMessage(tab.id, { type: 'page/translateHoveredText' })
 }
 
 async function translateBatch(tasks: TranslationTask[]) {

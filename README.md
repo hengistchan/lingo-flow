@@ -41,6 +41,7 @@ LingoFlow is a **local-first**, **BYOK** (Bring Your Own Key), **provider-agnost
 - **User rules** — Define per-site rules for content roots, exclusions, and behavior
 - **Diagnostics** — Inspect rule matching, block collection, skip reasons, and translation status
 - **Dynamic translation** — Optionally translate new content as it appears (SPA navigation, infinite scroll)
+- **Pointer sentence translation** — Point to a sentence and press `Alt/Option + Shift + L` to translate it in a compact bilingual note
 
 ## Installation
 
@@ -74,6 +75,9 @@ Extract and load as unpacked, or upload to the Chrome Web Store.
 1. Click the LingoFlow icon in your browser toolbar
 2. Click **Translate to <language>** — done
 3. Click the gear icon to open Settings and configure your preferred provider
+
+To translate only the sentence under the mouse, point to it and press
+`Alt/Option + Shift + L`. Selected text takes priority when a selection is active.
 
 ## Development
 
