@@ -35,7 +35,7 @@ test('article fixture: translate, no duplicates on re-translate, clear restores 
   }
 })
 
-test('pointer shortcut translates only the hovered sentence', async () => {
+test('pointer command renders only the hovered sentence below its source block', async () => {
   const server = await startFixtureServer()
   const extension = await launchExtension({ allowLocalhost: true })
 
@@ -49,16 +49,25 @@ test('pointer shortcut translates only the hovered sentence', async () => {
     const box = await sentence.boundingBox()
     if (!box) throw new Error('Hover sentence was not visible.')
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-    await page.keyboard.press('Alt+Shift+L')
+    await translateHoveredText(extension)
 
-    const note = page.locator('[data-lingoflow-hover-card]')
-    await expect(note).toHaveAttribute('data-state', 'success', { timeout: 8_000 })
-    await expect(note.locator('.source')).toHaveText('Translate only this sentence under the pointer.')
-    await expect(note.locator('.translation')).toHaveText('訳: Translate only this sentence under the pointer.')
-    await expect(page.locator('[data-lingoflow-translation]')).toHaveCount(0)
+    const translation = page.locator('[data-lingoflow-partial-translation]')
+    await expect(translation).toHaveAttribute('data-lingoflow-partial-state', 'success', { timeout: 8_000 })
+    await expect(translation).toHaveText('訳: Translate only this sentence under the pointer.')
+    await expect(page.locator('[data-lingoflow-hover-card], [role="dialog"]')).toHaveCount(0)
+    await expect(page.locator('[data-lingoflow-translation]')).toHaveCount(1)
+    await expect(page.locator('p')).toHaveText(
+      'Keep this first sentence unchanged. Translate only this sentence under the pointer. Keep this final sentence unchanged.',
+    )
+    expect(await translation.evaluate(node =>
+      node.parentElement?.previousElementSibling?.tagName.toLowerCase(),
+    )).toBe('p')
 
-    await page.keyboard.press('Escape')
-    await expect(note).toHaveCount(0)
+    await translateHoveredText(extension)
+    await expect(page.locator('[data-lingoflow-partial-translation]')).toHaveCount(1)
+
+    await clearTranslation(extension)
+    await expect(page.locator('[data-lingoflow-partial-translation-group]')).toHaveCount(0)
   } finally {
     await extension.close()
     await server.close()
@@ -448,6 +457,14 @@ async function translate(extension: Awaited<typeof launchExtension>) {
       type: 'page/translate',
       payload: { targetLang: 'ja' },
     })
+  })
+}
+
+async function translateHoveredText(extension: Awaited<typeof launchExtension>) {
+  return extension.worker.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (!tab?.id) throw new Error('No active tab found.')
+    return chrome.tabs.sendMessage(tab.id, { type: 'page/translateHoveredText' })
   })
 }
 

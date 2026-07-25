@@ -120,6 +120,7 @@ export class RuntimeController {
 
     try {
       const settings = await this.sendRuntimeMessage<PublicRuntimeSettings>({ type: 'settings/getRuntime' })
+      this.hoverTranslation.dismiss()
       this.clearGeneratedNodes()
       const sourceLang = this.resolveLanguage(overrides.sourceLang, settings.sourceLang, getSourceLanguageOptions())
       const targetLang = this.resolveLanguage(overrides.targetLang, settings.targetLang, getTargetLanguageOptions())
@@ -406,6 +407,7 @@ export class RuntimeController {
   }
 
   private handleRouteChange(): void {
+    this.hoverTranslation.dismiss()
     for (const block of this.store.all()) {
       if (block.state === 'rendered' || block.state === 'translated' || block.state === 'cache-hit') {
         this.store.dispatch(block.id, 'MARK_STALE')

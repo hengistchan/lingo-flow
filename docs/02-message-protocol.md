@@ -45,8 +45,14 @@ export type TranslateHoveredTextMessage = {
 `translate-hovered-text` is also registered as an MV3 command. The background
 service worker uses the command's `activeTab` user gesture to inject the content
 runtime when needed, then delegates `page/translateHoveredText` to the page.
-The content runtime owns pointer tracking, sentence resolution, and the isolated
-translation note; provider and persistent-cache work remain in the background.
+The content runtime owns pointer tracking, sentence resolution, and inline
+rendering below the source block; provider and persistent-cache work remain in
+the background. Partial translations use the same generated wrapper, styling,
+and clear lifecycle as full-page translations and never create an overlay.
+The browser remains the source of truth for the command binding. Options reads
+the active value through `chrome.commands.getAll()` and opens
+`chrome://extensions/shortcuts` for changes; no duplicate shortcut is stored in
+`AppSettings` or listened for by the page runtime.
 
 ## Content to Background
 

@@ -97,6 +97,15 @@ export function migrateSettings(input?: SettingsInput): AppSettings {
     }
   }
   merged.providers = providers
+  if (!merged.providers[merged.defaultProviderId]) {
+    merged.defaultProviderId = DEFAULT_SETTINGS.defaultProviderId
+  }
+  if (
+    merged.fallbackProviderId === merged.defaultProviderId ||
+    (merged.fallbackProviderId && !merged.providers[merged.fallbackProviderId])
+  ) {
+    merged.fallbackProviderId = ''
+  }
 
   let version = input?.version ?? 0
 

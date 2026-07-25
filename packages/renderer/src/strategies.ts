@@ -177,14 +177,14 @@ export function createTranslationElement(
   return translation
 }
 
-function markGeneratedNode(element: HTMLElement, blockId: string) {
+export function markGeneratedNode(element: HTMLElement, blockId: string) {
   element.classList.add('notranslate')
   element.dataset.lingoflowGenerated = 'true'
   element.dataset.lingoflowBlockId = blockId
   element.setAttribute('translate', 'no')
 }
 
-function ensureTranslationInner(wrapper: HTMLElement, inline: boolean): HTMLElement {
+export function ensureTranslationInner(wrapper: HTMLElement, inline: boolean): HTMLElement {
   const existing = wrapper.querySelector('.lingoflow-translation-inner')
   if (existing instanceof HTMLElement) return existing
 
@@ -224,7 +224,7 @@ function findNestedList(source: HTMLElement): Element | null {
   }) ?? null
 }
 
-function findSafeBlockAncestor(source: HTMLElement): HTMLElement {
+export function findSafeBlockAncestor(source: HTMLElement): HTMLElement {
   if (!isInlineElement(source)) return source
 
   let current = source.parentElement

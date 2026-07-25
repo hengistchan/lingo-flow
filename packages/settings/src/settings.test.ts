@@ -222,6 +222,21 @@ describe('settings', () => {
     expect(migrateSettings({ translationConcurrency: 4 }).translationConcurrency).toBe(4)
   })
 
+  it('normalizes provider routing to a valid default and distinct fallback', () => {
+    expect(migrateSettings({
+      defaultProviderId: 'openai-compatible',
+      fallbackProviderId: 'openai-compatible',
+    }).fallbackProviderId).toBe('')
+
+    expect(migrateSettings({
+      defaultProviderId: 'missing-provider',
+      fallbackProviderId: 'also-missing',
+    })).toMatchObject({
+      defaultProviderId: 'google-free-translate',
+      fallbackProviderId: '',
+    })
+  })
+
   it('preserves custom provider configurations across save migrations', () => {
     const customProviderId = 'custom-local-llm'
     const migrated = migrateSettings({

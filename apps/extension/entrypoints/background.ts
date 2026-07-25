@@ -47,9 +47,9 @@ export default defineBackground(() => {
     return true
   })
 
-  chrome.commands.onCommand.addListener(command => {
+  chrome.commands.onCommand.addListener((command, tab) => {
     if (command !== 'translate-hovered-text') return
-    activateHoveredTextTranslation().catch(() => {
+    activateHoveredTextTranslation(tab).catch(() => {
       // Restricted browser pages cannot be scripted. Keep the command silent;
       // the shortcut works as soon as the user points at a normal web page.
     })
@@ -119,8 +119,8 @@ async function handleMessage(message: LingoFlowMessage, _sender: chrome.runtime.
   }
 }
 
-async function activateHoveredTextTranslation(): Promise<void> {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+async function activateHoveredTextTranslation(commandTab?: chrome.tabs.Tab): Promise<void> {
+  const tab = commandTab ?? (await chrome.tabs.query({ active: true, currentWindow: true }))[0]
   if (tab?.id === undefined) return
   await chrome.scripting.executeScript({
     target: { tabId: tab.id },

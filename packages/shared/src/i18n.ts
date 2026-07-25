@@ -25,10 +25,9 @@ export type UiCopyKey =
   | 'popup.noReadableText'
   | 'popup.genericFailure'
   | 'popup.loading'
-  | 'options.languages'
+  | 'options.general'
   | 'options.providers'
-  | 'options.storage'
-  | 'options.advanced'
+  | 'options.localData'
   | 'options.title'
   | 'options.subtitle'
   | 'options.save'
@@ -44,7 +43,15 @@ export type UiCopyKey =
   | 'options.connectionProviderFailed'
   | 'options.targetLanguage'
   | 'options.sourceLanguage'
+  | 'options.readingLanguages'
+  | 'options.readingLanguagesDescription'
+  | 'options.interface'
+  | 'options.interfaceDescription'
   | 'options.interfaceLanguage'
+  | 'options.interfaceTheme'
+  | 'options.themeSystem'
+  | 'options.themeLight'
+  | 'options.themeDark'
   | 'options.followBrowser'
   | 'options.autoDetect'
   | 'options.defaultProvider'
@@ -57,16 +64,23 @@ export type UiCopyKey =
   | 'options.region'
   | 'options.apiKey'
   | 'options.cacheEnabled'
+  | 'options.translationCache'
+  | 'options.cacheDescription'
+  | 'options.clearCacheDescription'
   | 'options.clearAllCache'
   | 'options.confirmClearAll'
   | 'options.cacheCleared'
-  | 'options.renderMode'
-  | 'options.belowOriginal'
   | 'options.maxCacheItems'
   | 'options.translationConcurrency'
+  | 'options.performance'
+  | 'options.performanceDescription'
   | 'options.hoverTranslation'
   | 'options.hoverTranslationDescription'
   | 'options.hoverTranslationShortcut'
+  | 'options.manageShortcut'
+  | 'options.shortcutUnassigned'
+  | 'options.shortcutManagedByBrowser'
+  | 'options.shortcutOpenFailed'
   | 'options.reasoningEffort'
   | 'options.reasoningAuto'
   | 'options.reasoningNone'
@@ -147,10 +161,9 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'popup.noReadableText': '此页面没有可翻译的正文',
     'popup.genericFailure': '无法翻译此页面，请检查设置后重试',
     'popup.loading': '正在加载…',
-    'options.languages': '语言',
+    'options.general': '通用',
     'options.providers': '翻译服务',
-    'options.storage': '存储',
-    'options.advanced': '高级设置',
+    'options.localData': '本地数据',
     'options.title': 'LingoFlow 设置',
     'options.subtitle': '管理阅读语言、翻译服务与本地存储。',
     'options.save': '保存设置',
@@ -166,7 +179,15 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.connectionProviderFailed': '翻译服务返回异常，请稍后重试。',
     'options.targetLanguage': '默认目标语言',
     'options.sourceLanguage': '默认源语言',
+    'options.readingLanguages': '阅读语言',
+    'options.readingLanguagesDescription': '设置网页原文的识别方式，以及默认翻译到哪种语言。',
+    'options.interface': '界面',
+    'options.interfaceDescription': '控制 LingoFlow 自身使用的语言与明暗外观。',
     'options.interfaceLanguage': '界面语言',
+    'options.interfaceTheme': '界面主题',
+    'options.themeSystem': '跟随系统',
+    'options.themeLight': '浅色',
+    'options.themeDark': '深色',
     'options.followBrowser': '跟随浏览器',
     'options.autoDetect': '自动检测',
     'options.defaultProvider': '默认翻译服务',
@@ -179,16 +200,23 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.region': '区域',
     'options.apiKey': 'API 密钥',
     'options.cacheEnabled': '启用本地翻译缓存',
+    'options.translationCache': '翻译缓存',
+    'options.cacheDescription': '译文缓存在当前浏览器中，用于减少重复请求；不会同步到云端。',
+    'options.clearCacheDescription': '删除所有网站的本地译文缓存。此操作不会删除翻译服务或站点规则。',
     'options.clearAllCache': '清除全部缓存',
     'options.confirmClearAll': '确认清除全部缓存',
     'options.cacheCleared': '全部翻译缓存已清除',
-    'options.renderMode': '译文显示方式',
-    'options.belowOriginal': '显示在原文下方',
     'options.maxCacheItems': '最大缓存条目数',
     'options.translationConcurrency': '并发翻译批次数',
+    'options.performance': '请求并发',
+    'options.performanceDescription': '同时发送更多批次可以加快长页面翻译，但可能更容易触发服务限流。',
     'options.hoverTranslation': '鼠标句段翻译',
-    'options.hoverTranslationDescription': '将鼠标指向文字并按快捷键，只翻译当前句段。选中文字时会优先翻译选区。',
-    'options.hoverTranslationShortcut': '页面快捷键',
+    'options.hoverTranslationDescription': '将鼠标指向文字并按快捷键，只翻译当前句段，译文会插入原文块下方。选中文字时会优先翻译选区。',
+    'options.hoverTranslationShortcut': '当前快捷键',
+    'options.manageShortcut': '在浏览器中修改',
+    'options.shortcutUnassigned': '未分配',
+    'options.shortcutManagedByBrowser': '快捷键由浏览器管理，修改后立即生效，不需要保存本页设置。',
+    'options.shortcutOpenFailed': '无法打开浏览器快捷键页面，请手动访问 chrome://extensions/shortcuts。',
     'options.reasoningEffort': '推理强度',
     'options.reasoningAuto': '自动',
     'options.reasoningNone': '关闭',
@@ -268,10 +296,9 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'popup.noReadableText': 'No readable text found on this page',
     'popup.genericFailure': 'This page could not be translated. Check settings and try again.',
     'popup.loading': 'Loading...',
-    'options.languages': 'Languages',
+    'options.general': 'General',
     'options.providers': 'Translation service',
-    'options.storage': 'Storage',
-    'options.advanced': 'Advanced',
+    'options.localData': 'Local data',
     'options.title': 'LingoFlow Settings',
     'options.subtitle': 'Manage reading languages, translation service, and local storage.',
     'options.save': 'Save settings',
@@ -287,7 +314,15 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.connectionProviderFailed': 'The provider returned an unexpected response. Try again.',
     'options.targetLanguage': 'Target language',
     'options.sourceLanguage': 'Source language',
+    'options.readingLanguages': 'Reading languages',
+    'options.readingLanguagesDescription': 'Choose how page text is detected and which language translations use by default.',
+    'options.interface': 'Interface',
+    'options.interfaceDescription': 'Choose the language and appearance used by LingoFlow itself.',
     'options.interfaceLanguage': 'Interface language',
+    'options.interfaceTheme': 'Interface theme',
+    'options.themeSystem': 'Follow system',
+    'options.themeLight': 'Light',
+    'options.themeDark': 'Dark',
     'options.followBrowser': 'Follow browser',
     'options.autoDetect': 'Auto-detect',
     'options.defaultProvider': 'Default provider',
@@ -300,16 +335,23 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.region': 'Region',
     'options.apiKey': 'API key',
     'options.cacheEnabled': 'Enable local translation cache',
+    'options.translationCache': 'Translation cache',
+    'options.cacheDescription': 'Translations stay in this browser to reduce repeat requests. They are never synced to the cloud.',
+    'options.clearCacheDescription': 'Delete cached translations for every site. Translation services and site rules are not affected.',
     'options.clearAllCache': 'Clear all cache',
     'options.confirmClearAll': 'Confirm clear all cache',
     'options.cacheCleared': 'All translation cache cleared',
-    'options.renderMode': 'Render mode',
-    'options.belowOriginal': 'Below original text',
     'options.maxCacheItems': 'Max cache items',
     'options.translationConcurrency': 'Concurrent translation batches',
+    'options.performance': 'Request concurrency',
+    'options.performanceDescription': 'More parallel batches can translate long pages faster, but may hit provider rate limits sooner.',
     'options.hoverTranslation': 'Pointer sentence translation',
-    'options.hoverTranslationDescription': 'Point to text and press the shortcut to translate only that sentence. Selected text takes priority.',
-    'options.hoverTranslationShortcut': 'Page shortcut',
+    'options.hoverTranslationDescription': 'Point to text and press the shortcut to translate only that sentence below its source block. Selected text takes priority.',
+    'options.hoverTranslationShortcut': 'Current shortcut',
+    'options.manageShortcut': 'Change in browser',
+    'options.shortcutUnassigned': 'Not assigned',
+    'options.shortcutManagedByBrowser': 'The browser owns this shortcut. Changes apply immediately and do not require saving this page.',
+    'options.shortcutOpenFailed': 'Could not open browser shortcut settings. Visit chrome://extensions/shortcuts manually.',
     'options.reasoningEffort': 'Reasoning effort',
     'options.reasoningAuto': 'Auto',
     'options.reasoningNone': 'None',

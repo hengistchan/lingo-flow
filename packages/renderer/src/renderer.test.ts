@@ -4,7 +4,14 @@ import {
   hideSourceNodes,
   restoreSourceNodes,
 } from './display-mode'
-import { clearTranslations, injectLingoFlowStyles, renderBelowOriginal, safeRender } from './index'
+import {
+  clearPartialTranslations,
+  clearTranslations,
+  injectLingoFlowStyles,
+  renderBelowOriginal,
+  renderPartialTranslation,
+  safeRender,
+} from './index'
 import { StrategyRegistry } from './registry'
 import {
   AfterBlockStrategy,
@@ -236,6 +243,102 @@ describe('renderer', () => {
     safeRender({ blockId: 'missing', translatedText: '不会抛出' })
 
     expect(document.querySelectorAll('#lingoflow-style')).toHaveLength(1)
+  })
+
+  it('renders a partial translation below its source block without a popup surface', () => {
+    document.body.innerHTML = '<p id="source">First sentence. Translate this sentence. Final sentence.</p>'
+    const source = document.querySelector('#source') as HTMLElement
+
+    renderPartialTranslation({
+      id: 'partial_1',
+      sourceElement: source,
+      sourceKey: 'source_1',
+      sourceOrder: 16,
+      translatedText: '翻译这个句子。',
+      targetLang: 'zh-Hans',
+      state: 'success',
+    })
+
+    const group = document.querySelector('[data-lingoflow-partial-translation-group="source_1"]') as HTMLElement
+    const translation = document.querySelector('[data-lingoflow-translation="partial_1"]') as HTMLElement
+    expect(group.previousElementSibling).toBe(source)
+    expect(translation.parentElement).toBe(group)
+    expect(translation.textContent).toBe('翻译这个句子。')
+    expect(translation.dataset.lingoflowPartialTranslation).toBe('true')
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('updates the same partial translation and orders multiple sentences by source offset', () => {
+    document.body.innerHTML = '<p id="source">One. Two. Three.</p>'
+    const source = document.querySelector('#source') as HTMLElement
+    const base = {
+      sourceElement: source,
+      sourceKey: 'source_1',
+      targetLang: 'zh-Hans',
+      state: 'success' as const,
+    }
+
+    renderPartialTranslation({ ...base, id: 'partial_2', sourceOrder: 10, translatedText: '第三。' })
+    renderPartialTranslation({ ...base, id: 'partial_1', sourceOrder: 5, translatedText: '第二。' })
+    renderPartialTranslation({ ...base, id: 'partial_1', sourceOrder: 5, translatedText: '第二句。' })
+
+    const translations = Array.from(document.querySelectorAll<HTMLElement>('[data-lingoflow-partial-translation]'))
+    expect(translations).toHaveLength(2)
+    expect(translations.map(node => node.dataset.lingoflowTranslation)).toEqual(['partial_1', 'partial_2'])
+    expect(translations[0].textContent).toBe('第二句。')
+  })
+
+  it('renders loading and error states inline and clears them with normal translations', () => {
+    document.body.innerHTML = '<li id="source">Translate this list sentence.</li>'
+    const source = document.querySelector('#source') as HTMLElement
+
+    const loading = renderPartialTranslation({
+      id: 'partial_1',
+      sourceElement: source,
+      sourceKey: 'source_1',
+      sourceOrder: 0,
+      state: 'loading',
+    })
+    expect(loading.parentElement?.parentElement).toBe(source)
+    expect(loading.querySelectorAll('.lingoflow-dot')).toHaveLength(3)
+
+    const failed = renderPartialTranslation({
+      id: 'partial_1',
+      sourceElement: source,
+      sourceKey: 'source_1',
+      sourceOrder: 0,
+      translatedText: 'Translation failed.',
+      state: 'error',
+    })
+    expect(failed.classList.contains('lingoflow-error')).toBe(true)
+    expect(failed.getAttribute('role')).toBe('alert')
+
+    clearTranslations()
+    expect(document.querySelector('[data-lingoflow-partial-translation-group]')).toBeNull()
+    expect(source.textContent).toBe('Translate this list sentence.')
+  })
+
+  it('styles and clears partial translations inside open shadow roots', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const shadow = host.attachShadow({ mode: 'open' })
+    shadow.innerHTML = '<p id="source">Translate this shadow sentence.</p>'
+    const source = shadow.querySelector('#source') as HTMLElement
+
+    renderPartialTranslation({
+      id: 'partial_shadow',
+      sourceElement: source,
+      sourceKey: 'source_shadow',
+      sourceOrder: 0,
+      translatedText: '翻译这个影子段落。',
+      state: 'success',
+    })
+
+    expect(shadow.querySelector('#lingoflow-style')).not.toBeNull()
+    expect(shadow.querySelector('[data-lingoflow-partial-translation-group]')?.previousElementSibling).toBe(source)
+
+    clearPartialTranslations(document)
+    expect(shadow.querySelector('[data-lingoflow-partial-translation-group]')).toBeNull()
   })
 })
 

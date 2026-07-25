@@ -18,7 +18,6 @@ export { RenderCoordinator } from './render-coordinator'
 export { PageObserver } from './observer'
 export {
   HoverTranslationController,
-  isHoverTranslationShortcut,
   resolveHoveredText,
   resolveTextAtPoint,
   segmentSentenceAtOffset,

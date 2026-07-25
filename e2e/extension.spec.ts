@@ -32,7 +32,18 @@ test('installed extension renders popup and options with real extension APIs', a
 
     await options.goto(extension.url('options.html'))
     await expect(options).toHaveTitle('LingoFlow Settings')
-    await expect(options.getByRole('heading', { name: 'Languages' })).toBeVisible()
+    await expect(options.getByRole('heading', { name: 'General' })).toBeVisible()
+    const commandShortcut = await options.evaluate(async () => {
+      const command = (await chrome.commands.getAll()).find(entry => entry.name === 'translate-hovered-text')
+      return command?.shortcut ?? ''
+    })
+    await expect(options.locator('kbd')).toHaveText(commandShortcut ? formatShortcutForDisplay(commandShortcut) : 'Not assigned')
+    const shortcutsPagePromise = extension.context.waitForEvent('page')
+    await options.getByRole('button', { name: 'Change in browser' }).click()
+    const shortcutsPage = await shortcutsPagePromise
+    await expect.poll(() => shortcutsPage.url()).toContain('chrome://extensions/shortcuts')
+    await shortcutsPage.close()
+    await options.bringToFront()
 
     await options.getByLabel('Target language').selectOption('zh-Hant')
     await expect(options.getByRole('button', { name: 'Save settings' })).toBeEnabled()
@@ -897,7 +908,7 @@ test('installed extension reuses cache and current-site cleanup forces a fresh p
     expect(third).toMatchObject({ ok: true, data: { status: 'done', cacheHits: 0 } })
     expect(articleServer.providerRequestCount()).toBe(2)
 
-    await extensionPage.getByRole('button', { name: 'Storage' }).click()
+    await extensionPage.getByRole('button', { name: 'Local data' }).click()
     await extensionPage.getByRole('button', { name: 'Clear all cache' }).click()
     await extensionPage.getByRole('button', { name: 'Confirm clear all cache' }).click()
     await expect(extensionPage.getByText('All translation cache cleared')).toBeVisible()
@@ -1302,6 +1313,18 @@ function readBuiltJavaScriptFiles(dir = builtExtensionPath): Array<{ path: strin
     if (!entry.isFile() || !entry.name.endsWith('.js')) return []
     return [{ path: filePath, content: readFileSync(filePath, 'utf-8') }]
   })
+}
+
+function formatShortcutForDisplay(shortcut: string): string {
+  return shortcut
+    .replace('⌘', 'Command+')
+    .replace('⌥', 'Option+')
+    .replace('⇧', 'Shift+')
+    .replace('⌃', 'Control+')
+    .replace(/\+$/, '')
+    .split('+')
+    .filter(Boolean)
+    .join(' + ')
 }
 
 function collectRuntimeErrors(page: Page) {

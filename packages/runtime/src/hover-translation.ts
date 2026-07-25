@@ -1,11 +1,11 @@
 import { buildTranslationCacheKey } from '@lingoflow/cache'
+import { clearPartialTranslations, renderPartialTranslation } from '@lingoflow/renderer'
 import { getDomain, normalizeText, sha256 } from '@lingoflow/shared'
 import type {
   MessageResponse,
   PublicRuntimeSettings,
   TranslationResult,
   TranslationTask,
-  UiLocale,
 } from '@lingoflow/types'
 
 const TEXT_CONTAINER_SELECTOR = [
@@ -36,15 +36,16 @@ const EXCLUDED_SELECTOR = [
   'code',
   '[contenteditable="true"]',
   '[data-lingoflow-generated]',
-  '[data-lingoflow-hover-card]',
 ].join(',')
 
-const MAX_HOVER_TEXT_LENGTH = 1200
+const MAX_PARTIAL_TEXT_LENGTH = 1200
 
 export type HoverTextHit = {
   text: string
   container: HTMLElement
-  anchor: { x: number; y: number }
+  start: number
+  end: number
+  point: { x: number; y: number }
   source: 'caret' | 'hover-element' | 'selection'
 }
 
@@ -63,35 +64,34 @@ type HoverTranslationDependencies = {
 export class HoverTranslationController {
   private readonly document: Document
   private readonly runtime: RuntimeMessenger
-  private readonly popover: HoverTranslationPopover
+  private readonly sourceKeys = new WeakMap<HTMLElement, string>()
+  private readonly requestVersions = new Map<string, number>()
   private pointer: { x: number; y: number } | null = null
   private started = false
-  private requestGeneration = 0
+  private sourceSequence = 0
+  private requestSequence = 0
 
   constructor(dependencies: HoverTranslationDependencies = {}) {
     this.document = dependencies.document ?? document
     this.runtime = dependencies.chromeRuntime ?? chrome.runtime
-    this.popover = new HoverTranslationPopover(this.document)
   }
 
   start(): void {
     if (this.started) return
     this.started = true
     this.document.addEventListener('pointermove', this.handlePointerMove, { passive: true, capture: true })
-    this.document.addEventListener('keydown', this.handleKeyDown, true)
   }
 
   stop(): void {
     if (!this.started) return
     this.started = false
     this.document.removeEventListener('pointermove', this.handlePointerMove, true)
-    this.document.removeEventListener('keydown', this.handleKeyDown, true)
     this.dismiss()
   }
 
   dismiss(): void {
-    this.requestGeneration += 1
-    this.popover.dismiss()
+    this.requestVersions.clear()
+    clearPartialTranslations(this.document)
   }
 
   async translateHoveredText(): Promise<{
@@ -101,26 +101,49 @@ export class HoverTranslationController {
     fromCache?: boolean
   }> {
     const hit = this.resolveCurrentHit()
-    if (!hit) {
-      this.popover.showNoText(this.pointer ?? viewportCenter(this.document))
-      return { status: 'no-text' }
-    }
+    if (!hit) return { status: 'no-text' }
 
-    const generation = ++this.requestGeneration
-    this.popover.showLoading(hit)
+    const sourceKey = this.getSourceKey(hit.container)
+    const translationId = `partial_${sourceKey}_${hit.start}_${hit.end}`
+    const requestVersion = ++this.requestSequence
+    this.requestVersions.set(translationId, requestVersion)
+    this.render(hit, {
+      id: translationId,
+      sourceKey,
+      state: 'loading',
+    })
 
     try {
       const settings = await this.sendMessage<PublicRuntimeSettings>({ type: 'settings/getRuntime' })
-      const task = await createHoverTranslationTask(hit.text, settings, this.document.location.href, generation)
+      const task = await createHoverTranslationTask(
+        translationId,
+        hit.text,
+        settings,
+        this.document.location.href,
+        requestVersion,
+      )
       const result = await this.resolveTranslation(task, settings)
 
-      if (generation !== this.requestGeneration) return { status: 'stale', sourceText: hit.text }
+      if (!this.isCurrentRequest(translationId, requestVersion)) {
+        return { status: 'stale', sourceText: hit.text }
+      }
       if (result.status === 'failed') {
-        this.popover.showError(hit, result.error.message)
+        this.render(hit, {
+          id: translationId,
+          sourceKey,
+          state: 'error',
+          translatedText: partialTranslationError(this.document, result.error.message),
+        })
         return { status: 'failed', sourceText: hit.text }
       }
 
-      this.popover.showTranslation(hit, result.translatedText, settings.targetLang)
+      this.render(hit, {
+        id: translationId,
+        sourceKey,
+        state: 'success',
+        translatedText: result.translatedText,
+        targetLang: settings.targetLang,
+      })
       return {
         status: 'success',
         sourceText: hit.text,
@@ -128,27 +151,28 @@ export class HoverTranslationController {
         fromCache: result.fromCache,
       }
     } catch (error) {
-      if (generation !== this.requestGeneration) return { status: 'stale', sourceText: hit.text }
-      this.popover.showError(hit, error instanceof Error ? error.message : String(error))
+      if (!this.isCurrentRequest(translationId, requestVersion)) {
+        return { status: 'stale', sourceText: hit.text }
+      }
+      this.render(hit, {
+        id: translationId,
+        sourceKey,
+        state: 'error',
+        translatedText: partialTranslationError(
+          this.document,
+          error instanceof Error ? error.message : String(error),
+        ),
+      })
       return { status: 'failed', sourceText: hit.text }
+    } finally {
+      if (this.isCurrentRequest(translationId, requestVersion)) {
+        this.requestVersions.delete(translationId)
+      }
     }
   }
 
   private readonly handlePointerMove = (event: PointerEvent): void => {
     this.pointer = { x: event.clientX, y: event.clientY }
-  }
-
-  private readonly handleKeyDown = (event: KeyboardEvent): void => {
-    if (event.key === 'Escape' && this.popover.isVisible()) {
-      event.preventDefault()
-      this.dismiss()
-      return
-    }
-
-    if (!isHoverTranslationShortcut(event) || isEditableTarget(event.target)) return
-    event.preventDefault()
-    event.stopPropagation()
-    void this.translateHoveredText()
   }
 
   private resolveCurrentHit(): HoverTextHit | null {
@@ -157,8 +181,38 @@ export class HoverTranslationController {
     if (this.pointer) {
       const caretHit = resolveTextAtPoint(this.document, this.pointer.x, this.pointer.y)
       if (caretHit) return caretHit
+      return resolveHoveredText(this.document, this.pointer)
     }
-    return resolveHoveredText(this.document, this.pointer ?? viewportCenter(this.document))
+    return null
+  }
+
+  private getSourceKey(container: HTMLElement): string {
+    const existing = this.sourceKeys.get(container)
+    if (existing) return existing
+    const key = `source_${++this.sourceSequence}`
+    this.sourceKeys.set(container, key)
+    return key
+  }
+
+  private isCurrentRequest(translationId: string, requestVersion: number): boolean {
+    return this.requestVersions.get(translationId) === requestVersion
+  }
+
+  private render(
+    hit: HoverTextHit,
+    input: {
+      id: string
+      sourceKey: string
+      state: 'loading' | 'success' | 'error'
+      translatedText?: string
+      targetLang?: string
+    },
+  ): void {
+    renderPartialTranslation({
+      ...input,
+      sourceElement: hit.container,
+      sourceOrder: hit.start,
+    })
   }
 
   private async resolveTranslation(
@@ -195,18 +249,6 @@ export class HoverTranslationController {
   }
 }
 
-export function isHoverTranslationShortcut(event: Pick<KeyboardEvent, 'altKey' | 'shiftKey' | 'ctrlKey' | 'metaKey' | 'code' | 'repeat' | 'isComposing'>): boolean {
-  return (
-    event.altKey &&
-    event.shiftKey &&
-    !event.ctrlKey &&
-    !event.metaKey &&
-    event.code === 'KeyL' &&
-    !event.repeat &&
-    !event.isComposing
-  )
-}
-
 export function segmentSentenceAtOffset(text: string, offset: number): { text: string; start: number; end: number } | null {
   if (!text) return null
   const safeOffset = Math.max(0, Math.min(offset, text.length))
@@ -234,7 +276,7 @@ export function resolveTextAtPoint(document: Document, x: number, y: number): Ho
   const container = findTextContainer(caret.node)
   if (!container) return null
 
-  const rawText = container.textContent ?? ''
+  const rawText = readSourceText(container)
   const offset = getTextOffset(container, caret.node, caret.offset)
   if (offset === null) return null
   const sentence = segmentSentenceAtOffset(rawText, offset)
@@ -243,33 +285,43 @@ export function resolveTextAtPoint(document: Document, x: number, y: number): Ho
   return {
     text: sentence.text,
     container,
-    anchor: { x, y },
+    start: sentence.start,
+    end: sentence.end,
+    point: { x, y },
     source: 'caret',
   }
 }
 
-export function resolveHoveredText(document: Document, anchor: { x: number; y: number }): HoverTextHit | null {
+export function resolveHoveredText(document: Document, point: { x: number; y: number }): HoverTextHit | null {
   let hovered: Element | null = null
   try {
     const hoveredElements = document.querySelectorAll(':hover')
     hovered = hoveredElements.item(hoveredElements.length - 1)
   } catch {
-    hovered = document.elementFromPoint?.(anchor.x, anchor.y) ?? null
+    hovered = document.elementFromPoint?.(point.x, point.y) ?? null
   }
-  if (!hovered) hovered = document.elementFromPoint?.(anchor.x, anchor.y) ?? null
+  if (!hovered) hovered = document.elementFromPoint?.(point.x, point.y) ?? null
   if (!hovered) return null
   const container = findTextContainer(hovered)
   if (!container) return null
-  const text = normalizeText(container.textContent ?? '').slice(0, MAX_HOVER_TEXT_LENGTH)
+  const text = normalizeText(readSourceText(container)).slice(0, MAX_PARTIAL_TEXT_LENGTH)
   if (text.length < 2) return null
-  return { text, container, anchor, source: 'hover-element' }
+  return {
+    text,
+    container,
+    start: 0,
+    end: text.length,
+    point,
+    source: 'hover-element',
+  }
 }
 
 async function createHoverTranslationTask(
+  translationId: string,
   sourceText: string,
   settings: PublicRuntimeSettings,
   pageUrl: string,
-  generation: number,
+  requestVersion: number,
 ): Promise<TranslationTask> {
   const normalizedText = normalizeText(sourceText)
   const textHash = await sha256(normalizedText)
@@ -282,12 +334,12 @@ async function createHoverTranslationTask(
     promptVersion: settings.promptVersion,
     normalizeVersion: settings.normalizeVersion,
   })
-  const runId = `hover_${Date.now()}_${generation}`
+  const runId = `partial_${Date.now()}_${requestVersion}`
   const domain = getDomain(pageUrl)
 
   return {
-    id: `task_hover_${textHash.slice(0, 12)}_${generation}`,
-    blockId: `hover_${textHash.slice(0, 12)}`,
+    id: `task_${translationId}_${requestVersion}`,
+    blockId: translationId,
     sourceText: normalizedText,
     requestText: normalizedText,
     normalizedText,
@@ -305,27 +357,41 @@ async function createHoverTranslationTask(
     meta: {
       url: pageUrl,
       domain,
-      ruleId: 'hover-shortcut',
+      ruleId: 'pointer-sentence',
       runId,
       rootGeneration: 0,
     },
   }
 }
 
-function resolveSelectedText(document: Document, pointer: { x: number; y: number } | null): HoverTextHit | null {
+function resolveSelectedText(
+  document: Document,
+  pointer: { x: number; y: number } | null,
+): HoverTextHit | null {
   const selection = document.getSelection?.()
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null
-  const text = normalizeText(selection.toString()).slice(0, MAX_HOVER_TEXT_LENGTH)
-  if (text.length < 2) return null
   const range = selection.getRangeAt(0)
-  const container = findTextContainer(range.commonAncestorContainer)
-  if (!container) return null
+  const startContainer = findTextContainer(range.startContainer)
+  const endContainer = findTextContainer(range.endContainer)
+  if (!startContainer || startContainer !== endContainer) return null
+
+  const text = normalizeText(selection.toString()).slice(0, MAX_PARTIAL_TEXT_LENGTH)
+  if (text.length < 2) return null
+  const start = getTextOffset(startContainer, range.startContainer, range.startOffset) ?? 0
+  const rawEnd = getTextOffset(startContainer, range.endContainer, range.endOffset) ?? start + text.length
   const rect = range.getBoundingClientRect?.()
-  const anchor = pointer ?? {
-    x: rect ? rect.left + rect.width / 2 : 24,
-    y: rect ? rect.bottom : 24,
+  const point = pointer ?? {
+    x: rect ? rect.left + rect.width / 2 : 0,
+    y: rect ? rect.bottom : 0,
   }
-  return { text, container, anchor, source: 'selection' }
+  return {
+    text,
+    container: startContainer,
+    start,
+    end: Math.max(start + text.length, rawEnd),
+    point,
+    source: 'selection',
+  }
 }
 
 function resolveCaret(document: Document, x: number, y: number): { node: Node; offset: number } | null {
@@ -355,6 +421,12 @@ function getTextOffset(container: HTMLElement, node: Node, offset: number): numb
   }
 }
 
+function readSourceText(container: HTMLElement): string {
+  const clone = container.cloneNode(true) as HTMLElement
+  clone.querySelectorAll('[data-lingoflow-generated]').forEach(node => node.remove())
+  return clone.textContent ?? ''
+}
+
 function trimSegment(segment: string, index: number): { text: string; start: number; end: number } | null {
   const leading = segment.match(/^\s*/)?.[0].length ?? 0
   const trailing = segment.match(/\s*$/)?.[0].length ?? 0
@@ -364,237 +436,15 @@ function trimSegment(segment: string, index: number): { text: string; start: num
   return text.length >= 2 ? { text, start, end } : null
 }
 
-function isEditableTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && !!target.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')
-}
-
-function viewportCenter(document: Document): { x: number; y: number } {
-  const view = document.defaultView
-  return { x: (view?.innerWidth ?? 360) / 2, y: (view?.innerHeight ?? 240) / 2 }
-}
-
-class HoverTranslationPopover {
-  private readonly document: Document
-  private host: HTMLElement | null = null
-  private shadow: ShadowRoot | null = null
-
-  constructor(document: Document) {
-    this.document = document
+function partialTranslationError(document: Document, error: string): string {
+  const providerMissing = /config|provider|api key/i.test(error)
+  const chinese = /^zh\b/i.test(document.defaultView?.navigator.language ?? '')
+  if (chinese) {
+    return providerMissing
+      ? '请先在 LingoFlow 设置中配置翻译服务。'
+      : '句段翻译失败，请检查翻译服务后重试。'
   }
-
-  isVisible(): boolean {
-    return !!this.host?.isConnected
-  }
-
-  dismiss(): void {
-    this.host?.remove()
-    this.host = null
-    this.shadow = null
-  }
-
-  showLoading(hit: HoverTextHit): void {
-    const copy = getPopoverCopy(this.document)
-    this.render({
-      state: 'loading',
-      anchor: hit.anchor,
-      eyebrow: copy.sentence,
-      sourceText: hit.text,
-      translatedText: copy.translating,
-    })
-  }
-
-  showTranslation(hit: HoverTextHit, translatedText: string, targetLang: string): void {
-    const copy = getPopoverCopy(this.document)
-    this.render({
-      state: 'success',
-      anchor: hit.anchor,
-      eyebrow: `${copy.sentence} · ${targetLang}`,
-      sourceText: hit.text,
-      translatedText,
-    })
-  }
-
-  showNoText(anchor: { x: number; y: number }): void {
-    const copy = getPopoverCopy(this.document)
-    this.render({
-      state: 'error',
-      anchor,
-      eyebrow: copy.sentence,
-      sourceText: '',
-      translatedText: copy.noText,
-    })
-  }
-
-  showError(hit: HoverTextHit, error: string): void {
-    const copy = getPopoverCopy(this.document)
-    const providerMissing = /config|provider|api key/i.test(error)
-    this.render({
-      state: 'error',
-      anchor: hit.anchor,
-      eyebrow: copy.sentence,
-      sourceText: hit.text,
-      translatedText: providerMissing ? copy.configureProvider : copy.failed,
-    })
-  }
-
-  private render(input: {
-    state: 'loading' | 'success' | 'error'
-    anchor: { x: number; y: number }
-    eyebrow: string
-    sourceText: string
-    translatedText: string
-  }): void {
-    this.ensureHost()
-    if (!this.host || !this.shadow) return
-    this.host.dataset.state = input.state
-    this.shadow.replaceChildren(createPopoverStyle(this.document), createPopoverCard(this.document, input, () => this.dismiss()))
-    positionHost(this.host, input.anchor, this.document)
-  }
-
-  private ensureHost(): void {
-    if (this.host?.isConnected) return
-    this.host = this.document.createElement('div')
-    this.host.dataset.lingoflowHoverCard = 'true'
-    this.host.dataset.lingoflowGenerated = 'true'
-    this.host.style.position = 'fixed'
-    this.host.style.zIndex = '2147483647'
-    this.host.style.display = 'block'
-    this.shadow = this.host.attachShadow({ mode: 'open' })
-    this.document.documentElement.appendChild(this.host)
-  }
-}
-
-function createPopoverCard(
-  document: Document,
-  input: { state: string; eyebrow: string; sourceText: string; translatedText: string },
-  onClose: () => void,
-): HTMLElement {
-  const card = document.createElement('aside')
-  card.className = 'card'
-  card.setAttribute('role', 'dialog')
-  card.setAttribute('aria-live', 'polite')
-  card.setAttribute('aria-label', 'LingoFlow hover translation')
-
-  const header = document.createElement('div')
-  header.className = 'header'
-  const eyebrow = document.createElement('span')
-  eyebrow.className = 'eyebrow'
-  eyebrow.textContent = `LINGOFLOW / ${input.eyebrow}`
-  const close = document.createElement('button')
-  close.className = 'close'
-  close.type = 'button'
-  close.setAttribute('aria-label', 'Close translation')
-  close.textContent = '×'
-  close.addEventListener('click', onClose)
-  header.append(eyebrow, close)
-  card.appendChild(header)
-
-  if (input.sourceText) {
-    const source = document.createElement('p')
-    source.className = 'source'
-    source.textContent = input.sourceText
-    card.appendChild(source)
-  }
-
-  const divider = document.createElement('div')
-  divider.className = 'divider'
-  const translation = document.createElement('p')
-  translation.className = `translation ${input.state}`
-  translation.textContent = input.translatedText
-  card.append(divider, translation)
-  return card
-}
-
-function createPopoverStyle(document: Document): HTMLStyleElement {
-  const style = document.createElement('style')
-  style.textContent = `
-    :host { all: initial; color-scheme: light dark; }
-    .card {
-      box-sizing: border-box;
-      width: min(360px, calc(100vw - 24px));
-      max-height: min(420px, calc(100vh - 24px));
-      overflow: auto;
-      position: relative;
-      margin: 0;
-      border: 1px solid #e0dbd3;
-      border-left: 4px solid #c05a2e;
-      border-radius: 0;
-      background: #faf8f5;
-      color: #1a1a1a;
-      box-shadow: 0 14px 38px rgba(42, 34, 28, 0.18), 0 2px 8px rgba(42, 34, 28, 0.08);
-      padding: 14px 16px 16px;
-      font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-      animation: lf-note-in 140ms ease-out;
-    }
-    .card::before {
-      content: "";
-      position: absolute;
-      left: -12px;
-      top: 20px;
-      width: 8px;
-      height: 1px;
-      background: #c05a2e;
-    }
-    .header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .eyebrow { color: #6b6560; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
-    .close { appearance: none; border: 0; background: transparent; color: #6b6560; padding: 0; width: 24px; height: 24px; cursor: pointer; font: 20px/1 system-ui, sans-serif; }
-    .close:hover, .close:focus-visible { color: #c05a2e; outline: none; }
-    .source, .translation { margin: 0; overflow-wrap: anywhere; }
-    .source { padding-top: 10px; color: #6b6560; font: 13px/1.55 Georgia, "Noto Serif", "Source Han Serif SC", "Songti SC", serif; }
-    .divider { width: 34px; height: 1px; margin: 12px 0 10px; background: #c05a2e; }
-    .translation { color: #1a1a1a; font: 16px/1.6 Georgia, "Noto Serif", "Source Han Serif SC", "Songti SC", serif; }
-    .translation.loading { color: #6b6560; font-family: system-ui, sans-serif; font-size: 13px; }
-    .translation.error { color: #9b3b2a; font-family: system-ui, sans-serif; font-size: 13px; }
-    @keyframes lf-note-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-    @media (prefers-reduced-motion: reduce) { .card { animation: none; } }
-    @media (prefers-color-scheme: dark) {
-      .card { background: #1c1b19; color: #e8e4de; border-color: #3a3830; border-left-color: #d4764e; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.42); }
-      .card::before, .divider { background: #d4764e; }
-      .eyebrow, .close, .source, .translation.loading { color: #9e978c; }
-      .translation { color: #e8e4de; }
-      .translation.error { color: #e18b69; }
-      .close:hover, .close:focus-visible { color: #d4764e; }
-    }
-  `
-  return style
-}
-
-function positionHost(host: HTMLElement, anchor: { x: number; y: number }, document: Document): void {
-  const view = document.defaultView
-  const viewportWidth = view?.innerWidth ?? 1024
-  const viewportHeight = view?.innerHeight ?? 768
-  const width = Math.min(360, viewportWidth - 24)
-  const estimatedHeight = Math.min(host.shadowRoot?.querySelector('.card')?.scrollHeight ?? 220, viewportHeight - 24)
-  const left = Math.max(12, Math.min(anchor.x + 16, viewportWidth - width - 12))
-  const below = anchor.y + 18
-  const top = below + estimatedHeight <= viewportHeight - 12
-    ? below
-    : Math.max(12, anchor.y - estimatedHeight - 18)
-  host.style.left = `${left}px`
-  host.style.top = `${top}px`
-}
-
-function getPopoverCopy(document: Document): {
-  sentence: string
-  translating: string
-  noText: string
-  configureProvider: string
-  failed: string
-} {
-  const locale: UiLocale = /^zh\b/i.test(document.defaultView?.navigator.language ?? '') ? 'zh-Hans' : 'en'
-  return locale === 'zh-Hans'
-    ? {
-        sentence: '句段翻译',
-        translating: '正在翻译鼠标所指句段…',
-        noText: '请将鼠标指向可阅读文字后再按快捷键。',
-        configureProvider: '请先在 LingoFlow 设置中配置翻译服务。',
-        failed: '翻译失败，请检查翻译服务后重试。',
-      }
-    : {
-        sentence: 'Sentence translation',
-        translating: 'Translating the text under your pointer…',
-        noText: 'Point to readable text, then press the shortcut again.',
-        configureProvider: 'Configure a translation provider in LingoFlow settings.',
-        failed: 'Translation failed. Check the provider and try again.',
-      }
+  return providerMissing
+    ? 'Configure a translation provider in LingoFlow settings.'
+    : 'Sentence translation failed. Check the provider and try again.'
 }

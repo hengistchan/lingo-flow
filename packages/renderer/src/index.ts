@@ -2,7 +2,12 @@ import type { InsertionPlan, TranslationInsertion } from '@lingoflow/types'
 import { findAllShadowRoots } from '@lingoflow/shared'
 import { restoreSourceNodes } from './display-mode'
 import { defaultStrategyRegistry } from './registry'
-import { createTranslationElement } from './strategies'
+import {
+  createTranslationElement,
+  ensureTranslationInner,
+  findSafeBlockAncestor,
+  markGeneratedNode,
+} from './strategies'
 
 export * from './display-mode'
 export * from './registry'
@@ -15,11 +20,23 @@ export type RenderInput = {
   targetLang?: string
 }
 
-export function injectLingoFlowStyles(root: Document = document) {
+export type PartialTranslationRenderInput = {
+  id: string
+  sourceElement: HTMLElement
+  sourceKey: string
+  sourceOrder: number
+  translatedText?: string
+  targetLang?: string
+  state: 'loading' | 'success' | 'error'
+}
+
+export function injectLingoFlowStyles(root: Document | ShadowRoot = document) {
   if (typeof root.getElementById !== 'function') return
   if (root.getElementById('lingoflow-style')) return
 
-  const style = root.createElement('style')
+  const isDocument = root.nodeType === 9
+  const ownerDocument = (isDocument ? root : root.ownerDocument) as Document
+  const style = ownerDocument.createElement('style')
   style.id = 'lingoflow-style'
   style.textContent = `
     .lingoflow-translation {
@@ -46,6 +63,9 @@ export function injectLingoFlowStyles(root: Document = document) {
     }
     .lingoflow-translation-inner {
       white-space: pre-wrap;
+    }
+    .lingoflow-partial-translation-group {
+      display: block;
     }
     .lingoflow-loading {
       opacity: 0.5;
@@ -81,7 +101,8 @@ export function injectLingoFlowStyles(root: Document = document) {
     }
   `
 
-  root.documentElement.appendChild(style)
+  if (isDocument) (root as Document).documentElement.appendChild(style)
+  else root.appendChild(style)
 }
 
 export function renderBelowOriginal(input: RenderInput, root: Document = document) {
@@ -123,6 +144,38 @@ export function safeRender(input: RenderInput, root: Document = document) {
   }
 }
 
+export function renderPartialTranslation(input: PartialTranslationRenderInput): HTMLElement {
+  const nodeRoot = input.sourceElement.getRootNode()
+  const root = isShadowRoot(nodeRoot) ? nodeRoot : input.sourceElement.ownerDocument
+  injectLingoFlowStyles(root)
+
+  const group = findOrCreatePartialTranslationGroup(input, root)
+  let translation = Array.from(group.children).find(
+    (child): child is HTMLElement =>
+      child instanceof HTMLElement && child.dataset.lingoflowTranslation === input.id,
+  )
+
+  if (!(translation instanceof HTMLElement)) {
+    translation = createTranslationElement({
+      id: input.id,
+      translatedText: input.translatedText,
+      targetLang: input.targetLang ?? '',
+    }, input.sourceElement.ownerDocument, false)
+    preparePartialTranslationElement(translation, input)
+  }
+
+  updatePartialTranslationElement(translation, input)
+  insertPartialTranslationInOrder(group, translation, input.sourceOrder)
+  return translation
+}
+
+export function clearPartialTranslations(root: Document | ShadowRoot = document): void {
+  const roots = [root, ...findNestedShadowRoots(root)]
+  for (const currentRoot of roots) {
+    currentRoot.querySelectorAll('[data-lingoflow-partial-translation-group]').forEach(node => node.remove())
+  }
+}
+
 export function clearTranslations(root: Document = document) {
   restoreSourceNodes(Array.from(root.querySelectorAll<HTMLElement>('[data-lingoflow-source-hidden="true"]')))
 
@@ -143,6 +196,101 @@ export function clearTranslations(root: Document = document) {
       node.removeAttribute('data-lingoflow-block-id')
     }
   })
+}
+
+function findOrCreatePartialTranslationGroup(
+  input: PartialTranslationRenderInput,
+  root: Document | ShadowRoot,
+): HTMLElement {
+  const existing = Array.from(root.querySelectorAll<HTMLElement>('[data-lingoflow-partial-translation-group]'))
+    .find(group => group.dataset.lingoflowPartialTranslationGroup === input.sourceKey)
+  if (existing) return existing
+
+  const group = input.sourceElement.ownerDocument.createElement('div')
+  group.className = 'lingoflow-partial-translation-group notranslate'
+  group.dataset.lingoflowPartialTranslationGroup = input.sourceKey
+  group.dataset.lingoflowGenerated = 'true'
+  group.setAttribute('translate', 'no')
+  insertPartialTranslationGroup(input.sourceElement, group)
+  return group
+}
+
+function insertPartialTranslationGroup(source: HTMLElement, group: HTMLElement): void {
+  const tagName = source.tagName.toLowerCase()
+  if (tagName === 'li') {
+    const nestedList = Array.from(source.children).find(child => {
+      const childTag = child.tagName.toLowerCase()
+      return childTag === 'ul' || childTag === 'ol'
+    })
+    if (nestedList) source.insertBefore(group, nestedList)
+    else source.appendChild(group)
+    return
+  }
+
+  if (tagName === 'td' || tagName === 'th' || tagName === 'figcaption') {
+    source.appendChild(group)
+    return
+  }
+
+  const block = findSafeBlockAncestor(source)
+  if (block.parentNode) block.parentNode.insertBefore(group, block.nextSibling)
+  else block.appendChild(group)
+}
+
+function preparePartialTranslationElement(
+  translation: HTMLElement,
+  input: PartialTranslationRenderInput,
+): void {
+  const placement = inferInsertionFromElement(input.sourceElement)
+  translation.dataset.lingoflowTranslation = input.id
+  translation.dataset.lingoflowPartialTranslation = 'true'
+  translation.dataset.lingoflowMode = 'dual'
+  translation.dataset.lingoflowPosition = placement
+  translation.dataset.lingoflowTheme = 'system'
+  translation.classList.add(
+    'lingoflow-translation',
+    'lingoflow-translation-block',
+    'lingoflow-translation-wrapper',
+    'lingoflow-translation-wrapper-block',
+  )
+  markGeneratedNode(translation, input.id)
+}
+
+function updatePartialTranslationElement(
+  translation: HTMLElement,
+  input: PartialTranslationRenderInput,
+): void {
+  translation.dataset.lingoflowPartialOrder = String(input.sourceOrder)
+  translation.dataset.lingoflowPartialState = input.state
+  translation.classList.toggle('lingoflow-loading', input.state === 'loading')
+  translation.classList.toggle('lingoflow-error', input.state === 'error')
+  translation.setAttribute('aria-live', 'polite')
+  translation.setAttribute('role', input.state === 'error' ? 'alert' : 'status')
+  if (input.targetLang) translation.lang = input.targetLang
+
+  const inner = ensureTranslationInner(translation, false)
+  inner.replaceChildren()
+  if (input.state === 'loading') {
+    for (let index = 0; index < 3; index += 1) {
+      const dot = translation.ownerDocument.createElement('span')
+      dot.className = 'lingoflow-dot'
+      inner.appendChild(dot)
+    }
+  } else {
+    inner.textContent = input.translatedText ?? ''
+  }
+}
+
+function insertPartialTranslationInOrder(
+  group: HTMLElement,
+  translation: HTMLElement,
+  sourceOrder: number,
+): void {
+  const next = Array.from(group.children).find(child => {
+    if (!(child instanceof HTMLElement) || child === translation) return false
+    return Number(child.dataset.lingoflowPartialOrder ?? Number.MAX_SAFE_INTEGER) > sourceOrder
+  })
+  group.insertBefore(translation, next ?? null)
 }
 
 function createCompatibilityPlan(
@@ -194,4 +342,18 @@ function hasNestedList(source: HTMLElement): boolean {
     const tagName = child.tagName.toLowerCase()
     return tagName === 'ul' || tagName === 'ol'
   })
+}
+
+function findNestedShadowRoots(root: Document | ShadowRoot): ShadowRoot[] {
+  const shadows: ShadowRoot[] = []
+  for (const element of root.querySelectorAll('*')) {
+    const shadow = element.shadowRoot
+    if (!shadow) continue
+    shadows.push(shadow, ...findNestedShadowRoots(shadow))
+  }
+  return shadows
+}
+
+function isShadowRoot(root: Node): root is ShadowRoot {
+  return root.nodeType === 11 && 'host' in root
 }

@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, toRaw, watch } from 'v
 import LfButton from '../../src/ui/LfButton.vue'
 import LfFormField from '../../src/ui/LfFormField.vue'
 import LfNavItem from '../../src/ui/LfNavItem.vue'
+import ShortcutSetting from './ShortcutSetting.vue'
 import {
   getLanguageLabel,
   getSourceLanguageOptions,
@@ -26,11 +27,11 @@ import type {
   UserSiteRule,
 } from '@lingoflow/types'
 
-type SettingsSection = 'languages' | 'providers' | 'storage' | 'advanced' | 'siteRules'
+type SettingsSection = 'general' | 'providers' | 'localData' | 'siteRules'
 
 const settings = reactive<AppSettings>(structuredClone(DEFAULT_SETTINGS))
 const savedSettings = ref<AppSettings>(structuredClone(DEFAULT_SETTINGS))
-const activeSection = ref<SettingsSection>('languages')
+const activeSection = ref<SettingsSection>('general')
 const message = ref('')
 const busy = ref(false)
 const testingConnection = ref(false)
@@ -55,7 +56,6 @@ const editingRuleErrors = ref<string[]>([])
 const showRuleEditor = ref(false)
 const diagnosticsResult = ref<PageDiagnostics | null>(null)
 const testingPage = ref(false)
-const hoverTranslationShortcut = ref('Alt + Shift + L')
 
 const uiLocale = computed<UiLocale>(() =>
   settings.interfaceLocale === 'auto' ? browserLocale : settings.interfaceLocale,
@@ -88,6 +88,17 @@ const availablePresets = computed(() =>
   BUILT_IN_PRESETS.filter(p => !(p.id in settings.providers)),
 )
 
+const fallbackProviderOptions = computed(() => [
+  { value: '', label: copy('options.none') },
+  ...Object.entries(settings.providers)
+    .filter(([id]) => id !== settings.defaultProviderId)
+    .map(([id, config]) => ({ value: id, label: config.name })),
+])
+
+watch(() => settings.defaultProviderId, defaultProviderId => {
+  if (settings.fallbackProviderId === defaultProviderId) settings.fallbackProviderId = ''
+})
+
 function formatRootDiagnostic(root: RootDiagnostic): string {
   const score = typeof root.score === 'number' ? ` · score ${root.score}` : ''
   const source = root.sourceSelector ? ` · ${root.sourceSelector}` : ''
@@ -105,14 +116,25 @@ watch(dirty, hasUnsavedChanges => {
 watch(settings, () => {
   connectionResult.value = undefined
 }, { deep: true })
+watch(() => settings.uiTheme, applyInterfaceTheme, { immediate: true })
 watch(confirmClearAll, (val) => {
   if (val) setTimeout(() => { confirmClearAll.value = false }, 3000)
 })
 
+function applyInterfaceTheme(theme: AppSettings['uiTheme']) {
+  const root = document.documentElement
+  root.classList.remove('dark', 'light')
+  if (theme !== 'system') root.classList.add(theme)
+}
+
+function updateInterfaceTheme(value: string | number | boolean) {
+  const theme = String(value)
+  if (theme === 'system' || theme === 'light' || theme === 'dark') settings.uiTheme = theme
+}
+
 onMounted(() => {
   loadSettings()
   loadUserRules()
-  loadHoverTranslationShortcut()
 })
 
 const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -136,17 +158,6 @@ async function loadSettings() {
     message.value = error instanceof Error ? error.message : String(error)
   } finally {
     busy.value = false
-  }
-}
-
-async function loadHoverTranslationShortcut() {
-  if (typeof globalThis.chrome?.commands?.getAll !== 'function') return
-  try {
-    const commands = await chrome.commands.getAll()
-    const shortcut = commands.find(command => command.name === 'translate-hovered-text')?.shortcut
-    if (shortcut) hoverTranslationShortcut.value = shortcut.replace(/\+/g, ' + ')
-  } catch {
-    // The static manifest default remains an accurate preview fallback.
   }
 }
 
@@ -625,7 +636,7 @@ async function testOnCurrentPage() {
     <div class="settings-shell">
       <aside class="settings-nav" aria-label="Settings sections">
         <lf-nav-item
-          v-for="section in (['languages', 'providers', 'storage', 'advanced', 'siteRules'] as SettingsSection[])"
+          v-for="section in (['general', 'providers', 'localData', 'siteRules'] as SettingsSection[])"
           :key="section"
           :label="copy(`options.${section}`)"
           :active="activeSection === section"
@@ -634,34 +645,74 @@ async function testOnCurrentPage() {
       </aside>
 
       <div class="settings-content">
-        <!-- Languages Section -->
-        <section v-if="activeSection === 'languages'">
-          <h2>{{ copy('options.languages') }}</h2>
-          <div class="form-grid">
-            <lf-form-field
-              :label="copy('options.targetLanguage')"
-              type="select"
-              :model-value="settings.targetLang"
-              :options="targetLanguages.map(l => ({ value: l.code, label: getLanguageLabel(l.code, uiLocale) }))"
-              @update:model-value="settings.targetLang = String($event)"
-            />
-            <lf-form-field
-              :label="copy('options.sourceLanguage')"
-              type="select"
-              :model-value="settings.sourceLang"
-              :options="sourceLanguages.map(l => ({ value: l.code, label: l.code === 'auto' ? copy('options.autoDetect') : getLanguageLabel(l.code, uiLocale) }))"
-              @update:model-value="settings.sourceLang = String($event)"
-            />
-            <lf-form-field
-              :label="copy('options.interfaceLanguage')"
-              type="select"
-              :model-value="settings.interfaceLocale"
-              :options="[
-                { value: 'auto', label: copy('options.followBrowser') },
-                { value: 'zh-Hans', label: '简体中文' },
-                { value: 'en', label: 'English' },
-              ]"
-              @update:model-value="settings.interfaceLocale = String($event) as UiLocale"
+        <!-- General Section -->
+        <section v-if="activeSection === 'general'">
+          <h2>{{ copy('options.general') }}</h2>
+
+          <div class="settings-group">
+            <div class="settings-group__intro">
+              <h3>{{ copy('options.readingLanguages') }}</h3>
+              <p>{{ copy('options.readingLanguagesDescription') }}</p>
+            </div>
+            <div class="form-grid">
+              <lf-form-field
+                :label="copy('options.targetLanguage')"
+                type="select"
+                :model-value="settings.targetLang"
+                :options="targetLanguages.map(l => ({ value: l.code, label: getLanguageLabel(l.code, uiLocale) }))"
+                @update:model-value="settings.targetLang = String($event)"
+              />
+              <lf-form-field
+                :label="copy('options.sourceLanguage')"
+                type="select"
+                :model-value="settings.sourceLang"
+                :options="sourceLanguages.map(l => ({ value: l.code, label: l.code === 'auto' ? copy('options.autoDetect') : getLanguageLabel(l.code, uiLocale) }))"
+                @update:model-value="settings.sourceLang = String($event)"
+              />
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <div class="settings-group__intro">
+              <h3>{{ copy('options.interface') }}</h3>
+              <p>{{ copy('options.interfaceDescription') }}</p>
+            </div>
+            <div class="form-grid">
+              <lf-form-field
+                :label="copy('options.interfaceLanguage')"
+                type="select"
+                :model-value="settings.interfaceLocale"
+                :options="[
+                  { value: 'auto', label: copy('options.followBrowser') },
+                  { value: 'zh-Hans', label: '简体中文' },
+                  { value: 'en', label: 'English' },
+                ]"
+                @update:model-value="settings.interfaceLocale = String($event) as UiLocale"
+              />
+              <lf-form-field
+                :label="copy('options.interfaceTheme')"
+                type="select"
+                :model-value="settings.uiTheme"
+                :options="[
+                  { value: 'system', label: copy('options.themeSystem') },
+                  { value: 'light', label: copy('options.themeLight') },
+                  { value: 'dark', label: copy('options.themeDark') },
+                ]"
+                @update:model-value="updateInterfaceTheme"
+              />
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <shortcut-setting
+              :title="copy('options.hoverTranslation')"
+              :description="copy('options.hoverTranslationDescription')"
+              :shortcut-label="copy('options.hoverTranslationShortcut')"
+              :manage-label="copy('options.manageShortcut')"
+              :unassigned-label="copy('options.shortcutUnassigned')"
+              :managed-by-browser-label="copy('options.shortcutManagedByBrowser')"
+              :open-failed-label="copy('options.shortcutOpenFailed')"
+              fallback-shortcut="Alt+Shift+L"
             />
           </div>
         </section>
@@ -690,7 +741,7 @@ async function testOnCurrentPage() {
               :label="copy('options.fallbackProvider')"
               type="select"
               :model-value="settings.fallbackProviderId"
-              :options="[{ value: '', label: copy('options.none') }, ...Object.entries(settings.providers).map(([id, c]) => ({ value: id, label: c.name }))]"
+              :options="fallbackProviderOptions"
               @update:model-value="settings.fallbackProviderId = String($event)"
             />
           </div>
@@ -818,64 +869,63 @@ async function testOnCurrentPage() {
               {{ connectionResult.ok ? '✓' : '✗' }} {{ connectionMessage }}
             </p>
           </div>
+
+          <div class="form-divider"></div>
+
+          <div class="settings-group settings-group--compact">
+            <div class="settings-group__intro">
+              <h3>{{ copy('options.performance') }}</h3>
+              <p>{{ copy('options.performanceDescription') }}</p>
+            </div>
+            <div class="form-grid form-grid--single">
+              <lf-form-field
+                :label="copy('options.translationConcurrency')"
+                type="number"
+                :model-value="settings.translationConcurrency"
+                :min="1"
+                :max="6"
+                :step="1"
+                @update:model-value="settings.translationConcurrency = Number($event)"
+              />
+            </div>
+          </div>
         </section>
 
-        <!-- Storage Section -->
-        <section v-else-if="activeSection === 'storage'">
-          <h2>{{ copy('options.storage') }}</h2>
-          <lf-form-field
-            :label="copy('options.cacheEnabled')"
-            type="checkbox"
-            v-model="settings.cacheEnabled"
-          />
-          <div class="form-divider"></div>
-          <div class="storage-actions">
+        <!-- Local Data Section -->
+        <section v-else-if="activeSection === 'localData'">
+          <h2>{{ copy('options.localData') }}</h2>
+          <div class="settings-group settings-group--first">
+            <div class="settings-group__intro">
+              <h3>{{ copy('options.translationCache') }}</h3>
+              <p>{{ copy('options.cacheDescription') }}</p>
+            </div>
+            <div class="form-grid">
+              <lf-form-field
+                :label="copy('options.cacheEnabled')"
+                type="checkbox"
+                v-model="settings.cacheEnabled"
+              />
+              <lf-form-field
+                :label="copy('options.maxCacheItems')"
+                type="number"
+                :model-value="settings.maxCacheItems"
+                :disabled="!settings.cacheEnabled"
+                :min="1"
+                @update:model-value="settings.maxCacheItems = Number($event)"
+              />
+            </div>
+          </div>
+          <div class="storage-actions danger-zone">
+            <div>
+              <strong>{{ copy('options.clearAllCache') }}</strong>
+              <p>{{ copy('options.clearCacheDescription') }}</p>
+            </div>
             <lf-button
               variant="danger"
               :class="{ 'danger-confirm': confirmClearAll }"
               :label="confirmClearAll ? copy('options.confirmClearAll') : copy('options.clearAllCache')"
               :disabled="busy"
               @click="confirmClearAll ? clearAllCache() : (confirmClearAll = true)"
-            />
-          </div>
-        </section>
-
-        <!-- Advanced Section -->
-        <section v-else-if="activeSection === 'advanced'">
-          <h2>{{ copy('options.advanced') }}</h2>
-          <div class="shortcut-note">
-            <div>
-              <strong>{{ copy('options.hoverTranslation') }}</strong>
-              <p>{{ copy('options.hoverTranslationDescription') }}</p>
-            </div>
-            <div class="shortcut-note__key">
-              <span>{{ copy('options.hoverTranslationShortcut') }}</span>
-              <kbd>{{ hoverTranslationShortcut }}</kbd>
-            </div>
-          </div>
-          <div class="form-grid">
-            <lf-form-field
-              :label="copy('options.renderMode')"
-              type="select"
-              :model-value="settings.renderMode"
-              :options="[{ value: 'below-original', label: copy('options.belowOriginal') }]"
-              @update:model-value="settings.renderMode = String($event) as any"
-            />
-            <lf-form-field
-              :label="copy('options.maxCacheItems')"
-              type="number"
-              :model-value="settings.maxCacheItems"
-              :min="1"
-              @update:model-value="settings.maxCacheItems = Number($event)"
-            />
-            <lf-form-field
-              :label="copy('options.translationConcurrency')"
-              type="number"
-              :model-value="settings.translationConcurrency"
-              :min="1"
-              :max="6"
-              :step="1"
-              @update:model-value="settings.translationConcurrency = Number($event)"
             />
           </div>
         </section>
@@ -1133,6 +1183,10 @@ h2 {
   font-weight: 400;
 }
 
+h3 {
+  margin: 0;
+}
+
 .masthead-sub {
   margin-top: 4px;
   color: var(--lf-whisper);
@@ -1148,7 +1202,7 @@ h2 {
 
 .settings-shell {
   display: grid;
-  grid-template-columns: 160px minmax(0, 1fr);
+  grid-template-columns: 184px minmax(0, 1fr);
   min-height: 400px;
   border: 1px solid var(--lf-rule);
   background: var(--lf-paper);
@@ -1181,6 +1235,37 @@ section {
   font-size: 13px;
 }
 
+.settings-group {
+  display: grid;
+  gap: 16px;
+  padding-top: 20px;
+  border-top: 1px solid var(--lf-rule);
+}
+
+.settings-group--first {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.settings-group--compact {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.settings-group__intro h3 {
+  font-family: var(--lf-font-serif);
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.settings-group__intro p {
+  max-width: 620px;
+  margin: 5px 0 0;
+  color: var(--lf-whisper);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .status-mark {
   font-size: 14px;
   font-weight: 700;
@@ -1195,6 +1280,10 @@ section {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px 20px;
+}
+
+.form-grid--single {
+  grid-template-columns: minmax(220px, 320px);
 }
 
 .form-divider {
@@ -1307,69 +1396,26 @@ section {
   padding-top: 4px;
 }
 
-.shortcut-note {
+.danger-zone {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 20px;
-  margin-bottom: 22px;
-  padding: 16px 18px;
-  border: 1px solid var(--lf-rule);
-  border-left: 4px solid var(--lf-accent);
-  background: var(--lf-margin);
+  padding-top: 20px;
+  border-top: 1px solid var(--lf-rule);
 }
 
-.shortcut-note strong {
+.danger-zone strong {
   font-family: var(--lf-font-serif);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 400;
 }
 
-.shortcut-note p {
-  max-width: 520px;
+.danger-zone p {
   margin: 5px 0 0;
-  color: var(--lf-ghost);
+  color: var(--lf-whisper);
   font-size: 12px;
-  line-height: 1.55;
-}
-
-.shortcut-note__key {
-  display: grid;
-  justify-items: end;
-  gap: 6px;
-}
-
-.shortcut-note__key span {
-  color: var(--lf-ghost);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.shortcut-note kbd {
-  min-width: 126px;
-  box-sizing: border-box;
-  padding: 8px 10px;
-  border: 1px solid var(--lf-rule);
-  border-bottom-width: 3px;
-  border-radius: 0;
-  background: var(--lf-paper);
-  color: var(--lf-ink);
-  font-family: var(--lf-font-sans);
-  font-size: 12px;
-  font-weight: 650;
-  text-align: center;
-}
-
-@media (max-width: 680px) {
-  .shortcut-note {
-    grid-template-columns: 1fr;
-  }
-
-  .shortcut-note__key {
-    justify-items: start;
-  }
+  line-height: 1.5;
 }
 
 /* ── Responsive ── */
@@ -1383,7 +1429,8 @@ section {
   .form-grid,
   .provider-fields,
   .provider-speed-controls,
-  .connection-test {
+  .connection-test,
+  .danger-zone {
     grid-template-columns: 1fr;
   }
 
