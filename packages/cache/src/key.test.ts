@@ -30,4 +30,26 @@ describe('buildTranslationCacheKey', () => {
 
     expect(new Set([azure, japanese, openai]).size).toBe(3)
   })
+
+  it('invalidates only entries whose translation semantics fingerprint changes', () => {
+    const base = {
+      textHash: 'same',
+      sourceLang: 'en',
+      targetLang: 'zh-Hans',
+      providerId: 'openai-compatible',
+      model: 'gpt-4o-mini',
+      promptVersion: 'prompt-v1',
+      normalizeVersion: 'v1',
+    }
+
+    expect(buildTranslationCacheKey(base)).toBe(
+      'translation:same:en:zh-Hans:openai-compatible:gpt-4o-mini:prompt-v1:v1',
+    )
+    expect(buildTranslationCacheKey({ ...base, semanticsFingerprint: 'g1-abc' })).toBe(
+      'translation:same:en:zh-Hans:openai-compatible:gpt-4o-mini:prompt-v1:v1:g1-abc',
+    )
+    expect(buildTranslationCacheKey({ ...base, semanticsFingerprint: 'g1-def' })).not.toBe(
+      buildTranslationCacheKey({ ...base, semanticsFingerprint: 'g1-abc' }),
+    )
+  })
 })

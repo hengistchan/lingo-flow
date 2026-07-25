@@ -15,6 +15,7 @@
     "paths": {
       "@lingoflow/cache": ["./packages/cache/src/index.ts"],
       "@lingoflow/dom": ["./packages/dom/src/index.ts"],
+      "@lingoflow/glossary": ["./packages/glossary/src/index.ts"],
       "@lingoflow/providers": ["./packages/providers/src/index.ts"],
       "@lingoflow/renderer": ["./packages/renderer/src/index.ts"],
       "@lingoflow/rules": ["./packages/rules/src/index.ts"],

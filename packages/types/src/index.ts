@@ -1,3 +1,9 @@
+import type { Glossary, GlossaryToken, TranslationConstraint } from './glossary'
+import type { OnboardingState } from './onboarding'
+
+export * from './glossary'
+export * from './onboarding'
+
 export type ProviderType = 'machine-translation' | 'llm' | 'custom'
 
 export type UiLocale = 'zh-Hans' | 'en'
@@ -25,6 +31,7 @@ export type TranslateInput = {
   sourceLang: 'auto' | string
   targetLang: string
   texts: string[]
+  glossary?: TranslationConstraint[]
   context?: {
     pageTitle?: string
     pageUrl?: string
@@ -524,6 +531,10 @@ export type TranslationTask = {
   normalizedText: string
   textHash: string
   inlineTokens?: InlineToken[]
+  glossaryTokens?: GlossaryToken[]
+  glossary?: TranslationConstraint[]
+  glossaryIds?: string[]
+  semanticsFingerprint?: string
   insertion?: TranslationInsertion
   sourceLang: 'auto' | string
   targetLang: string
@@ -593,6 +604,7 @@ export type CacheKeyInput = {
   model?: string
   promptVersion?: string
   normalizeVersion: string
+  semanticsFingerprint?: string
 }
 
 export type CachedTranslation = {
@@ -606,6 +618,7 @@ export type CachedTranslation = {
   model?: string
   promptVersion?: string
   normalizeVersion: string
+  semanticsFingerprint?: string
   pageUrl?: string
   domain?: string
   createdAt: number
@@ -675,6 +688,8 @@ export type AppSettings = {
   fallbackProviderId?: ProviderId | ''
   providers: Record<string, ProviderConfig>
   userRules: UserSiteRule[]
+  glossaries: Glossary[]
+  onboarding: OnboardingState
 }
 
 export type SettingsSummary = {
@@ -715,6 +730,7 @@ export type PublicRuntimeSettings = {
   promptVersion?: string
   normalizeVersion: string
   userRules?: UserSiteRule[]
+  glossaries?: Glossary[]
 }
 
 export type PageTranslationStatus = 'idle' | 'translating' | 'done' | 'partial' | 'failed'

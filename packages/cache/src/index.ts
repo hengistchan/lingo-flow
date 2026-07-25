@@ -2,7 +2,7 @@ import Dexie, { type Table } from 'dexie'
 import type { CachedTranslation, CacheKeyInput, TranslationResult, TranslationTask } from '@lingoflow/types'
 
 export function buildTranslationCacheKey(input: CacheKeyInput): string {
-  return [
+  const parts = [
     'translation',
     input.textHash,
     input.sourceLang,
@@ -11,7 +11,9 @@ export function buildTranslationCacheKey(input: CacheKeyInput): string {
     input.model ?? 'default',
     input.promptVersion ?? 'none',
     input.normalizeVersion,
-  ].join(':')
+  ]
+  if (input.semanticsFingerprint) parts.push(input.semanticsFingerprint)
+  return parts.join(':')
 }
 
 export class LingoFlowDB extends Dexie {
@@ -94,6 +96,7 @@ export async function saveTranslationCache(input: { task: TranslationTask; trans
     model: input.task.model,
     promptVersion: input.task.promptVersion,
     normalizeVersion: input.task.normalizeVersion ?? 'v1',
+    semanticsFingerprint: input.task.semanticsFingerprint,
     pageUrl: input.task.pageUrl,
     domain: input.task.domain,
     createdAt: now,

@@ -1,14 +1,17 @@
 import { NORMALIZE_VERSION, resolveSupportedLanguage, isProviderConfigured } from '@lingoflow/shared'
 import type {
   AppSettings,
+  Glossary,
+  OnboardingState,
   ProviderConfig,
   PublicRuntimeSettings,
   SettingsSummary,
   UiLocale,
 } from '@lingoflow/types'
+import { ONBOARDING_VERSION } from '@lingoflow/types'
 
 const SETTINGS_KEY = 'lingoflow:settings'
-const CURRENT_SETTINGS_VERSION = 5
+const CURRENT_SETTINGS_VERSION = 6
 const DEFAULT_TRANSLATION_CONCURRENCY = 3
 const MIN_TRANSLATION_CONCURRENCY = 1
 const MAX_TRANSLATION_CONCURRENCY = 6
@@ -32,6 +35,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultProviderId: 'google-free-translate',
   fallbackProviderId: '',
   userRules: [],
+  glossaries: [],
+  onboarding: {
+    version: ONBOARDING_VERSION,
+    status: 'not-started',
+    currentStep: 'welcome',
+  },
   providers: {
     'azure-translator': {
       id: 'azure-translator',
@@ -146,11 +155,25 @@ export function migrateSettings(input?: SettingsInput): AppSettings {
     merged.userRules = Array.isArray(merged.userRules) ? merged.userRules : []
   }
 
+  // Migration v5 -> v6: add local terminology and versioned onboarding.
+  if (version < 6) {
+    merged.glossaries = normalizeGlossaries(merged.glossaries)
+    merged.onboarding = input
+      ? {
+          version: ONBOARDING_VERSION,
+          status: 'review',
+          currentStep: 'welcome',
+        }
+      : { ...DEFAULT_SETTINGS.onboarding }
+  }
+
   merged.version = CURRENT_SETTINGS_VERSION
   merged.sourceLang = resolveSupportedLanguage(merged.sourceLang, DEFAULT_SETTINGS.sourceLang)
   merged.targetLang = resolveSupportedLanguage(merged.targetLang, DEFAULT_SETTINGS.targetLang)
   merged.interfaceLocale = resolveInterfaceLocale(merged.interfaceLocale)
   merged.translationConcurrency = clampTranslationConcurrency(merged.translationConcurrency)
+  merged.glossaries = normalizeGlossaries(merged.glossaries)
+  merged.onboarding = normalizeOnboarding(merged.onboarding, !!input)
   return merged
 }
 
@@ -188,6 +211,9 @@ export function getPublicRuntimeSettings(settings: AppSettings): PublicRuntimeSe
     promptVersion: providerId === 'openai-compatible' ? 'prompt-v1' : undefined,
     normalizeVersion: NORMALIZE_VERSION,
     userRules: settings.userRules.filter(rule => rule.enabled),
+    glossaries: settings.glossaries
+      .filter(glossary => glossary.enabled)
+      .map(glossary => structuredClone(glossary)),
   }
 }
 
@@ -228,4 +254,52 @@ function isProviderConfig(value: unknown): value is ProviderConfig {
     !Array.isArray(candidate.values) &&
     Object.values(candidate.values).every(item => typeof item === 'string')
   )
+}
+
+function normalizeGlossaries(value: unknown): Glossary[] {
+  if (!Array.isArray(value)) return []
+  return value.filter(isGlossary).map(glossary => structuredClone(glossary))
+}
+
+function isGlossary(value: unknown): value is Glossary {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<Glossary>
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.name === 'string' &&
+    typeof candidate.enabled === 'boolean' &&
+    !!candidate.scope &&
+    typeof candidate.scope === 'object' &&
+    Array.isArray(candidate.entries) &&
+    typeof candidate.createdAt === 'string' &&
+    typeof candidate.updatedAt === 'string'
+  )
+}
+
+function normalizeOnboarding(value: unknown, existingSettings: boolean): OnboardingState {
+  if (value && typeof value === 'object') {
+    const candidate = value as Partial<OnboardingState>
+    const validStatuses = new Set(['not-started', 'in-progress', 'review', 'completed'])
+    const validSteps = new Set([
+      'welcome',
+      'reading-language',
+      'provider-choice',
+      'provider-configuration',
+      'connection-test',
+      'first-page-guide',
+      'complete',
+    ])
+    if (
+      candidate.version === ONBOARDING_VERSION &&
+      candidate.status &&
+      validStatuses.has(candidate.status) &&
+      candidate.currentStep &&
+      validSteps.has(candidate.currentStep)
+    ) {
+      return structuredClone(candidate as OnboardingState)
+    }
+  }
+  return existingSettings
+    ? { version: ONBOARDING_VERSION, status: 'review', currentStep: 'welcome' }
+    : { ...DEFAULT_SETTINGS.onboarding }
 }

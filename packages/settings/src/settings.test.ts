@@ -9,6 +9,12 @@ describe('settings', () => {
     expect(DEFAULT_SETTINGS.defaultProviderId).toBe('google-free-translate')
     expect(DEFAULT_SETTINGS.translationConcurrency).toBe(3)
     expect(DEFAULT_SETTINGS.userRules).toEqual([])
+    expect(DEFAULT_SETTINGS.glossaries).toEqual([])
+    expect(DEFAULT_SETTINGS.onboarding).toEqual({
+      version: 1,
+      status: 'not-started',
+      currentStep: 'welcome',
+    })
     expect(DEFAULT_SETTINGS.providers['google-free-translate']).toMatchObject({
       id: 'google-free-translate',
       presetId: 'google-free-translate',
@@ -26,6 +32,7 @@ describe('settings', () => {
     expect(migrated.sourceLang).toBe('auto')
     expect(migrated.targetLang).toBe('ja')
     expect(migrated.userRules).toEqual([])
+    expect(migrated.glossaries).toEqual([])
     expect(migrated.version).toBe(DEFAULT_SETTINGS.version)
   })
 
@@ -78,6 +85,12 @@ describe('settings', () => {
       defaultProviderId: 'openai-compatible',
       fallbackProviderId: 'azure-translator',
       userRules: [],
+      glossaries: [],
+      onboarding: {
+        version: 1,
+        status: 'review',
+        currentStep: 'welcome',
+      },
     })
     expect(migrated.providers['openai-compatible'].values.apiKey).toBe('secret-openai-key')
     expect(migrated.providers['azure-translator'].values.key).toBe('secret-azure-key')
@@ -188,6 +201,47 @@ describe('settings', () => {
 
     expect(runtime.userRules).toEqual([enabledRule])
     expect(JSON.stringify(runtime)).not.toContain('secret-openai-key')
+  })
+
+  it('preserves local glossaries and exposes only enabled glossaries to runtime', () => {
+    const glossary = {
+      id: 'product',
+      name: 'Product terminology',
+      enabled: true,
+      scope: { domains: ['example.com'] },
+      entries: [{
+        id: 'agent',
+        source: 'agent',
+        target: '智能体',
+        caseSensitive: false,
+        match: 'term' as const,
+        enabled: true,
+      }],
+      createdAt: '2026-07-25T00:00:00.000Z',
+      updatedAt: '2026-07-25T00:00:00.000Z',
+    }
+    const migrated = migrateSettings({
+      ...DEFAULT_SETTINGS,
+      glossaries: [glossary, { ...glossary, id: 'disabled', enabled: false }],
+    })
+    const runtime = getPublicRuntimeSettings(migrated)
+
+    expect(migrated.glossaries).toHaveLength(2)
+    expect(runtime.glossaries).toEqual([glossary])
+    expect(JSON.stringify(runtime)).not.toContain('apiKey')
+  })
+
+  it('migrates existing users into a non-blocking onboarding review state', () => {
+    const migrated = migrateSettings({
+      version: 5,
+      targetLang: 'ja',
+    })
+
+    expect(migrated.onboarding).toEqual({
+      version: 1,
+      status: 'review',
+      currentStep: 'welcome',
+    })
   })
 
   it('keeps SiteRule for bundled rules separate from persisted UserSiteRule', () => {
