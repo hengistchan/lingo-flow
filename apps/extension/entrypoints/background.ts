@@ -36,6 +36,13 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
 const registry = createDefaultProviderRegistry()
 
 export default defineBackground(() => {
+  chrome.runtime.onInstalled.addListener(details => {
+    if (details.reason !== 'install') return
+    openOnboardingForFirstRun().catch(() => {
+      // The user can always reopen onboarding.html from the extension package.
+    })
+  })
+
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!message?.type || !KNOWN_MESSAGE_TYPES.has(message.type)) {
       return false
@@ -56,6 +63,12 @@ export default defineBackground(() => {
     })
   })
 })
+
+async function openOnboardingForFirstRun(): Promise<void> {
+  const settings = await getSettings()
+  if (settings.onboarding.status === 'completed') return
+  await chrome.tabs.create({ url: chrome.runtime.getURL('onboarding.html') })
+}
 
 async function handleMessage(message: LingoFlowMessage, _sender: chrome.runtime.MessageSender): Promise<unknown> {
   switch (message.type) {

@@ -9,6 +9,53 @@ const builtExtensionPath = path.resolve('apps/extension/output/chrome-mv3')
 const undefinedError = /Cannot read properties of undefined/
 const LINGOFLOW_DEV_INSPECT_MARKER = 'lingoflow/dev-inspect'
 
+test('fresh install opens resumable onboarding and persists the completed setup', async () => {
+  const extension = await launchExtension()
+
+  try {
+    const onboarding = await waitForExtensionPage(extension.context, extension.url('onboarding.html'))
+    const onboardingErrors = collectRuntimeErrors(onboarding)
+
+    await expect(onboarding).toHaveTitle('Welcome to LingoFlow')
+    await expect(onboarding.getByRole('heading', { name: 'Read the web in your language' })).toBeVisible()
+    await onboarding.getByRole('button', { name: 'Continue' }).click()
+    await expect(onboarding.getByRole('heading', { name: 'Choose your reading languages' })).toBeVisible()
+    await onboarding.getByLabel('Translate into').selectOption('ja')
+    await onboarding.getByRole('button', { name: 'Continue' }).click()
+    await expect(onboarding.getByRole('heading', { name: 'Choose how translations are generated' })).toBeVisible()
+    await onboarding.getByRole('button', { name: /OpenAI-compatible/ }).click()
+
+    await onboarding.reload()
+    await expect(onboarding.getByRole('heading', { name: 'Choose how translations are generated' })).toBeVisible()
+    await onboarding.getByRole('button', { name: 'Continue' }).click()
+    await expect(onboarding.getByRole('heading', { name: 'Configure the selected service' })).toBeVisible()
+    await onboarding.getByRole('button', { name: 'Continue' }).click()
+    await expect(onboarding.getByRole('heading', { name: 'Verify the connection' })).toBeVisible()
+    await onboarding.getByRole('button', { name: 'Continue' }).click()
+    await expect(onboarding.getByRole('heading', { name: 'Translate your first page' })).toBeVisible()
+    await onboarding.getByRole('button', { name: 'Finish setup' }).click()
+    await expect(onboarding.getByRole('heading', { name: 'Your reading layer is ready' })).toBeVisible()
+
+    const persisted = await onboarding.evaluate(() =>
+      chrome.runtime.sendMessage({ type: 'settings/get' }),
+    )
+    expect(persisted).toMatchObject({
+      ok: true,
+      data: {
+        targetLang: 'ja',
+        defaultProviderId: 'openai-compatible',
+        onboarding: {
+          status: 'completed',
+          currentStep: 'complete',
+        },
+      },
+    })
+    expect(onboardingErrors()).toEqual([])
+  } finally {
+    await extension.close()
+  }
+})
+
 test('installed extension renders popup and options with real extension APIs', async () => {
   const extension = await launchExtension()
 
@@ -1131,6 +1178,18 @@ async function launchExtension(options: ExtensionOptions = {}) {
       }
     },
   }
+}
+
+async function waitForExtensionPage(
+  context: Awaited<ReturnType<typeof chromium.launchPersistentContext>>,
+  url: string,
+): Promise<Page> {
+  const existing = context.pages().find(page => page.url() === url)
+  if (existing) return existing
+  return context.waitForEvent('page', {
+    predicate: page => page.url() === url,
+    timeout: 5_000,
+  })
 }
 
 // Creates a temporary extension directory with the production build files
