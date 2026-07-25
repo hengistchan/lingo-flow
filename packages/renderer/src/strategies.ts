@@ -32,6 +32,7 @@ abstract class BaseInsertionStrategy implements InsertionStrategy {
       target: binding.carrierElement,
       translationElement: createTranslationElement(block, binding.carrierElement.ownerDocument, this.inlineTranslation),
       placement: this.name,
+      position: block.meta.translationPosition ?? 'after',
       sourceNodesToHide: getHideableSourceNodes(binding),
     }
   }
@@ -49,6 +50,7 @@ abstract class BaseInsertionStrategy implements InsertionStrategy {
     translation.dataset.lingoflowTranslation = plan.blockId
     translation.dataset.lingoflowMode = plan.mode
     translation.dataset.lingoflowPosition = plan.placement
+    translation.dataset.lingoflowRelativePosition = plan.position
     translation.dataset.lingoflowTheme = 'system'
     markGeneratedNode(translation, plan.blockId)
     translation.classList.add('lingoflow-translation')
@@ -86,10 +88,18 @@ export class LinebreakInsideStrategy extends BaseInsertionStrategy {
     markGeneratedNode(breakElement, plan.blockId)
 
     const translation = this.prepareTranslationElement(plan)
-    plan.target.appendChild(breakElement)
-    plan.target.appendChild(translation)
+    if (plan.position === 'before') {
+      const firstSourceNode = plan.target.firstChild
+      plan.target.insertBefore(translation, firstSourceNode)
+      plan.target.insertBefore(breakElement, firstSourceNode)
+    } else {
+      plan.target.appendChild(breakElement)
+      plan.target.appendChild(translation)
+    }
 
-    return this.commit(plan, [breakElement, translation])
+    return this.commit(plan, plan.position === 'before'
+      ? [translation, breakElement]
+      : [breakElement, translation])
   }
 }
 
@@ -104,10 +114,18 @@ export class InlineInsideStrategy extends BaseInsertionStrategy {
     markGeneratedNode(spacer, plan.blockId)
 
     const translation = this.prepareTranslationElement(plan)
-    plan.target.appendChild(spacer)
-    plan.target.appendChild(translation)
+    if (plan.position === 'before') {
+      const firstSourceNode = plan.target.firstChild
+      plan.target.insertBefore(translation, firstSourceNode)
+      plan.target.insertBefore(spacer, firstSourceNode)
+    } else {
+      plan.target.appendChild(spacer)
+      plan.target.appendChild(translation)
+    }
 
-    return this.commit(plan, [spacer, translation])
+    return this.commit(plan, plan.position === 'before'
+      ? [translation, spacer]
+      : [spacer, translation])
   }
 }
 
@@ -121,7 +139,8 @@ export class InsideContainerStrategy extends BaseInsertionStrategy {
 
   apply(plan: InsertionPlan): InsertionResult {
     const translation = this.prepareTranslationElement(plan)
-    plan.target.appendChild(translation)
+    if (plan.position === 'before') plan.target.prepend(translation)
+    else plan.target.appendChild(translation)
 
     return this.commit(plan, [translation])
   }
@@ -139,7 +158,9 @@ export class BeforeNestedStructureStrategy extends BaseInsertionStrategy {
     const translation = this.prepareTranslationElement(plan)
     const nestedList = findNestedList(plan.target)
 
-    if (nestedList) {
+    if (plan.position === 'before') {
+      plan.target.prepend(translation)
+    } else if (nestedList) {
       plan.target.insertBefore(translation, nestedList)
     } else {
       plan.target.appendChild(translation)
@@ -156,7 +177,7 @@ export class AfterBlockStrategy extends BaseInsertionStrategy {
   apply(plan: InsertionPlan): InsertionResult {
     const translation = this.prepareTranslationElement(plan)
     const target = findSafeBlockAncestor(plan.target)
-    target.insertAdjacentElement('afterend', translation)
+    target.insertAdjacentElement(plan.position === 'before' ? 'beforebegin' : 'afterend', translation)
 
     return this.commit(plan, [translation])
   }

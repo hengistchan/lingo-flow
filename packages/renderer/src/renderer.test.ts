@@ -465,6 +465,57 @@ describe('renderer insertion strategies', () => {
     expectGeneratedNodes(result, 'block_after')
   })
 
+  it('applies before placement without changing the structural insertion strategy', () => {
+    document.body.innerHTML = `
+      <p id="paragraph">Original paragraph.</p>
+      <table><tbody><tr><td>Original cell.</td></tr></tbody></table>
+    `
+    const paragraph = document.querySelector('#paragraph') as HTMLElement
+    const paragraphTranslation = createTranslationElement('block_before_paragraph', '前置段落译文', 'div')
+    const blockResult = new AfterBlockStrategy().apply(createPlan({
+      blockId: 'block_before_paragraph',
+      target: paragraph,
+      translationElement: paragraphTranslation,
+      placement: 'after-block',
+      position: 'before',
+    }))
+
+    const cell = document.querySelector('td') as HTMLElement
+    const cellTranslation = createTranslationElement('block_before_cell', '前置单元格译文', 'div')
+    const cellResult = new InsideContainerStrategy().apply(createPlan({
+      blockId: 'block_before_cell',
+      target: cell,
+      translationElement: cellTranslation,
+      placement: 'inside-container',
+      position: 'before',
+    }))
+
+    expect(paragraphTranslation.nextElementSibling).toBe(paragraph)
+    expect(paragraphTranslation.dataset.lingoflowRelativePosition).toBe('before')
+    expect(cell.firstElementChild).toBe(cellTranslation)
+    expect(cellTranslation.dataset.lingoflowRelativePosition).toBe('before')
+    expectGeneratedNodes(blockResult, 'block_before_paragraph')
+    expectGeneratedNodes(cellResult, 'block_before_cell')
+  })
+
+  it('places inline translations before source text when requested', () => {
+    document.body.innerHTML = '<p>Original paragraph.</p>'
+    const paragraph = document.querySelector('p') as HTMLElement
+    const translation = createTranslationElement('block_before_inline', '前置译文')
+
+    new LinebreakInsideStrategy().apply(createPlan({
+      blockId: 'block_before_inline',
+      target: paragraph,
+      translationElement: translation,
+      placement: 'linebreak-inside',
+      position: 'before',
+    }))
+
+    expect(paragraph.firstElementChild).toBe(translation)
+    expect(translation.nextElementSibling?.tagName).toBe('BR')
+    expect(paragraph.textContent).toBe('前置译文Original paragraph.')
+  })
+
   it('strategy revert removes inserted nodes and restores hidden source nodes', () => {
     document.body.innerHTML = '<p>Original paragraph.</p>'
     const source = document.querySelector('p') as HTMLElement
@@ -731,10 +782,12 @@ function createPlan(overrides: {
   target: HTMLElement
   translationElement: HTMLElement
   placement: TranslationInsertion
+  position?: 'before' | 'after'
   sourceNodesToHide?: HTMLElement[]
 }): InsertionPlan {
   return {
     mode: overrides.mode ?? 'dual',
+    position: overrides.position ?? 'after',
     sourceNodesToHide: overrides.sourceNodesToHide ?? [],
     ...overrides,
   }

@@ -75,6 +75,7 @@ export type TranslationInsertion =
   | 'inside-container'
   | 'before-nested-structure'
   | 'after-block'
+export type TranslationPosition = 'before' | 'after'
 export type InlineTokenType = 'code' | 'link' | 'keyboard' | 'reference'
 
 export type InlineToken = {
@@ -126,6 +127,7 @@ export type TranslationBlock = {
     carrierTagName: string
     blockType: TextBlockType
     insertion: TranslationInsertion
+    translationPosition?: TranslationPosition
     depth: number
     visible: boolean
     textLength: number
@@ -246,6 +248,7 @@ export type BlockDiagnostic = {
   tagName: string
   carrierTagName: string
   insertion: TranslationInsertion
+  translationPosition?: TranslationPosition
   rootKind: ContentRootKind
   rootGeneration?: number
   cacheStatus: 'memory-hit' | 'indexeddb-hit' | 'miss' | 'disabled'
@@ -338,7 +341,7 @@ export type PageRuleBehavior = {
   translationArea?: 'main' | 'body' | 'selection'
   startMode?: 'manual' | 'dynamic' | 'immediate'
   displayMode?: PageDisplayMode
-  translationPosition?: 'after' | 'before'
+  translationPosition?: TranslationPosition
   translationTheme?: TranslationTheme
   defaultInsertion?: TranslationInsertion
 }
@@ -491,6 +494,7 @@ export type InsertionPlan = {
   target: HTMLElement
   translationElement: HTMLElement
   placement: TranslationInsertion
+  position: TranslationPosition
   sourceNodesToHide: HTMLElement[]
 }
 
@@ -536,6 +540,7 @@ export type TranslationTask = {
   glossaryIds?: string[]
   semanticsFingerprint?: string
   insertion?: TranslationInsertion
+  translationPosition?: TranslationPosition
   sourceLang: 'auto' | string
   targetLang: string
   providerId: string

@@ -1,4 +1,4 @@
-import type { InsertionPlan, TranslationInsertion } from '@lingoflow/types'
+import type { InsertionPlan, TranslationInsertion, TranslationPosition } from '@lingoflow/types'
 import { findAllShadowRoots } from '@lingoflow/shared'
 import { restoreSourceNodes } from './display-mode'
 import { defaultStrategyRegistry } from './registry'
@@ -17,6 +17,7 @@ export type RenderInput = {
   blockId: string
   translatedText?: string
   insertion?: TranslationInsertion
+  translationPosition?: TranslationPosition
   targetLang?: string
 }
 
@@ -312,6 +313,7 @@ function createCompatibilityPlan(
     target: element,
     translationElement,
     placement: insertion,
+    position: input.translationPosition ?? 'after',
     sourceNodesToHide: [],
   }
 }

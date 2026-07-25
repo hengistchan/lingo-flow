@@ -10,6 +10,7 @@ import type {
   TextBlockType,
   TranslationBlock,
   TranslationInsertion,
+  TranslationPosition,
 } from '@lingoflow/types'
 import { CollectScanResultsOutput, ScanResult } from '@lingoflow/types'
 import { discoverContentRoots } from './content-root'
@@ -72,6 +73,7 @@ type CollectionConfig = {
   blockSelectors: string[]
   excludeSelectors: string[]
   defaultInsertion: TranslationInsertion
+  translationPosition: TranslationPosition
   minTextLength: number
   maxInteractiveElements: number
   minRootTextLength: number
@@ -195,6 +197,7 @@ export async function collectScanResults(
         textLength: normalizedText.length,
         blockType,
         insertion: resolveInsertion(element, carrier, blockType, normalizedText, config.defaultInsertion),
+        translationPosition: config.translationPosition,
         carrierTagName: carrier.tagName.toLowerCase(),
         rootKind,
         ruleId: config.ruleId,
@@ -308,6 +311,7 @@ function resolveCollectionConfig(options: CollectScanResultOptions | RuntimeColl
       blockSelectors: options.pageRule.selectors.blockSelectors,
       excludeSelectors: options.pageRule.selectors.excludeSelectors,
       defaultInsertion: options.pageRule.behavior.defaultInsertion,
+      translationPosition: options.pageRule.behavior.translationPosition,
       minTextLength: options.pageRule.thresholds.minTextLength,
       maxInteractiveElements: options.pageRule.thresholds.maxInteractiveElements,
       minRootTextLength: options.pageRule.thresholds.minRootTextLength,
@@ -329,6 +333,7 @@ function resolveCollectionConfig(options: CollectScanResultOptions | RuntimeColl
     blockSelectors: BLOCK_SELECTORS,
     excludeSelectors: IGNORE_SELECTORS,
     defaultInsertion: 'after-block',
+    translationPosition: 'after',
     minTextLength: 20,
     maxInteractiveElements: 5,
     minRootTextLength: 80,

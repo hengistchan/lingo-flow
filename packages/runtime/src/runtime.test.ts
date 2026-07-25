@@ -157,6 +157,45 @@ describe('content runtime language and progress behavior', () => {
     expect(translation.previousSibling?.nodeName).toBe('BR')
   })
 
+  it('honors a page-rule before preference through a safe structural strategy', async () => {
+    document.body.innerHTML = `
+      <article>
+        <p>This paragraph is long enough to verify rule-driven translation placement.</p>
+      </article>
+    `
+    const settings = runtimeSettings()
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      if (message.type === 'translation/translateBatch') {
+        const tasks = message.payload.tasks as TranslationTask[]
+        return success({
+          results: tasks.map(task => ({
+            ...successResult(task),
+            translatedText: '位于原文之前的译文',
+          })),
+        })
+      }
+      throw new Error(`Unexpected message: ${message.type}`)
+    })
+    const runtime = createContentRuntime({
+      document,
+      chromeRuntime,
+      siteRules: [{
+        id: 'before-example',
+        match: { selectorMatches: ['article'] },
+        behavior: { translationPosition: 'before' },
+      }],
+    })
+
+    await runtime.translatePage()
+
+    const paragraph = document.querySelector('p') as HTMLElement
+    const translation = document.querySelector('[data-lingoflow-translation]') as HTMLElement
+    expect(paragraph.firstElementChild).toBe(translation)
+    expect(translation.dataset.lingoflowRelativePosition).toBe('before')
+    expect(translation.nextElementSibling?.tagName).toBe('BR')
+  })
+
   it('threads RuntimeContext metadata into provider tasks', async () => {
     document.body.innerHTML = `
       <article>
