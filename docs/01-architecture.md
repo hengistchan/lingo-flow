@@ -105,3 +105,7 @@ lingoflow/
 ## Implementation Note
 
 MVP can begin with a simpler `apps/extension/src/*` structure, but each module should preserve clear boundaries.
+
+The post-MVP architecture for interactive site adaptation, terminology,
+translation placement, and onboarding is defined in
+[12. Adaptive Reading System](./12-adaptive-reading-system.md).
