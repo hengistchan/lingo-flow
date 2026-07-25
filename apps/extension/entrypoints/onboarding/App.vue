@@ -126,6 +126,7 @@ const COPY = {
   en: {
     brand: 'LingoFlow',
     progress: 'First-run setup',
+    loading: 'Loading setup…',
     welcomeTitle: 'Read the web in your language',
     welcomeBody: 'LingoFlow keeps the original page intact and places translations next to what you are reading. This short setup chooses your reading language and translation service.',
     privacy: 'Your configuration stays in browser storage. LingoFlow requests provider access only when the selected service needs it.',
@@ -173,6 +174,7 @@ const COPY = {
   'zh-Hans': {
     brand: 'LingoFlow',
     progress: '首次使用设置',
+    loading: '正在加载设置…',
     welcomeTitle: '用你的语言阅读开放网页',
     welcomeBody: 'LingoFlow 会保留原网页，并把译文放在正在阅读的内容旁边。这个简短流程用于选择阅读语言和翻译服务。',
     privacy: '配置保存在浏览器本地。只有所选服务需要时，LingoFlow 才会请求对应来源的访问权限。',
@@ -231,7 +233,7 @@ const COPY = {
       <button v-if="step !== 'complete'" type="button" class="skip-button" @click="skip">{{ copy('skip') }}</button>
     </header>
 
-    <div v-if="loading" class="loading" aria-live="polite">Loading…</div>
+    <div v-if="loading" class="loading" aria-live="polite">{{ copy('loading') }}</div>
 
     <div v-else class="onboarding-shell">
       <ol class="step-rail" :aria-label="copy('progress')">

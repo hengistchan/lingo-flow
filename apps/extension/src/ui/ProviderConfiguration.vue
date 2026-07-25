@@ -242,12 +242,14 @@ const LOCAL_COPY = {
     googleGuide: 'Ready immediately. No API key or extra website permission is required. This experimental option is best for a quick start; use a dedicated service when privacy, reliability, or terminology control is critical.',
     azureGuide: 'Enter the Translator endpoint, subscription key, and resource region. LingoFlow asks for access only to the endpoint origin you configure.',
     openAIGuide: 'Works with OpenAI and compatible servers such as Ollama or LM Studio. Confirm the Base URL includes /v1, choose a model that supports chat completions, then grant access only to that origin.',
+    optional: 'Optional',
   },
   'zh-Hans': {
     guide: '连接前说明',
     googleGuide: '无需 API Key 或额外网站权限，可立即使用。它适合快速开始；如果隐私、稳定性或术语控制很重要，请使用已配置的翻译服务。',
     azureGuide: '填写 Translator Endpoint、订阅密钥和资源区域。LingoFlow 只会请求访问你配置的 Endpoint 来源。',
     openAIGuide: '兼容 OpenAI、Ollama、LM Studio 等服务。确认 Base URL 包含 /v1，选择支持 Chat Completions 的模型，然后仅授权该来源。',
+    optional: '可选',
   },
 } as const
 </script>
@@ -359,7 +361,7 @@ const LOCAL_COPY = {
           placeholder="Ollama, LM Studio, DeepSeek…"
         />
         <lf-form-field label="Base URL" type="url" v-model="customProviderBaseUrl" placeholder="http://localhost:11434/v1" />
-        <lf-form-field label="API Key" type="password" v-model="customProviderApiKey" placeholder="Optional" />
+        <lf-form-field label="API Key" type="password" v-model="customProviderApiKey" :placeholder="localCopy('optional')" />
         <lf-form-field label="Model" v-model="customProviderModel" placeholder="qwen3" />
       </div>
       <div class="custom-provider-actions">

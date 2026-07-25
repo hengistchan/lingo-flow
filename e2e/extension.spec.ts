@@ -108,6 +108,14 @@ test('installed extension renders popup and options with real extension APIs', a
     await options.getByRole('button', { name: 'Test connection' }).click()
     await expect(options.getByText('Complete the selected provider configuration before testing.')).toBeVisible()
 
+    await options.getByRole('button', { name: 'General' }).click()
+    await options.getByLabel('Interface language').selectOption('zh-Hans')
+    await options.getByRole('button', { name: '保存设置' }).click()
+    await options.getByRole('button', { name: '站点规则' }).click()
+    await expect(options.getByText('内置', { exact: true }).first()).toBeVisible()
+    await expect(options.getByText('built-in', { exact: true })).toHaveCount(0)
+    await expect(options.getByText('在当前页面运行只读诊断，不调用任何翻译服务。')).toBeVisible()
+
     await expect(options.getByText(undefinedError)).toHaveCount(0)
     expect(optionsErrors()).toEqual([])
   } finally {

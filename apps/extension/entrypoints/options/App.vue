@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, toRaw, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, toRaw, watch } from 'vue'
 import LfButton from '../../src/ui/LfButton.vue'
 import LfFormField from '../../src/ui/LfFormField.vue'
 import LfNavItem from '../../src/ui/LfNavItem.vue'
@@ -50,6 +50,8 @@ const editingOriginalRuleId = ref<string | null>(null)
 const editingRuleJson = ref('')
 const editingRuleErrors = ref<string[]>([])
 const showRuleEditor = ref(false)
+const ruleEditorDialog = ref<HTMLElement>()
+let ruleEditorReturnFocus: HTMLElement | null = null
 const diagnosticsResult = ref<PageDiagnostics | null>(null)
 const testingPage = ref(false)
 
@@ -83,6 +85,18 @@ watch(dirty, hasUnsavedChanges => {
 watch(() => settings.uiTheme, applyInterfaceTheme, { immediate: true })
 watch(confirmClearAll, (val) => {
   if (val) setTimeout(() => { confirmClearAll.value = false }, 3000)
+})
+watch(showRuleEditor, async open => {
+  if (open) {
+    ruleEditorReturnFocus = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null
+    await nextTick()
+    ruleEditorDialog.value?.focus()
+  } else {
+    ruleEditorReturnFocus?.focus()
+    ruleEditorReturnFocus = null
+  }
 })
 
 function applyInterfaceTheme(theme: AppSettings['uiTheme']) {
@@ -314,7 +328,7 @@ async function saveEditingRule() {
 
 async function validateRule(rule: UserSiteRule): Promise<{ valid: boolean; errors: { field: string; message: string }[] }> {
   if (!hasRuntimeApi()) {
-    return { valid: !!(rule.id && rule.id.trim()), errors: rule.id?.trim() ? [] : [{ field: 'id', message: 'Rule ID is required' }] }
+    return { valid: !!(rule.id && rule.id.trim()), errors: rule.id?.trim() ? [] : [{ field: 'id', message: copy('options.ruleIdRequired') }] }
   }
   try {
     const result = await sendChromeMessage<{ ok: true } | { ok: false; errors: { field: string; message: string }[] }>({
@@ -430,7 +444,7 @@ async function testOnCurrentPage() {
     if (result?.ok) {
       diagnosticsResult.value = result.data
     } else {
-      message.value = result?.error?.message ?? 'Diagnostics failed'
+      message.value = result?.error?.message ?? copy('options.diagnosticsFailed')
     }
   } catch (e) {
     message.value = copy('options.noActiveTab')
@@ -459,7 +473,7 @@ async function testOnCurrentPage() {
     </header>
 
     <div class="settings-shell">
-      <aside class="settings-nav" aria-label="Settings sections">
+      <aside class="settings-nav" :aria-label="copy('options.settingsSections')">
         <lf-nav-item
           v-for="section in (['general', 'providers', 'terminology', 'localData', 'siteRules'] as SettingsSection[])"
           :key="section"
@@ -613,7 +627,7 @@ async function testOnCurrentPage() {
             <div v-for="rule in builtinRules" :key="rule.id" class="builtin-rule-card">
               <div class="rule-card-header">
                 <strong>{{ rule.id }}</strong>
-                <span class="rule-badge">built-in</span>
+                <span class="rule-badge">{{ copy('options.builtInBadge') }}</span>
               </div>
               <p class="rule-card-desc" v-if="rule.match?.matches">
                 {{ rule.match.matches.join(', ') }}
@@ -651,7 +665,7 @@ async function testOnCurrentPage() {
                 {{ rule.match.matches.join(', ') }}
               </p>
               <div class="rule-card-actions">
-                <lf-button variant="ghost" :label="rule.enabled ? 'Disable' : 'Enable'" @click="toggleUserRule(rule.id)" />
+                <lf-button variant="ghost" :label="rule.enabled ? copy('options.disable') : copy('options.enable')" @click="toggleUserRule(rule.id)" />
                 <lf-button variant="ghost" :label="copy('options.editUserRule')" @click="editUserRule(rule)" />
                 <lf-button variant="ghost" :label="copy('options.duplicateRule')" @click="duplicateUserRule(rule)" />
                 <lf-button variant="danger" :label="copy('options.deleteRule')" @click="deleteUserRule(rule.id)" />
@@ -664,7 +678,7 @@ async function testOnCurrentPage() {
           <div class="test-on-page">
             <div>
               <strong>{{ copy('options.testOnCurrentPage') }}</strong>
-              <p class="section-intro">Run a dry-run diagnostics scan on the active tab without calling any translation provider.</p>
+              <p class="section-intro">{{ copy('options.diagnosticsDescription') }}</p>
             </div>
             <lf-button
               variant="test"
@@ -724,8 +738,16 @@ async function testOnCurrentPage() {
 
   <!-- Rule Editor Modal -->
   <div v-if="showRuleEditor && editingRule" class="modal-overlay" @click.self="cancelRuleEditor">
-    <div class="modal-content">
-      <h3>{{ editingRule.id ? copy('options.editUserRule') : copy('options.createUserRule') }}</h3>
+    <div
+      ref="ruleEditorDialog"
+      class="modal-content"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="rule-editor-title"
+      tabindex="-1"
+      @keydown.esc="cancelRuleEditor"
+    >
+      <h3 id="rule-editor-title">{{ editingRule.id ? copy('options.editUserRule') : copy('options.createUserRule') }}</h3>
 
       <div v-if="editingRuleErrors.length" class="validation-errors">
         <p v-for="(err, i) in editingRuleErrors" :key="i">{{ err }}</p>

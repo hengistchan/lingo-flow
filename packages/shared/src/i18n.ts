@@ -100,6 +100,13 @@ export type UiCopyKey =
   | 'options.cancel'
   | 'options.terminology'
   | 'options.siteRules'
+  | 'options.settingsSections'
+  | 'options.builtInBadge'
+  | 'options.enable'
+  | 'options.disable'
+  | 'options.diagnosticsDescription'
+  | 'options.diagnosticsFailed'
+  | 'options.ruleIdRequired'
   | 'options.translationPosition'
   | 'options.activeGlossaries'
   | 'options.semanticsFingerprints'
@@ -240,6 +247,13 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.cancel': '取消',
     'options.terminology': '术语管理',
     'options.siteRules': '站点规则',
+    'options.settingsSections': '设置分区',
+    'options.builtInBadge': '内置',
+    'options.enable': '启用',
+    'options.disable': '停用',
+    'options.diagnosticsDescription': '在当前页面运行只读诊断，不调用任何翻译服务。',
+    'options.diagnosticsFailed': '页面诊断失败',
+    'options.ruleIdRequired': '规则 ID 不能为空',
     'options.translationPosition': '译文位置',
     'options.activeGlossaries': '生效术语表',
     'options.semanticsFingerprints': '术语语义指纹',
@@ -379,6 +393,13 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.cancel': 'Cancel',
     'options.terminology': 'Terminology',
     'options.siteRules': 'Site rules',
+    'options.settingsSections': 'Settings sections',
+    'options.builtInBadge': 'built-in',
+    'options.enable': 'Enable',
+    'options.disable': 'Disable',
+    'options.diagnosticsDescription': 'Run read-only diagnostics on the active page without calling a translation provider.',
+    'options.diagnosticsFailed': 'Page diagnostics failed',
+    'options.ruleIdRequired': 'Rule ID is required',
     'options.translationPosition': 'Translation position',
     'options.activeGlossaries': 'Active glossaries',
     'options.semanticsFingerprints': 'Terminology fingerprints',
