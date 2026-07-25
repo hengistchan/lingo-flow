@@ -150,6 +150,50 @@ describe('HoverTranslationController inline rendering', () => {
     expect(document.querySelector('[data-lingoflow-partial-translation]')).not.toBeNull()
   })
 
+  it('inherits the current-page target override and scoped glossary context', async () => {
+    document.body.innerHTML = '<p>An AI agent translates this selected sentence.</p>'
+    const textNode = document.querySelector('p')!.firstChild!
+    const range = document.createRange()
+    range.selectNodeContents(textNode)
+    document.getSelection()!.addRange(range)
+
+    let task: TranslationTask | undefined
+    const settings = {
+      ...runtimeSettings(),
+      glossaries: [{
+        id: 'ai-terms',
+        name: 'AI terms',
+        enabled: true,
+        scope: { ruleIds: ['docs-page'] },
+        entries: [{
+          id: 'agent',
+          source: 'AI agent',
+          target: '智能体',
+          caseSensitive: false,
+          match: 'term' as const,
+          enabled: true,
+        }],
+        createdAt: '2026-07-25T00:00:00.000Z',
+        updatedAt: '2026-07-25T00:00:00.000Z',
+      }],
+    }
+    const controller = new HoverTranslationController({
+      document,
+      getContext: () => ({ targetLang: 'ja', ruleIds: ['docs-page'] }),
+      chromeRuntime: fakeRuntime(async message => {
+        if (message.type === 'settings/getRuntime') return success(settings)
+        task = message.payload.tasks[0]
+        return success({ results: [successResult(task!)] })
+      }),
+    })
+
+    await controller.translateHoveredText()
+
+    expect(task?.targetLang).toBe('ja')
+    expect(task?.requestText).toContain('⟦LFG:0⟧')
+    expect(task?.cacheKey).toContain(task!.semanticsFingerprint!)
+  })
+
   it('stays silent when there is no readable text and clears inline results on dismiss', async () => {
     const sendMessage = vi.fn(async () => success(runtimeSettings()))
     const controller = new HoverTranslationController({

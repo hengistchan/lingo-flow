@@ -1,4 +1,5 @@
 import { buildTranslationCacheKey, clearAllCache, clearCacheByDomain, pruneCache, resolveTranslationCache, safeSaveTranslationCache } from '@lingoflow/cache'
+import { findMissingGlossaryTokens, restoreGlossaryTokens } from '@lingoflow/glossary'
 import { createDefaultProviderRegistry, extractBuiltInProviderConfig, testProviderConnection } from '@lingoflow/providers'
 import { isFallbackEligible, retry, translateBatchWithDegrade } from '@lingoflow/scheduler'
 import { getPublicRuntimeSettings, getSettings, getSettingsSummary, saveSettings } from '@lingoflow/settings'
@@ -179,6 +180,7 @@ async function translateWithProvider(
       sourceLang: tasks[0]?.sourceLang ?? 'auto',
       targetLang: tasks[0]?.targetLang ?? settings.targetLang,
       texts: tasks.map(task => task.requestText ?? task.sourceText),
+      glossary: mergeGlossaryConstraints(tasks),
       context: {
         pageUrl: tasks[0]?.pageUrl,
         domain: tasks[0]?.domain,
@@ -203,13 +205,14 @@ async function translateWithProvider(
             model,
             promptVersion,
             normalizeVersion: task.normalizeVersion ?? 'v1',
+            semanticsFingerprint: task.semanticsFingerprint,
           })
 
     return {
       taskId: task.id,
       blockId: task.blockId,
       sourceText: task.sourceText,
-      translatedText: restoreInlineTokens(output.texts[index], task.inlineTokens),
+      translatedText: restoreTaskTokens(output.texts[index], task),
       insertion: task.insertion,
       sourceLang: task.sourceLang,
       targetLang: task.targetLang,
@@ -233,6 +236,7 @@ async function translateWithProvider(
                 providerId,
                 model,
                 promptVersion,
+                semanticsFingerprint: tasks[index].semanticsFingerprint,
                 cacheKey: result.cacheKey,
               },
               translatedText: result.translatedText,
@@ -243,6 +247,32 @@ async function translateWithProvider(
   }
 
   return results
+}
+
+function mergeGlossaryConstraints(tasks: TranslationTask[]) {
+  const constraints = tasks.flatMap(task => task.glossary ?? [])
+  const seen = new Set<string>()
+  return constraints.filter(constraint => {
+    const key = `${constraint.entryId}\u0000${constraint.source}\u0000${constraint.target}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function restoreTaskTokens(text: string, task: TranslationTask): string {
+  const missing = findMissingGlossaryTokens(text, task.glossaryTokens)
+  if (missing.length > 0) {
+    const error = new Error('Translation provider did not preserve required terminology tokens') as Error & {
+      code?: string
+    }
+    error.code = 'provider_invalid_output'
+    throw error
+  }
+  return restoreInlineTokens(
+    restoreGlossaryTokens(text, task.glossaryTokens),
+    task.inlineTokens,
+  )
 }
 
 function getProviderConfigForProvider(settings: AppSettings, providerId: string) {

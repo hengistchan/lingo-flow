@@ -1,4 +1,5 @@
 import { buildTranslationCacheKey } from '@lingoflow/cache'
+import { applyGlossary, resolveGlossary } from '@lingoflow/glossary'
 import { clearPartialTranslations, renderPartialTranslation } from '@lingoflow/renderer'
 import { getDomain, normalizeText, sha256 } from '@lingoflow/shared'
 import type {
@@ -59,11 +60,17 @@ type CaretDocument = Document & {
 type HoverTranslationDependencies = {
   document?: Document
   chromeRuntime?: RuntimeMessenger
+  getContext?: () => {
+    sourceLang?: string
+    targetLang?: string
+    ruleIds?: string[]
+  }
 }
 
 export class HoverTranslationController {
   private readonly document: Document
   private readonly runtime: RuntimeMessenger
+  private readonly getContext: NonNullable<HoverTranslationDependencies['getContext']>
   private readonly sourceKeys = new WeakMap<HTMLElement, string>()
   private readonly requestVersions = new Map<string, number>()
   private pointer: { x: number; y: number } | null = null
@@ -74,6 +81,7 @@ export class HoverTranslationController {
   constructor(dependencies: HoverTranslationDependencies = {}) {
     this.document = dependencies.document ?? document
     this.runtime = dependencies.chromeRuntime ?? chrome.runtime
+    this.getContext = dependencies.getContext ?? (() => ({}))
   }
 
   start(): void {
@@ -114,13 +122,20 @@ export class HoverTranslationController {
     })
 
     try {
-      const settings = await this.sendMessage<PublicRuntimeSettings>({ type: 'settings/getRuntime' })
+      const savedSettings = await this.sendMessage<PublicRuntimeSettings>({ type: 'settings/getRuntime' })
+      const pageContext = this.getContext()
+      const settings = {
+        ...savedSettings,
+        sourceLang: pageContext.sourceLang ?? savedSettings.sourceLang,
+        targetLang: pageContext.targetLang ?? savedSettings.targetLang,
+      }
       const task = await createHoverTranslationTask(
         translationId,
         hit.text,
         settings,
         this.document.location.href,
         requestVersion,
+        pageContext.ruleIds ?? [],
       )
       const result = await this.resolveTranslation(task, settings)
 
@@ -322,9 +337,20 @@ async function createHoverTranslationTask(
   settings: PublicRuntimeSettings,
   pageUrl: string,
   requestVersion: number,
+  ruleIds: string[] = [],
 ): Promise<TranslationTask> {
   const normalizedText = normalizeText(sourceText)
   const textHash = await sha256(normalizedText)
+  const domain = getDomain(pageUrl)
+  const appliedGlossary = applyGlossary(
+    normalizedText,
+    resolveGlossary(settings.glossaries ?? [], {
+      domain,
+      ruleIds,
+      sourceLang: settings.sourceLang,
+      targetLang: settings.targetLang,
+    }),
+  )
   const cacheKey = buildTranslationCacheKey({
     textHash,
     sourceLang: settings.sourceLang,
@@ -333,18 +359,22 @@ async function createHoverTranslationTask(
     model: settings.model,
     promptVersion: settings.promptVersion,
     normalizeVersion: settings.normalizeVersion,
+    semanticsFingerprint: appliedGlossary.semanticsFingerprint,
   })
   const runId = `partial_${Date.now()}_${requestVersion}`
-  const domain = getDomain(pageUrl)
 
   return {
     id: `task_${translationId}_${requestVersion}`,
     blockId: translationId,
     sourceText: normalizedText,
-    requestText: normalizedText,
+    requestText: appliedGlossary.requestText,
     normalizedText,
     textHash,
     inlineTokens: [],
+    glossaryTokens: appliedGlossary.tokens,
+    glossary: appliedGlossary.constraints,
+    glossaryIds: appliedGlossary.glossaryIds,
+    semanticsFingerprint: appliedGlossary.semanticsFingerprint,
     sourceLang: settings.sourceLang,
     targetLang: settings.targetLang,
     providerId: settings.providerId,

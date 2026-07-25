@@ -1,4 +1,4 @@
-import { parseOpenAIJsonResult } from './index'
+import { createOpenAICompatibleRequestBody, parseOpenAIJsonResult } from './index'
 
 describe('parseOpenAIJsonResult', () => {
   it('parses a strict JSON array with the expected length', () => {
@@ -16,5 +16,27 @@ describe('parseOpenAIJsonResult', () => {
   it("Extracts the first JSON array when multiple brackets appear in chatty output", () => {
     const content = 'Here are the translations: ["Hello", "World"] and here is an unrelated array: [1, 2, 3]'
     expect(parseOpenAIJsonResult(content, 2)).toEqual(["Hello", "World"])
+  })
+})
+
+describe('createOpenAICompatibleRequestBody', () => {
+  it('adds deterministic glossary constraints only when a batch uses them', () => {
+    const body = createOpenAICompatibleRequestBody({
+      sourceLang: 'en',
+      targetLang: 'zh-Hans',
+      texts: ['An ⟦LFG:0⟧ coordinates tasks.'],
+      glossary: [{ entryId: 'agent', source: 'AI agent', target: '智能体' }],
+    }, {
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'secret',
+      model: 'gpt-4o-mini',
+    })
+    const messages = body.messages as Array<{ role: string; content: string }>
+    const prompt = JSON.parse(messages[1].content)
+
+    expect(messages[0].content).toContain('Preserve every ⟦LFG:N⟧ token exactly')
+    expect(prompt.glossary).toEqual([
+      { entryId: 'agent', source: 'AI agent', target: '智能体' },
+    ])
   })
 })

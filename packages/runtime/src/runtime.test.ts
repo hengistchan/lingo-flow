@@ -79,6 +79,52 @@ describe('content runtime language and progress behavior', () => {
     ]))
   })
 
+  it('applies scoped terminology and fingerprints the translation cache semantics', async () => {
+    document.body.innerHTML = `
+      <article>
+        <p>An AI agent coordinates work while another agent reviews the result.</p>
+      </article>
+    `
+    const settings = {
+      ...runtimeSettings(),
+      glossaries: [{
+        id: 'ai-terms',
+        name: 'AI terms',
+        enabled: true,
+        scope: { domains: ['localhost'] },
+        entries: [{
+          id: 'agent',
+          source: 'AI agent',
+          target: '智能体',
+          caseSensitive: false,
+          match: 'term' as const,
+          enabled: true,
+        }],
+        createdAt: '2026-07-25T00:00:00.000Z',
+        updatedAt: '2026-07-25T00:00:00.000Z',
+      }],
+    }
+    let task: TranslationTask | undefined
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      if (message.type === 'translation/translateBatch') {
+        task = message.payload.tasks[0]
+        return success({ results: [successResult(task!)] })
+      }
+      throw new Error(`Unexpected message: ${message.type}`)
+    })
+
+    await createContentRuntime({ document, chromeRuntime }).translatePage()
+
+    expect(task?.requestText).toContain('⟦LFG:0⟧')
+    expect(task?.glossary).toEqual([
+      { entryId: 'agent', source: 'AI agent', target: '智能体' },
+    ])
+    expect(task?.glossaryTokens?.[0].target).toBe('智能体')
+    expect(task?.semanticsFingerprint).toMatch(/^g1-/)
+    expect(task?.cacheKey).toContain(task!.semanticsFingerprint!)
+  })
+
   it('passes insertion metadata from collected blocks to rendered results', async () => {
     document.body.innerHTML = `
       <article>

@@ -230,7 +230,7 @@ export const openAICompatibleProvider: TranslationProvider = {
     speed: 'medium',
     quality: 'high',
     supportsBatch: true,
-    supportsGlossary: false,
+    supportsGlossary: true,
     supportsStreaming: false,
     maxItemsPerRequest: 40,
   },
@@ -422,10 +422,13 @@ function normalizeReasoningEffort(value: string | undefined): OpenAICompatibleCo
   return value as OpenAICompatibleConfig['reasoningEffort']
 }
 
-function createOpenAICompatibleRequestBody(
+export function createOpenAICompatibleRequestBody(
   input: TranslateInput,
   providerConfig: OpenAICompatibleConfig,
 ): Record<string, unknown> {
+  const glossaryInstruction = input.glossary?.length
+    ? ' Preserve every ⟦LFG:N⟧ token exactly. The glossary field describes the required terminology represented by those tokens.'
+    : ''
   const body: Record<string, unknown> = {
     model: providerConfig.model,
     temperature: 0.2,
@@ -433,7 +436,8 @@ function createOpenAICompatibleRequestBody(
       {
         role: 'system',
         content:
-          'Translate each input string into the requested target language. Return only a JSON array of translated strings, preserving order and length.',
+          'Translate each input string into the requested target language. Return only a JSON array of translated strings, preserving order and length.' +
+          glossaryInstruction,
       },
       {
         role: 'user',
@@ -441,6 +445,7 @@ function createOpenAICompatibleRequestBody(
           sourceLang: input.sourceLang,
           targetLang: input.targetLang,
           texts: input.texts,
+          glossary: input.glossary,
           context: input.context,
         }),
       },

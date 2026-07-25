@@ -2,6 +2,7 @@ import type { Glossary } from '@lingoflow/types'
 import {
   applyGlossary,
   createSemanticsFingerprint,
+  findMissingGlossaryTokens,
   hasLeakedGlossaryToken,
   resolveGlossary,
   restoreGlossaryTokens,
@@ -94,6 +95,8 @@ describe('glossary application', () => {
     expect(applied.semanticsFingerprint).toMatch(/^g1-/)
     expect(restoreGlossaryTokens('一个⟦LFG：0⟧协调另一个⟦LFG:1⟧。', applied.tokens))
       .toBe('一个智能体协调另一个代理。')
+    expect(findMissingGlossaryTokens('一个⟦LFG：0⟧，但第二个已丢失。', applied.tokens)
+      .map(token => token.id)).toEqual(['⟦LFG:1⟧'])
   })
 
   it('does not match inside protected inline tokens or partial latin words', () => {

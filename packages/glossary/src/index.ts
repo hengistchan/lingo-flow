@@ -184,6 +184,11 @@ export function restoreGlossaryTokens(text: string, tokens: GlossaryToken[] = []
   )
 }
 
+export function findMissingGlossaryTokens(text: string, tokens: GlossaryToken[] = []): GlossaryToken[] {
+  const normalized = text.replace(/⟦LFG：/g, '⟦LFG:')
+  return tokens.filter(token => !normalized.includes(token.id))
+}
+
 export function hasLeakedGlossaryToken(text: string): boolean {
   return /⟦LFG[:：]\d+⟧/.test(text)
 }

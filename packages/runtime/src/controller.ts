@@ -1,4 +1,5 @@
 import { buildTranslationCacheKey } from '@lingoflow/cache'
+import { applyGlossary, resolveGlossary } from '@lingoflow/glossary'
 import { collectScanResults } from '@lingoflow/dom'
 import { resolvePageRule, SITE_RULES } from '@lingoflow/rules'
 import { createBatches, processBatchesWithConcurrency } from '@lingoflow/scheduler'
@@ -94,6 +95,10 @@ export class RuntimeController {
     this.hoverTranslation = new HoverTranslationController({
       document: this.root,
       chromeRuntime: this.runtime,
+      getContext: () => ({
+        targetLang: this.pageTargetLangOverride,
+        ruleIds: this.lastResolvedRule?.matchedRuleIds ?? [],
+      }),
     })
     this.progress = this.idleProgress()
     this.subscribeToEvents()
@@ -506,7 +511,15 @@ export class RuntimeController {
     scanResults: ScanResult[],
     context: RuntimeContext,
   ): TranslationTask[] {
+    const resolvedGlossary = resolveGlossary(context.settings.glossaries ?? [], {
+      domain: context.domain,
+      ruleIds: context.pageRule.matchedRuleIds,
+      sourceLang: context.sourceLang,
+      targetLang: context.targetLang,
+    })
+
     return scanResults.map(({ block }) => {
+      const appliedGlossary = applyGlossary(block.requestText, resolvedGlossary)
       const cacheKey = buildTranslationCacheKey({
         textHash: block.textHash,
         sourceLang: context.sourceLang,
@@ -515,16 +528,21 @@ export class RuntimeController {
         model: context.model,
         promptVersion: context.settings.promptVersion,
         normalizeVersion: context.settings.normalizeVersion,
+        semanticsFingerprint: appliedGlossary.semanticsFingerprint,
       })
 
       return {
         id: `task_${block.id}`,
         blockId: block.id,
         sourceText: block.text,
-        requestText: block.requestText,
+        requestText: appliedGlossary.requestText,
         normalizedText: block.normalizedText,
         textHash: block.textHash,
         inlineTokens: block.inlineTokens,
+        glossaryTokens: appliedGlossary.tokens,
+        glossary: appliedGlossary.constraints,
+        glossaryIds: appliedGlossary.glossaryIds,
+        semanticsFingerprint: appliedGlossary.semanticsFingerprint,
         insertion: block.meta.insertion,
         sourceLang: context.sourceLang,
         targetLang: context.targetLang,

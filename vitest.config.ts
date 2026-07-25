@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 const alias = {
   '@lingoflow/cache': fileURLToPath(new URL('./packages/cache/src/index.ts', import.meta.url)),
   '@lingoflow/dom': fileURLToPath(new URL('./packages/dom/src/index.ts', import.meta.url)),
+  '@lingoflow/glossary': fileURLToPath(new URL('./packages/glossary/src/index.ts', import.meta.url)),
   '@lingoflow/providers': fileURLToPath(new URL('./packages/providers/src/index.ts', import.meta.url)),
   '@lingoflow/renderer': fileURLToPath(new URL('./packages/renderer/src/index.ts', import.meta.url)),
   '@lingoflow/rules': fileURLToPath(new URL('./packages/rules/src/index.ts', import.meta.url)),
