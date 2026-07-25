@@ -103,6 +103,8 @@ async function handleMessage(message: LingoFlowMessage, _sender: chrome.runtime.
       return { received: true }
     case 'page/translate':
     case 'page/translateHoveredText':
+    case 'page/startRuleSelection':
+    case 'page/cancelRuleSelection':
     case 'page/clear':
     case 'page/clearCache':
     case 'page/status':

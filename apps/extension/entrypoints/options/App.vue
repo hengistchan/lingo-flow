@@ -4,6 +4,7 @@ import LfButton from '../../src/ui/LfButton.vue'
 import LfFormField from '../../src/ui/LfFormField.vue'
 import LfNavItem from '../../src/ui/LfNavItem.vue'
 import ShortcutSetting from './ShortcutSetting.vue'
+import InteractiveRuleBuilder from './InteractiveRuleBuilder.vue'
 import {
   getLanguageLabel,
   getSourceLanguageOptions,
@@ -520,12 +521,12 @@ async function validateRule(rule: UserSiteRule): Promise<{ valid: boolean; error
   }
 }
 
-async function saveUserRulesToStorage(): Promise<boolean> {
+async function saveUserRulesToStorage(rules: UserSiteRule[] = userRules.value): Promise<boolean> {
   if (!hasRuntimeApi()) return true
   try {
     const result = await sendChromeMessage<{ saved: boolean; rules: UserSiteRule[] }>({
       type: 'userRules/save',
-      payload: { rules: userRules.value },
+      payload: { rules: cloneJson(rules) },
     })
     userRules.value = result.rules
     settings.userRules = structuredClone(result.rules)
@@ -535,6 +536,22 @@ async function saveUserRulesToStorage(): Promise<boolean> {
     message.value = error instanceof Error ? error.message : String(error)
     return false
   }
+}
+
+async function saveInteractiveRule(rule: UserSiteRule): Promise<boolean> {
+  const previousRules = cloneJson(userRules.value)
+  const nextRules = [...previousRules, cloneJson(rule)]
+  userRules.value = nextRules
+  if (!(await saveUserRulesToStorage(nextRules))) {
+    userRules.value = previousRules
+    return false
+  }
+  message.value = copy('options.ruleSaved')
+  return true
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
 }
 
 async function importRules() {
@@ -935,6 +952,12 @@ async function testOnCurrentPage() {
           <div class="section-heading">
             <h2>{{ copy('options.siteRules') }}</h2>
           </div>
+
+          <interactive-rule-builder
+            :existing-rules="userRules"
+            :locale="uiLocale"
+            :save-rule="saveInteractiveRule"
+          />
 
           <h3>{{ copy('options.builtInRules') }}</h3>
           <div class="builtin-rules-list">

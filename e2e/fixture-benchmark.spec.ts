@@ -74,6 +74,61 @@ test('pointer command renders only the hovered sentence below its source block',
   }
 })
 
+test('interactive site adaptation selects, simulates, and saves a compatible local rule', async () => {
+  const server = await startFixtureServer()
+  const extension = await launchExtension({ allowLocalhost: true })
+
+  try {
+    const article = await extension.context.newPage()
+    await article.goto(server.url('article'))
+
+    const options = await extension.context.newPage()
+    const optionsErrors: string[] = []
+    const optionsConsoleErrors: string[] = []
+    options.on('pageerror', error => optionsErrors.push(error.message))
+    options.on('console', entry => {
+      if (entry.type() === 'error') optionsConsoleErrors.push(entry.text())
+    })
+    await options.goto(extension.url('options.html'))
+    await options.getByRole('button', { name: 'Site rules' }).click()
+    await options.getByRole('button', { name: 'Choose reading area' }).click()
+
+    await expect(article.locator('[data-lingoflow-rule-selection-overlay="instruction"]')).toBeVisible()
+    await article.locator('article').click()
+
+    await expect(options.getByText('Compatibility')).toBeVisible()
+    await expect(options.getByText('Compatible', { exact: true })).toBeVisible()
+    await expect(options.getByRole('button', { name: 'Save local rule' })).toBeEnabled()
+    await options.getByRole('button', { name: 'Save local rule' }).click()
+    await options.waitForTimeout(100)
+    expect(optionsConsoleErrors).toEqual([])
+    await expect(options.getByText('Rule saved')).toBeVisible()
+    expect(optionsErrors).toEqual([])
+
+    const saved = await options.evaluate(() =>
+      chrome.runtime.sendMessage({ type: 'userRules/get' }),
+    )
+    expect(saved).toMatchObject({ ok: true })
+    expect(saved.data).toHaveLength(1)
+    expect(saved.data[0]).toMatchObject({
+      source: 'user',
+      enabled: true,
+      selectors: { contentRoots: ['article'] },
+      provenance: {
+        kind: 'interactive',
+        selectionKind: 'content-root',
+        selectedSelector: 'article',
+      },
+      compatibility: {
+        status: 'compatible',
+      },
+    })
+  } finally {
+    await extension.close()
+    await server.close()
+  }
+})
+
 test('docs fixture: content roots and block collection', async () => {
   const server = await startFixtureServer()
   const extension = await launchExtension({ allowLocalhost: true })

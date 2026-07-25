@@ -16,6 +16,7 @@ export { VersionTracker } from './version'
 export { BlockQueue } from './queue'
 export { RenderCoordinator } from './render-coordinator'
 export { PageObserver } from './observer'
+export { RuleSelectionController } from './rule-selection'
 export {
   HoverTranslationController,
   resolveHoveredText,

@@ -27,6 +27,8 @@ import {
   isVisible,
 } from './filters'
 
+export { generateSelectorCandidates } from './selector-candidates'
+
 export const BLOCK_SELECTORS = [
   'h1',
   'h2',

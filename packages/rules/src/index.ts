@@ -1,9 +1,12 @@
 import type {
+  PageDiagnostics,
   PageRule,
   PageRuleBehavior,
   PageRuleSelectors,
   PageRuleThresholds,
   ResolvedPageRule,
+  RuleCompatibilityMetrics,
+  RuleCompatibilitySnapshot,
   RuleValidationError,
   RuleValidationResult,
   UserSiteRule,
@@ -16,6 +19,70 @@ export type ResolvePageRuleOptions = {
   siteRules?: PageRule[]
   userRules?: UserSiteRule[]
   overrides?: PageRule | PageRule[]
+}
+
+export function compareRuleDiagnostics(
+  baseline: PageDiagnostics,
+  candidate: PageDiagnostics,
+  evaluatedAt = new Date().toISOString(),
+): RuleCompatibilitySnapshot {
+  const baselineMetrics = compatibilityMetrics(baseline)
+  const candidateMetrics = compatibilityMetrics(candidate)
+  const deltas = {
+    rootsSelected: candidateMetrics.rootsSelected - baselineMetrics.rootsSelected,
+    collected: candidateMetrics.collected - baselineMetrics.collected,
+    skipped: candidateMetrics.skipped - baselineMetrics.skipped,
+  }
+  const warnings: string[] = []
+
+  if (candidateMetrics.rootsSelected === 0) {
+    warnings.push('The candidate rule did not select a readable content root.')
+  }
+  if (candidateMetrics.collected === 0) {
+    warnings.push('The candidate rule did not collect any readable text.')
+  }
+  if (
+    baselineMetrics.collected > 0 &&
+    candidateMetrics.collected > Math.max(20, baselineMetrics.collected * 3)
+  ) {
+    warnings.push('The candidate collects substantially more content and may include page chrome.')
+  }
+  if (
+    baselineMetrics.collected > 0 &&
+    candidateMetrics.collected < Math.max(1, Math.floor(baselineMetrics.collected * 0.35))
+  ) {
+    warnings.push('The candidate drops most previously readable blocks.')
+  }
+
+  const interactiveSkips = candidate.topSkipReasons
+    ?.filter(entry =>
+      entry.reason === 'too-many-interactive-elements' ||
+      entry.reason === 'table-cell-too-interactive',
+    )
+    .reduce((total, entry) => total + entry.count, 0) ?? 0
+  if (interactiveSkips > 0) {
+    warnings.push('Some candidate content contains interactive controls and will remain excluded.')
+  }
+
+  const incompatible =
+    candidateMetrics.rootsSelected === 0 ||
+    candidateMetrics.collected === 0
+  return {
+    status: incompatible ? 'incompatible' : warnings.length > 0 ? 'warning' : 'compatible',
+    baseline: baselineMetrics,
+    candidate: candidateMetrics,
+    deltas,
+    warnings,
+    evaluatedAt,
+  }
+}
+
+function compatibilityMetrics(diagnostics: PageDiagnostics): RuleCompatibilityMetrics {
+  return {
+    rootsSelected: diagnostics.counts.rootsSelected,
+    collected: diagnostics.counts.collected,
+    skipped: diagnostics.counts.skipped,
+  }
 }
 
 const VALID_ID_RE = /^(?:user:)?[a-z0-9][a-z0-9._-]*$/

@@ -26,6 +26,7 @@ import { EventRingBuffer } from './event-ring-buffer'
 import { HoverTranslationController } from './hover-translation'
 import { RuntimeEventBus } from './events'
 import { PageObserver } from './observer'
+import { RuleSelectionController } from './rule-selection'
 import { BlockQueue } from './queue'
 import { RenderCoordinator } from './render-coordinator'
 import { BlockStore } from './store'
@@ -60,6 +61,7 @@ export class RuntimeController {
   private readonly observer: PageObserver
   private readonly eventRingBuffer = new EventRingBuffer()
   private readonly hoverTranslation: HoverTranslationController
+  private readonly ruleSelection: RuleSelectionController
   private progress: PageTranslationProgress
   private translating = false
   private manualTranslating = false
@@ -100,6 +102,7 @@ export class RuntimeController {
         ruleIds: this.lastResolvedRule?.matchedRuleIds ?? [],
       }),
     })
+    this.ruleSelection = new RuleSelectionController(this.root)
     this.progress = this.idleProgress()
     this.subscribeToEvents()
   }
@@ -218,6 +221,19 @@ export class RuntimeController {
         return true
       }
 
+      if (message?.type === 'page/startRuleSelection') {
+        this.ruleSelection.select(message.payload.kind)
+          .then(result => sendResponse({ ok: true, data: result }))
+          .catch(error => sendResponse({ ok: false, error: { message: error.message } }))
+        return true
+      }
+
+      if (message?.type === 'page/cancelRuleSelection') {
+        this.ruleSelection.cancel()
+        sendResponse({ ok: true, data: { cancelled: true } })
+        return false
+      }
+
       if (message?.type === 'page/setDisplayMode') {
         this.setDisplayMode(message.payload?.mode ?? 'dual')
         sendResponse({ ok: true, data: { mode: message.payload?.mode } })
@@ -274,6 +290,7 @@ export class RuntimeController {
   stop(): void {
     this.observer.stop()
     this.hoverTranslation.stop()
+    this.ruleSelection.stop()
     this.started = false
   }
 

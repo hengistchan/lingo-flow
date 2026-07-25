@@ -1,8 +1,10 @@
 import type { Glossary, GlossaryToken, TranslationConstraint } from './glossary'
 import type { OnboardingState } from './onboarding'
+import type { RuleCompatibilitySnapshot, RuleSelectionKind, UserRuleProvenance } from './rule-adaptation'
 
 export * from './glossary'
 export * from './onboarding'
+export * from './rule-adaptation'
 
 export type ProviderType = 'machine-translation' | 'llm' | 'custom'
 
@@ -381,6 +383,8 @@ export type UserSiteRule = PageRule & {
   enabled: boolean
   createdAt: string
   updatedAt: string
+  provenance?: UserRuleProvenance
+  compatibility?: RuleCompatibilitySnapshot
 }
 
 export type ResolvedPageRule = {
@@ -865,6 +869,17 @@ export type PageDiagnoseMessage = {
   }
 }
 
+export type PageStartRuleSelectionMessage = {
+  type: 'page/startRuleSelection'
+  payload: {
+    kind: RuleSelectionKind
+  }
+}
+
+export type PageCancelRuleSelectionMessage = {
+  type: 'page/cancelRuleSelection'
+}
+
 export type PageSetDisplayModeMessage = {
   type: 'page/setDisplayMode'
   payload?: {
@@ -937,6 +952,8 @@ export type LingoFlowMessage =
   | PageProgressUpdateMessage
   | PageGetDiagnosticsMessage
   | PageDiagnoseMessage
+  | PageStartRuleSelectionMessage
+  | PageCancelRuleSelectionMessage
   | PageSetDisplayModeMessage
   | PageSetDynamicTranslationMessage
   | UserRulesGetMessage

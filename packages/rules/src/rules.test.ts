@@ -1,5 +1,11 @@
-import type { PageRule, SiteRule, UserSiteRule } from '@lingoflow/types'
-import { defaultPageRule, resolvePageRule, validateUserRule, namespaceUserRuleId } from './index'
+import type { PageDiagnostics, PageRule, SiteRule, UserSiteRule } from '@lingoflow/types'
+import {
+  compareRuleDiagnostics,
+  defaultPageRule,
+  namespaceUserRuleId,
+  resolvePageRule,
+  validateUserRule,
+} from './index'
 import { SITE_RULES, wikipediaRule, githubRule, docsPageRule } from './site-rules'
 
 function makeUserRule(overrides: Partial<UserSiteRule> & { id: string }): UserSiteRule {
@@ -155,6 +161,78 @@ describe('page rule resolution', () => {
     expect(userRule).toEqual(originalUserRule)
   })
 })
+
+describe('rule compatibility comparison', () => {
+  it('reports compatible improvements with deterministic deltas', () => {
+    const baseline = diagnostics({ rootsSelected: 1, collected: 8, skipped: 4 })
+    const candidate = diagnostics({ rootsSelected: 1, collected: 10, skipped: 2 })
+
+    expect(compareRuleDiagnostics(
+      baseline,
+      candidate,
+      '2026-07-25T00:00:00.000Z',
+    )).toEqual({
+      status: 'compatible',
+      baseline: { rootsSelected: 1, collected: 8, skipped: 4 },
+      candidate: { rootsSelected: 1, collected: 10, skipped: 2 },
+      deltas: { rootsSelected: 0, collected: 2, skipped: -2 },
+      warnings: [],
+      evaluatedAt: '2026-07-25T00:00:00.000Z',
+    })
+  })
+
+  it('rejects empty candidates and warns about broad or interactive collection', () => {
+    const empty = compareRuleDiagnostics(
+      diagnostics({ rootsSelected: 1, collected: 8, skipped: 2 }),
+      diagnostics({ rootsSelected: 0, collected: 0, skipped: 10 }),
+    )
+    const broad = compareRuleDiagnostics(
+      diagnostics({ rootsSelected: 1, collected: 5, skipped: 2 }),
+      diagnostics(
+        { rootsSelected: 1, collected: 25, skipped: 8 },
+        [{ reason: 'too-many-interactive-elements', count: 2 }],
+      ),
+    )
+
+    expect(empty.status).toBe('incompatible')
+    expect(empty.warnings.length).toBeGreaterThanOrEqual(2)
+    expect(broad.status).toBe('warning')
+    expect(broad.warnings.join(' ')).toContain('substantially more content')
+    expect(broad.warnings.join(' ')).toContain('interactive controls')
+  })
+})
+
+function diagnostics(
+  metrics: { rootsSelected: number; collected: number; skipped: number },
+  topSkipReasons: Array<{ reason: string; count: number }> = [],
+): PageDiagnostics {
+  return {
+    pageUrl: 'https://example.com/article',
+    domain: 'example.com',
+    runId: 'dry-run',
+    rootGeneration: 1,
+    rule: { id: 'default', matchedRuleIds: ['default'] },
+    dynamicTranslationEnabled: false,
+    dynamicTranslationMode: 'disabled',
+    displayMode: 'dual',
+    counts: {
+      rootsConsidered: metrics.rootsSelected,
+      rootsSelected: metrics.rootsSelected,
+      candidates: metrics.collected + metrics.skipped,
+      collected: metrics.collected,
+      skipped: metrics.skipped,
+      queued: 0,
+      cacheHit: 0,
+      translated: 0,
+      failed: 0,
+      rendered: 0,
+      renderSkipped: 0,
+      stale: 0,
+      discarded: 0,
+    },
+    topSkipReasons,
+  }
+}
 
 describe('site rules registry', () => {
   beforeEach(() => {
