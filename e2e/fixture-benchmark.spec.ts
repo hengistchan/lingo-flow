@@ -123,6 +123,56 @@ test('interactive site adaptation selects, simulates, and saves a compatible loc
         status: 'compatible',
       },
     })
+
+    const originalRuleId = saved.data[0].id as string
+    const originalRuleCard = options.locator('.user-rule-card').filter({
+      has: options.getByText(originalRuleId, { exact: true }),
+    })
+    await originalRuleCard.getByRole('button', { name: 'Duplicate' }).click()
+    const duplicateDialog = options.getByRole('dialog')
+    await expect(duplicateDialog).toBeVisible()
+    await expect(duplicateDialog.getByLabel('Rule ID')).toHaveValue(`${originalRuleId}-copy`)
+    await duplicateDialog.getByRole('button', { name: 'Save rule' }).click()
+    await expect(duplicateDialog).toHaveCount(0)
+
+    const afterDuplicate = await options.evaluate(() =>
+      chrome.runtime.sendMessage({ type: 'userRules/get' }),
+    )
+    expect(afterDuplicate).toMatchObject({ ok: true })
+    expect(afterDuplicate.data).toHaveLength(2)
+    expect(afterDuplicate.data.map((rule: { id: string }) => rule.id)).toContain(`${originalRuleId}-copy`)
+
+    await originalRuleCard.getByRole('button', { name: 'Edit rule' }).click()
+    const editDialog = options.getByRole('dialog')
+    await expect(editDialog).toBeVisible()
+    await editDialog.getByLabel('Priority').fill('61')
+    await editDialog.getByLabel('Content root selectors (one per line)').fill('article\nmain')
+    await editDialog.getByRole('button', { name: 'Save rule' }).click()
+    await expect(editDialog).toHaveCount(0)
+
+    const afterEdit = await options.evaluate(() =>
+      chrome.runtime.sendMessage({ type: 'userRules/get' }),
+    )
+    expect(afterEdit).toMatchObject({ ok: true })
+    expect(afterEdit.data.find((rule: { id: string }) => rule.id === originalRuleId)).toMatchObject({
+      priority: 61,
+      selectors: { contentRoots: ['article', 'main'] },
+    })
+
+    const duplicateRuleCard = options.locator('.user-rule-card').filter({
+      has: options.getByText(`${originalRuleId}-copy`, { exact: true }),
+    })
+    await duplicateRuleCard.getByRole('button', { name: 'Delete' }).click()
+    await expect(duplicateRuleCard).toHaveCount(0)
+
+    const afterDelete = await options.evaluate(() =>
+      chrome.runtime.sendMessage({ type: 'userRules/get' }),
+    )
+    expect(afterDelete).toMatchObject({ ok: true })
+    expect(afterDelete.data).toHaveLength(1)
+    expect(afterDelete.data[0]).toMatchObject({ id: originalRuleId, priority: 61 })
+    expect(optionsConsoleErrors).toEqual([])
+    expect(optionsErrors).toEqual([])
   } finally {
     await extension.close()
     await server.close()

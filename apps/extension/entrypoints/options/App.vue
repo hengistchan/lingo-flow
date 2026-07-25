@@ -14,6 +14,7 @@ import ShortcutSetting from './ShortcutSetting.vue'
 import InteractiveRuleBuilder from './InteractiveRuleBuilder.vue'
 import TerminologySection from './TerminologySection.vue'
 import { diagnosePage, ensureContentRuntime, findAdaptableTab } from './page-adaptation-runtime'
+import { cloneSerializable } from './serialization'
 import { useRuleCompatibility } from './useRuleCompatibility'
 import {
   getLanguageLabel,
@@ -228,7 +229,7 @@ function createUserRule() {
 }
 
 function editUserRule(rule: UserSiteRule) {
-  editingRule.value = structuredClone(rule)
+  editingRule.value = cloneSerializable(rule)
   editingOriginalRuleId.value = rule.id
   editingRuleJson.value = JSON.stringify(rule, null, 2)
   editingRuleErrors.value = []
@@ -238,7 +239,7 @@ function editUserRule(rule: UserSiteRule) {
 function duplicateUserRule(rule: UserSiteRule) {
   const now = new Date().toISOString()
   editingRule.value = {
-    ...structuredClone(rule),
+    ...cloneSerializable(rule),
     id: `${rule.id}-copy`,
     createdAt: now,
     updatedAt: now,
@@ -250,7 +251,7 @@ function duplicateUserRule(rule: UserSiteRule) {
 }
 
 async function deleteUserRule(ruleId: string) {
-  const previousRules = structuredClone(userRules.value)
+  const previousRules = cloneSerializable(userRules.value)
   userRules.value = userRules.value.filter(r => r.id !== ruleId)
   if (!(await saveUserRulesToStorage())) {
     userRules.value = previousRules
@@ -275,9 +276,9 @@ async function toggleUserRule(ruleId: string) {
 }
 
 async function checkRuleCompatibility(rule: UserSiteRule) {
-  const previousRules = cloneJson(userRules.value)
+  const previousRules = cloneSerializable(userRules.value)
   try {
-    const updated = await revalidateRule(cloneJson(rule))
+    const updated = await revalidateRule(cloneSerializable(rule))
     const index = userRules.value.findIndex(item => item.id === rule.id)
     if (index < 0) return
     userRules.value[index] = updated
@@ -353,14 +354,16 @@ function updateRuleField(field: string, value: any) {
 async function saveEditingRule() {
   if (!editingRule.value) return
 
-  const validation = await validateRule(editingRule.value)
+  const draft = cloneSerializable(editingRule.value)
+  const validation = await validateRule(draft)
   if (!validation.valid) {
     editingRuleErrors.value = validation.errors.map(e => e.message)
     return
   }
 
   const now = new Date().toISOString()
-  const rule = { ...editingRule.value, updatedAt: now }
+  const rule = { ...draft, updatedAt: now }
+  const previousRules = cloneSerializable(userRules.value)
   const idx = editingOriginalRuleId.value
     ? userRules.value.findIndex(r => r.id === editingOriginalRuleId.value)
     : -1
@@ -370,7 +373,10 @@ async function saveEditingRule() {
     userRules.value.push(rule)
   }
 
-  if (!(await saveUserRulesToStorage())) return
+  if (!(await saveUserRulesToStorage())) {
+    userRules.value = previousRules
+    return
+  }
   showRuleEditor.value = false
   editingRule.value = null
   editingOriginalRuleId.value = null
@@ -384,7 +390,10 @@ async function validateRule(rule: UserSiteRule): Promise<{ valid: boolean; error
   try {
     const result = await sendChromeMessage<{ ok: true } | { ok: false; errors: { field: string; message: string }[] }>({
       type: 'userRules/validate',
-      payload: { rule, existingRuleId: editingOriginalRuleId.value ?? undefined },
+      payload: {
+        rule: cloneSerializable(rule),
+        existingRuleId: editingOriginalRuleId.value ?? undefined,
+      },
     })
     return result.ok
       ? { valid: true, errors: [] }
@@ -399,7 +408,7 @@ async function saveUserRulesToStorage(rules: UserSiteRule[] = userRules.value): 
   try {
     const result = await sendChromeMessage<{ saved: boolean; rules: UserSiteRule[] }>({
       type: 'userRules/save',
-      payload: { rules: cloneJson(rules) },
+      payload: { rules: cloneSerializable(rules) },
     })
     userRules.value = result.rules
     settings.userRules = structuredClone(result.rules)
@@ -412,8 +421,8 @@ async function saveUserRulesToStorage(rules: UserSiteRule[] = userRules.value): 
 }
 
 async function saveInteractiveRule(rule: UserSiteRule): Promise<boolean> {
-  const previousRules = cloneJson(userRules.value)
-  const nextRules = [...previousRules, cloneJson(rule)]
+  const previousRules = cloneSerializable(userRules.value)
+  const nextRules = [...previousRules, cloneSerializable(rule)]
   userRules.value = nextRules
   if (!(await saveUserRulesToStorage(nextRules))) {
     userRules.value = previousRules
@@ -421,10 +430,6 @@ async function saveInteractiveRule(rule: UserSiteRule): Promise<boolean> {
   }
   message.value = copy('options.ruleSaved')
   return true
-}
-
-function cloneJson<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T
 }
 
 async function importRules() {
