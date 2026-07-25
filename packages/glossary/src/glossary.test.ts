@@ -7,6 +7,7 @@ import {
   resolveGlossary,
   restoreGlossaryTokens,
   validateGlossary,
+  validateGlossaryCollection,
 } from './index'
 
 const createdAt = '2026-07-25T00:00:00.000Z'
@@ -53,6 +54,27 @@ describe('glossary validation', () => {
     expect(result.errors.map(error => error.field)).toEqual(
       expect.arrayContaining(['id', 'entries.1.source', 'scope.domains.0']),
     )
+  })
+
+  it('validates complete collections with glossary-indexed fields', () => {
+    const result = validateGlossaryCollection([
+      glossary({ id: 'product' }),
+      glossary({ id: 'product' }),
+    ])
+
+    expect(result).toEqual({
+      ok: false,
+      errors: expect.arrayContaining([
+        expect.objectContaining({
+          field: 'glossaries.0.id',
+          message: 'Glossary ID "product" already exists.',
+        }),
+        expect.objectContaining({
+          field: 'glossaries.1.id',
+          message: 'Glossary ID "product" already exists.',
+        }),
+      ]),
+    })
   })
 })
 

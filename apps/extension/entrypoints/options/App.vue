@@ -5,6 +5,7 @@ import LfFormField from '../../src/ui/LfFormField.vue'
 import LfNavItem from '../../src/ui/LfNavItem.vue'
 import ShortcutSetting from './ShortcutSetting.vue'
 import InteractiveRuleBuilder from './InteractiveRuleBuilder.vue'
+import TerminologySection from './TerminologySection.vue'
 import {
   getLanguageLabel,
   getSourceLanguageOptions,
@@ -28,7 +29,7 @@ import type {
   UserSiteRule,
 } from '@lingoflow/types'
 
-type SettingsSection = 'general' | 'providers' | 'localData' | 'siteRules'
+type SettingsSection = 'general' | 'providers' | 'terminology' | 'localData' | 'siteRules'
 
 const settings = reactive<AppSettings>(structuredClone(DEFAULT_SETTINGS))
 const savedSettings = ref<AppSettings>(structuredClone(DEFAULT_SETTINGS))
@@ -109,6 +110,13 @@ function formatRootDiagnostic(root: RootDiagnostic): string {
 function formatRejectedRoot(root: RootDiagnostic): string {
   const reason = root.rejectReason ? ` · ${root.rejectReason}` : ''
   return `${formatRootDiagnostic(root)}${reason}`
+}
+
+function diagnosticTranslationPosition(diagnostics: PageDiagnostics): string {
+  const behavior = diagnostics.rule.behavior
+  if (!behavior || typeof behavior !== 'object') return 'after'
+  const value = (behavior as { translationPosition?: unknown }).translationPosition
+  return value === 'before' ? 'before' : 'after'
 }
 
 watch(dirty, hasUnsavedChanges => {
@@ -653,7 +661,7 @@ async function testOnCurrentPage() {
     <div class="settings-shell">
       <aside class="settings-nav" aria-label="Settings sections">
         <lf-nav-item
-          v-for="section in (['general', 'providers', 'localData', 'siteRules'] as SettingsSection[])"
+          v-for="section in (['general', 'providers', 'terminology', 'localData', 'siteRules'] as SettingsSection[])"
           :key="section"
           :label="copy(`options.${section}`)"
           :active="activeSection === section"
@@ -908,6 +916,13 @@ async function testOnCurrentPage() {
           </div>
         </section>
 
+        <terminology-section
+          v-else-if="activeSection === 'terminology'"
+          :glossaries="settings.glossaries"
+          :locale="uiLocale"
+          @update:glossaries="settings.glossaries = $event"
+        />
+
         <!-- Local Data Section -->
         <section v-else-if="activeSection === 'localData'">
           <h2>{{ copy('options.localData') }}</h2>
@@ -1036,6 +1051,12 @@ async function testOnCurrentPage() {
               <dd>{{ diagnosticsResult.counts.collected }}</dd>
               <dt>{{ copy('options.candidatesSkipped') }}</dt>
               <dd>{{ diagnosticsResult.counts.skipped }}</dd>
+              <dt>{{ copy('options.translationPosition') }}</dt>
+              <dd>{{ diagnosticTranslationPosition(diagnosticsResult) }}</dd>
+              <dt>{{ copy('options.activeGlossaries') }}</dt>
+              <dd>{{ diagnosticsResult.terminology?.glossaryIds.join(', ') || '—' }}</dd>
+              <dt>{{ copy('options.semanticsFingerprints') }}</dt>
+              <dd>{{ diagnosticsResult.terminology?.semanticsFingerprints.join(', ') || '—' }}</dd>
             </dl>
             <div v-if="diagnosticsResult.topSkipReasons?.length" class="skip-reasons">
               <strong>{{ copy('options.topSkipReasons') }}</strong>

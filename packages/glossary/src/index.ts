@@ -94,6 +94,20 @@ export function validateGlossary(
   return errors.length === 0 ? { ok: true } : { ok: false, errors }
 }
 
+export function validateGlossaryCollection(glossaries: Glossary[]): GlossaryValidationResult {
+  const errors = glossaries.flatMap((glossary, index) => {
+    const existing = glossaries.filter((_, candidateIndex) => candidateIndex !== index)
+    const result = validateGlossary(glossary, existing)
+    return result.ok
+      ? []
+      : result.errors.map(error => ({
+          field: `glossaries.${index}.${error.field}`,
+          message: error.message,
+        }))
+  })
+  return errors.length === 0 ? { ok: true } : { ok: false, errors }
+}
+
 export function resolveGlossary(
   glossaries: Glossary[],
   context: GlossaryResolutionContext,

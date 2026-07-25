@@ -70,6 +70,10 @@ export class RuntimeController {
   private pendingIncremental: PageTranslationOverrides | null = null
   private latestDiagnostics: PageDiagnostics | null = null
   private latestCollectionDiagnostics: CollectionDiagnostics | null = null
+  private latestTerminology: NonNullable<PageDiagnostics['terminology']> = {
+    glossaryIds: [],
+    semanticsFingerprints: [],
+  }
   private lastResolvedRule: ResolvedPageRule | null = null
   private latestUserRules: UserSiteRule[] = []
   private memoryCacheHits = 0
@@ -125,6 +129,7 @@ export class RuntimeController {
     this.memoryCacheHits = 0
     this.indexeddbCacheHits = 0
     this.providerRequestedCount = 0
+    this.latestTerminology = { glossaryIds: [], semanticsFingerprints: [] }
 
     try {
       const settings = await this.sendRuntimeMessage<PublicRuntimeSettings>({ type: 'settings/getRuntime' })
@@ -156,6 +161,7 @@ export class RuntimeController {
 
       this.materializeBlocks(scanOutput.blocks, context)
       const tasks = this.createTasks(scanOutput.blocks, context)
+      this.latestTerminology = summarizeTerminology(tasks)
       this.progress.totalBlocks = tasks.length
 
       if (tasks.length === 0) {
@@ -803,7 +809,7 @@ export class RuntimeController {
 
     const runId = `dry-run_${Date.now()}`
     const rootGeneration = this.version.currentRootGeneration()
-    const scanOutput = await collectScanResults(this.root, {
+    const context: RuntimeContext = Object.freeze({
       runId,
       url: pageUrl,
       domain,
@@ -817,6 +823,8 @@ export class RuntimeController {
       rootGeneration,
       dryRun: true,
     })
+    const scanOutput = await collectScanResults(this.root, context)
+    const terminology = summarizeTerminology(this.createTasks(scanOutput.blocks, context))
 
     const blockDiagnostics: BlockDiagnostic[] = scanOutput.blocks.map(({ block }) => ({
       blockId: block.id,
@@ -854,6 +862,7 @@ export class RuntimeController {
       dynamicTranslationEnabled: this.dynamicTranslationEnabled,
       dynamicTranslationMode: this.getDynamicTranslationMode(),
       displayMode: this.coordinator.getDisplayMode(),
+      terminology,
       counts: {
         rootsConsidered: scanOutput.diagnostics.rootsConsidered,
         rootsSelected: scanOutput.diagnostics.rootsSelected,
@@ -941,6 +950,7 @@ export class RuntimeController {
       dynamicTranslationEnabled: this.dynamicTranslationEnabled,
       dynamicTranslationMode: this.getDynamicTranslationMode(),
       displayMode: context.displayMode,
+      terminology: this.latestTerminology,
       counts: {
         rootsConsidered: collectionDiag?.rootsConsidered ?? 0,
         rootsSelected: collectionDiag?.rootsSelected ?? 0,
@@ -1025,5 +1035,14 @@ export class RuntimeController {
   ): string {
     if (override && options.some(option => option.code === override)) return override
     return options.some(option => option.code === fallback) ? fallback : options[0]?.code ?? fallback
+  }
+}
+
+function summarizeTerminology(tasks: TranslationTask[]): NonNullable<PageDiagnostics['terminology']> {
+  return {
+    glossaryIds: [...new Set(tasks.flatMap(task => task.glossaryIds ?? []))].sort(),
+    semanticsFingerprints: [...new Set(
+      tasks.flatMap(task => task.semanticsFingerprint ? [task.semanticsFingerprint] : []),
+    )].sort(),
   }
 }

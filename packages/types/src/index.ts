@@ -274,6 +274,10 @@ export type PageDiagnostics = {
   dynamicTranslationEnabled: boolean
   dynamicTranslationMode: string
   displayMode: PageDisplayMode
+  terminology?: {
+    glossaryIds: string[]
+    semanticsFingerprints: string[]
+  }
   counts: {
     rootsConsidered: number
     rootsSelected: number

@@ -1,5 +1,5 @@
 import { buildTranslationCacheKey, clearAllCache, clearCacheByDomain, pruneCache, resolveTranslationCache, safeSaveTranslationCache } from '@lingoflow/cache'
-import { findMissingGlossaryTokens, restoreGlossaryTokens } from '@lingoflow/glossary'
+import { findMissingGlossaryTokens, restoreGlossaryTokens, validateGlossaryCollection } from '@lingoflow/glossary'
 import { createDefaultProviderRegistry, extractBuiltInProviderConfig, testProviderConnection } from '@lingoflow/providers'
 import { isFallbackEligible, retry, translateBatchWithDegrade } from '@lingoflow/scheduler'
 import { getPublicRuntimeSettings, getSettings, getSettingsSummary, saveSettings } from '@lingoflow/settings'
@@ -301,6 +301,10 @@ async function getUserRules(): Promise<UserSiteRule[]> {
 }
 
 async function saveSettingsPreservingUserRules(settings: AppSettings): Promise<void> {
+  const validation = validateGlossaryCollection(settings.glossaries ?? [])
+  if (!validation.ok) {
+    throw new Error(validation.errors.map(error => error.message).join('; '))
+  }
   const current = await getSettings()
   await saveSettings({ ...settings, userRules: current.userRules })
 }

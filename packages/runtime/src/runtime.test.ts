@@ -114,7 +114,8 @@ describe('content runtime language and progress behavior', () => {
       throw new Error(`Unexpected message: ${message.type}`)
     })
 
-    await createContentRuntime({ document, chromeRuntime }).translatePage()
+    const runtime = createContentRuntime({ document, chromeRuntime })
+    await runtime.translatePage()
 
     expect(task?.requestText).toContain('⟦LFG:0⟧')
     expect(task?.glossary).toEqual([
@@ -123,6 +124,10 @@ describe('content runtime language and progress behavior', () => {
     expect(task?.glossaryTokens?.[0].target).toBe('智能体')
     expect(task?.semanticsFingerprint).toMatch(/^g1-/)
     expect(task?.cacheKey).toContain(task!.semanticsFingerprint!)
+    expect(runtime.getDiagnostics()?.terminology).toEqual({
+      glossaryIds: ['ai-terms'],
+      semanticsFingerprints: [task!.semanticsFingerprint],
+    })
   })
 
   it('passes insertion metadata from collected blocks to rendered results', async () => {

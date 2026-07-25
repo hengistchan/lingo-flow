@@ -537,12 +537,29 @@ test('background validates user-rule writes and settings saves do not clobber th
         },
       })
       const currentSettings = await chrome.runtime.sendMessage({ type: 'settings/get' })
+      const invalidGlossarySave = await chrome.runtime.sendMessage({
+        type: 'settings/save',
+        payload: {
+          settings: {
+            ...currentSettings.data,
+            glossaries: [{
+              id: 'Bad ID',
+              name: 'Broken glossary',
+              enabled: true,
+              scope: {},
+              entries: [],
+              createdAt: now,
+              updatedAt: now,
+            }],
+          },
+        },
+      })
       const settingsSave = await chrome.runtime.sendMessage({
         type: 'settings/save',
         payload: { settings: { ...currentSettings.data, userRules: [] } },
       })
       const persistedRules = await chrome.runtime.sendMessage({ type: 'userRules/get' })
-      return { initialSave, invalidSave, settingsSave, persistedRules }
+      return { initialSave, invalidSave, invalidGlossarySave, settingsSave, persistedRules }
     })
 
     expect(result.initialSave).toMatchObject({
@@ -550,6 +567,7 @@ test('background validates user-rule writes and settings saves do not clobber th
       data: { saved: true, rules: [{ id: 'reader-rule' }] },
     })
     expect(result.invalidSave).toMatchObject({ ok: false })
+    expect(result.invalidGlossarySave).toMatchObject({ ok: false })
     expect(result.settingsSave).toMatchObject({ ok: true })
     expect(result.persistedRules).toMatchObject({
       ok: true,

@@ -129,6 +129,51 @@ test('interactive site adaptation selects, simulates, and saves a compatible loc
   }
 })
 
+test('terminology UI enforces exact wording and changes cache semantics', async () => {
+  const server = await startFixtureServer()
+  const extension = await launchExtension({ allowLocalhost: true })
+
+  try {
+    await configureProvider(extension, server.successProviderBaseUrl)
+
+    const options = await extension.context.newPage()
+    await options.goto(extension.url('options.html'))
+    await options.getByRole('button', { name: 'Terminology' }).click()
+    await options.getByRole('button', { name: 'New glossary' }).first().click()
+    await options.getByRole('button', { name: 'Add term' }).click()
+    await options.getByLabel('Source term').fill('AI agent')
+    await options.getByLabel('Required translation').fill('智能体')
+    const saveSettings = options.getByRole('button', { name: 'Save settings' })
+    await saveSettings.click()
+    await expect(saveSettings).toBeDisabled()
+    await options.close()
+
+    const page = await extension.context.newPage()
+    await page.goto(server.url('terminology'))
+    await injectContent(extension)
+    await translate(extension)
+    await expect(page.locator('[data-lingoflow-translation]').filter({ hasText: '智能体' })).toHaveCount(1)
+
+    const editOptions = await extension.context.newPage()
+    await editOptions.goto(extension.url('options.html'))
+    await editOptions.getByRole('button', { name: 'Terminology' }).click()
+    await editOptions.getByLabel('Required translation').fill('智能代理')
+    const saveChangedSettings = editOptions.getByRole('button', { name: 'Save settings' })
+    await saveChangedSettings.click()
+    await expect(saveChangedSettings).toBeDisabled()
+    await editOptions.close()
+
+    await page.bringToFront()
+    await clearTranslation(extension)
+    await translate(extension)
+    await expect(page.locator('[data-lingoflow-translation]').filter({ hasText: '智能代理' })).toHaveCount(1)
+    await expect(page.locator('[data-lingoflow-translation]').filter({ hasText: '智能体' })).toHaveCount(0)
+  } finally {
+    await extension.close()
+    await server.close()
+  }
+})
+
 test('docs fixture: content roots and block collection', async () => {
   const server = await startFixtureServer()
   const extension = await launchExtension({ allowLocalhost: true })
@@ -593,6 +638,15 @@ const FIXTURES: Record<string, string> = {
     <h1>Article Fixture</h1>
     <p>This article paragraph is long enough to be collected and translated by the extension runtime.</p>
     <p>A second paragraph ensures that multiple blocks are collected during a single translation run.</p>
+  </article>
+</body></html>`,
+
+  terminology: `<!doctype html>
+<html lang="en"><head><title>Terminology Fixture</title></head>
+<body>
+  <article>
+    <h1>Terminology Consistency</h1>
+    <p>An AI agent coordinates this workflow while the documentation explains every decision.</p>
   </article>
 </body></html>`,
 

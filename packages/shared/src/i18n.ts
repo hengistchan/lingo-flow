@@ -98,7 +98,11 @@ export type UiCopyKey =
   | 'options.customOpenAI'
   | 'options.customProviderName'
   | 'options.cancel'
+  | 'options.terminology'
   | 'options.siteRules'
+  | 'options.translationPosition'
+  | 'options.activeGlossaries'
+  | 'options.semanticsFingerprints'
   | 'options.builtInRules'
   | 'options.userRules'
   | 'options.noUserRules'
@@ -234,7 +238,11 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.customOpenAI': '自定义 OpenAI 兼容',
     'options.customProviderName': '名称',
     'options.cancel': '取消',
+    'options.terminology': '术语管理',
     'options.siteRules': '站点规则',
+    'options.translationPosition': '译文位置',
+    'options.activeGlossaries': '生效术语表',
+    'options.semanticsFingerprints': '术语语义指纹',
     'options.builtInRules': '内置规则',
     'options.userRules': '自定义规则',
     'options.noUserRules': '暂无自定义规则。您可以为特定网站创建规则来优化翻译行为。',
@@ -369,7 +377,11 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.customOpenAI': 'Custom OpenAI-compatible',
     'options.customProviderName': 'Name',
     'options.cancel': 'Cancel',
+    'options.terminology': 'Terminology',
     'options.siteRules': 'Site rules',
+    'options.translationPosition': 'Translation position',
+    'options.activeGlossaries': 'Active glossaries',
+    'options.semanticsFingerprints': 'Terminology fingerprints',
     'options.builtInRules': 'Built-in rules',
     'options.userRules': 'Custom rules',
     'options.noUserRules': 'No custom rules yet. Create rules to optimize translation behavior for specific websites.',
