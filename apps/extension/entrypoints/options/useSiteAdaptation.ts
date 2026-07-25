@@ -9,6 +9,11 @@ import type {
 } from '@lingoflow/types'
 import { computed, ref } from 'vue'
 import { buildInteractiveRule } from './site-adaptation'
+import {
+  diagnosePage,
+  ensureContentRuntime,
+  findAdaptableTab,
+} from './page-adaptation-runtime'
 
 type AdaptationStage = 'idle' | 'selecting' | 'testing' | 'review' | 'error'
 
@@ -43,7 +48,7 @@ export function useSiteAdaptation(existingRules: () => UserSiteRule[]) {
       }
       targetTabId.value = targetTab.id
       await ensureContentRuntime(targetTab.id)
-      const baseline = await diagnose(targetTab.id)
+      const baseline = await diagnosePage(targetTab.id)
 
       await chrome.tabs.update(targetTab.id, { active: true })
       const response = await chrome.tabs.sendMessage(targetTab.id, {
@@ -75,7 +80,7 @@ export function useSiteAdaptation(existingRules: () => UserSiteRule[]) {
     selectedCandidate.value = candidate
     stage.value = 'testing'
     try {
-      const baseline = await diagnose(targetTabId.value)
+      const baseline = await diagnosePage(targetTabId.value)
       await evaluateCandidate(baseline)
     } catch (cause) {
       stage.value = 'error'
@@ -107,7 +112,10 @@ export function useSiteAdaptation(existingRules: () => UserSiteRule[]) {
       existingRules: existingRules(),
       translationPosition: translationPosition.value,
     })
-    const candidate = await diagnose(targetTabId.value, draft)
+    const candidate = await diagnosePage(targetTabId.value, {
+      ruleOverride: draft,
+      requireRuleMatch: true,
+    })
     draft.compatibility = compareRuleDiagnostics(baseline, candidate)
     draftRule.value = draft
     stage.value = 'review'
@@ -126,38 +134,4 @@ export function useSiteAdaptation(existingRules: () => UserSiteRule[]) {
     setPosition,
     reset,
   }
-}
-
-async function findAdaptableTab(excludeTabId?: number): Promise<chrome.tabs.Tab | undefined> {
-  const tabs = await chrome.tabs.query({ currentWindow: true })
-  return tabs
-    .filter(tab =>
-      tab.id !== excludeTabId &&
-      !!tab.url &&
-      /^https?:\/\//.test(tab.url),
-    )
-    .sort((left, right) => (right.lastAccessed ?? 0) - (left.lastAccessed ?? 0))[0]
-}
-
-async function ensureContentRuntime(tabId: number): Promise<void> {
-  try {
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      files: ['lingoflow-content.js'],
-    })
-  } catch {
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      files: ['content-scripts/content.js'],
-    })
-  }
-}
-
-async function diagnose(tabId: number, ruleOverride?: UserSiteRule): Promise<PageDiagnostics> {
-  const response = await chrome.tabs.sendMessage(tabId, {
-    type: 'page/diagnose',
-    payload: ruleOverride ? { ruleOverride } : undefined,
-  })
-  if (!response?.ok) throw new Error(response?.error?.message ?? 'Compatibility test failed.')
-  return response.data as PageDiagnostics
 }

@@ -1,7 +1,7 @@
 import { buildTranslationCacheKey } from '@lingoflow/cache'
 import { applyGlossary, resolveGlossary } from '@lingoflow/glossary'
 import { collectScanResults } from '@lingoflow/dom'
-import { resolvePageRule, SITE_RULES } from '@lingoflow/rules'
+import { matchesPageRule, resolvePageRule, SITE_RULES } from '@lingoflow/rules'
 import { createBatches, processBatchesWithConcurrency } from '@lingoflow/scheduler'
 import { getDomain, getSourceLanguageOptions, getTargetLanguageOptions } from '@lingoflow/shared'
 import type {
@@ -793,12 +793,23 @@ export class RuntimeController {
 
   async runDryDiagnostics(payload?: {
     ruleOverride?: PageRule
+    requireRuleMatch?: boolean
+    excludedUserRuleIds?: string[]
     includeSkipped?: boolean
   }): Promise<PageDiagnostics> {
     const settings = await this.sendRuntimeMessage<PublicRuntimeSettings>({ type: 'settings/getRuntime' })
     const pageUrl = this.root.location.href
     const domain = getDomain(pageUrl)
-    const userRules = settings.userRules ?? []
+    const excludedUserRuleIds = new Set(payload?.excludedUserRuleIds ?? [])
+    const userRules = (settings.userRules ?? [])
+      .filter(rule => !excludedUserRuleIds.has(rule.id))
+    if (
+      payload?.ruleOverride &&
+      payload.requireRuleMatch &&
+      !matchesPageRule(payload.ruleOverride, this.root, pageUrl)
+    ) {
+      throw new Error('The rule does not match the page selected for compatibility checking.')
+    }
     const resolvedRule = payload?.ruleOverride
       ? resolvePageRule(this.root, pageUrl, {
           siteRules: this.siteRules,

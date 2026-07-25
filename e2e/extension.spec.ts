@@ -633,6 +633,80 @@ test('background validates user-rule writes and settings saves do not clobber th
   }
 })
 
+test('saved rule compatibility check detects drift and disables an unsafe rule', async () => {
+  const articleServer = await startArticleServer()
+  const extension = await launchExtension({ allowLocalhost: true })
+
+  try {
+    const article = await extension.context.newPage()
+    await article.goto(articleServer.url)
+    await expect(article.getByRole('heading', { name: 'A field guide to quiet reading' })).toBeVisible()
+
+    const options = await extension.context.newPage()
+    await options.goto(extension.url('options.html'))
+    const saved = await options.evaluate(async pageUrl => {
+      const now = new Date().toISOString()
+      return chrome.runtime.sendMessage({
+        type: 'userRules/save',
+        payload: {
+          rules: [{
+            id: 'user:drifted-article',
+            version: 1,
+            source: 'user',
+            enabled: true,
+            priority: 50,
+            createdAt: now,
+            updatedAt: now,
+            match: { matches: [`${new URL(pageUrl).origin}/*`] },
+            selectors: { excludeSelectors: ['html'] },
+            thresholds: { minTextLength: 1000, minRootTextLength: 1000 },
+            compatibility: {
+              status: 'compatible',
+              baseline: { rootsSelected: 1, collected: 2, skipped: 0 },
+              candidate: { rootsSelected: 1, collected: 2, skipped: 0 },
+              deltas: { rootsSelected: 0, collected: 0, skipped: 0 },
+              warnings: [],
+              evaluatedAt: '2026-07-24T00:00:00.000Z',
+              pageUrl,
+            },
+          }],
+        },
+      })
+    }, articleServer.url)
+    expect(saved).toMatchObject({ ok: true })
+
+    await options.reload()
+    await options.getByRole('button', { name: 'Site rules' }).click()
+    await article.bringToFront()
+    await options.bringToFront()
+    await options.getByRole('button', { name: 'Check compatibility' }).click()
+
+    await expect(options.getByText(/incompatible rule was disabled automatically/)).toBeVisible()
+    await expect(options.getByText('incompatible', { exact: true })).toBeVisible()
+    const persisted = await options.evaluate(() =>
+      chrome.runtime.sendMessage({ type: 'userRules/get' }),
+    )
+    expect(persisted).toMatchObject({
+      ok: true,
+      data: [{
+        id: 'user:drifted-article',
+        enabled: false,
+        compatibility: {
+          status: 'incompatible',
+          pageUrl: articleServer.url,
+          drift: {
+            changed: true,
+            previous: { rootsSelected: 1, collected: 2, skipped: 0 },
+          },
+        },
+      }],
+    })
+  } finally {
+    await extension.close()
+    await articleServer.close()
+  }
+})
+
 test('installed extension connects to Azure protocol and uses it as a fallback provider', async () => {
   const articleServer = await startArticleServer()
   const extension = await launchExtension({ allowLocalhost: true })

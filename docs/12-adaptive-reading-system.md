@@ -204,6 +204,12 @@ Compatibility status is explicit:
   content exposure.
 
 Saved user rules retain local provenance and the latest compatibility snapshot.
+Compatibility evidence is renewable rather than permanent: a saved rule can be
+checked again against a baseline that explicitly excludes that rule. The new
+snapshot records the checked page and drift from the prior candidate metrics.
+If a previously working rule loses its readable root or most collected content,
+the check marks it incompatible and disables it before it can keep affecting
+normal translation.
 Export can include that evidence without provider configuration or API keys.
 
 ## Terminology Processing

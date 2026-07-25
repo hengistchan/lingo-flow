@@ -13,6 +13,8 @@ import {
 import ShortcutSetting from './ShortcutSetting.vue'
 import InteractiveRuleBuilder from './InteractiveRuleBuilder.vue'
 import TerminologySection from './TerminologySection.vue'
+import { diagnosePage, ensureContentRuntime, findAdaptableTab } from './page-adaptation-runtime'
+import { useRuleCompatibility } from './useRuleCompatibility'
 import {
   getLanguageLabel,
   getSourceLanguageOptions,
@@ -54,6 +56,10 @@ const ruleEditorDialog = ref<HTMLElement>()
 let ruleEditorReturnFocus: HTMLElement | null = null
 const diagnosticsResult = ref<PageDiagnostics | null>(null)
 const testingPage = ref(false)
+const {
+  revalidate: revalidateRule,
+  isChecking: isCheckingRuleCompatibility,
+} = useRuleCompatibility()
 
 const uiLocale = computed<UiLocale>(() =>
   settings.interfaceLocale === 'auto' ? browserLocale : settings.interfaceLocale,
@@ -256,12 +262,57 @@ async function deleteUserRule(ruleId: string) {
 async function toggleUserRule(ruleId: string) {
   const rule = userRules.value.find(r => r.id === ruleId)
   if (rule) {
+    if (!rule.enabled && rule.compatibility?.status === 'incompatible') {
+      message.value = copy('options.compatibilityRecheckRequired')
+      return
+    }
     rule.enabled = !rule.enabled
     rule.updatedAt = new Date().toISOString()
     if (!(await saveUserRulesToStorage())) {
       rule.enabled = !rule.enabled
     }
   }
+}
+
+async function checkRuleCompatibility(rule: UserSiteRule) {
+  const previousRules = cloneJson(userRules.value)
+  try {
+    const updated = await revalidateRule(cloneJson(rule))
+    const index = userRules.value.findIndex(item => item.id === rule.id)
+    if (index < 0) return
+    userRules.value[index] = updated
+    if (!(await saveUserRulesToStorage())) {
+      userRules.value = previousRules
+      return
+    }
+    message.value = updated.compatibility?.status === 'incompatible'
+      ? copy('options.compatibilityAutoDisabled')
+      : copy('options.ruleSaved')
+  } catch (error) {
+    userRules.value = previousRules
+    message.value = `${copy('options.compatibilityCheckFailed')}: ${
+      error instanceof Error ? error.message : String(error)
+    }`
+  }
+}
+
+function compatibilityLabel(rule: UserSiteRule): string {
+  switch (rule.compatibility?.status) {
+    case 'compatible': return copy('options.compatibilityCompatible')
+    case 'warning': return copy('options.compatibilityWarning')
+    case 'incompatible': return copy('options.compatibilityIncompatible')
+    default: return copy('options.compatibilityUnchecked')
+  }
+}
+
+function compatibilityCheckedAt(rule: UserSiteRule): string {
+  if (!rule.compatibility?.evaluatedAt) return ''
+  return copy('options.compatibilityChecked', {
+    date: new Intl.DateTimeFormat(uiLocale.value, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(new Date(rule.compatibility.evaluatedAt)),
+  })
 }
 
 function cancelRuleEditor() {
@@ -422,30 +473,14 @@ async function testOnCurrentPage() {
   testingPage.value = true
   diagnosticsResult.value = null
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    const optionsTab = await chrome.tabs.getCurrent()
+    const tab = await findAdaptableTab(optionsTab?.id)
     if (!tab?.id) {
       message.value = copy('options.noActiveTab')
       return
     }
-    try {
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['lingoflow-content.js'],
-      })
-    } catch {
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['content-scripts/content.js'],
-      })
-    }
-    const result = await chrome.tabs.sendMessage(tab.id, {
-      type: 'page/diagnose',
-    })
-    if (result?.ok) {
-      diagnosticsResult.value = result.data
-    } else {
-      message.value = result?.error?.message ?? copy('options.diagnosticsFailed')
-    }
+    await ensureContentRuntime(tab.id)
+    diagnosticsResult.value = await diagnosePage(tab.id)
   } catch (e) {
     message.value = copy('options.noActiveTab')
   } finally {
@@ -659,12 +694,31 @@ async function testOnCurrentPage() {
                     {{ rule.enabled ? 'enabled' : 'disabled' }}
                   </span>
                   <span class="rule-badge">priority {{ rule.priority }}</span>
+                  <span
+                    class="rule-badge"
+                    :data-compatibility="rule.compatibility?.status ?? 'unchecked'"
+                  >
+                    {{ compatibilityLabel(rule) }}
+                  </span>
                 </div>
               </div>
               <p class="rule-card-desc" v-if="rule.match?.matches">
                 {{ rule.match.matches.join(', ') }}
               </p>
+              <p v-if="compatibilityCheckedAt(rule)" class="rule-card-evidence">
+                {{ compatibilityCheckedAt(rule) }}
+                <template v-if="rule.compatibility?.pageUrl"> · {{ rule.compatibility.pageUrl }}</template>
+              </p>
+              <ul v-if="rule.compatibility?.warnings.length" class="rule-card-warnings">
+                <li v-for="warning in rule.compatibility.warnings" :key="warning">{{ warning }}</li>
+              </ul>
               <div class="rule-card-actions">
+                <lf-button
+                  variant="test"
+                  :label="isCheckingRuleCompatibility(rule.id) ? copy('options.checkingCompatibility') : copy('options.checkCompatibility')"
+                  :disabled="isCheckingRuleCompatibility(rule.id)"
+                  @click="checkRuleCompatibility(rule)"
+                />
                 <lf-button variant="ghost" :label="rule.enabled ? copy('options.disable') : copy('options.enable')" @click="toggleUserRule(rule.id)" />
                 <lf-button variant="ghost" :label="copy('options.editUserRule')" @click="editUserRule(rule)" />
                 <lf-button variant="ghost" :label="copy('options.duplicateRule')" @click="duplicateUserRule(rule)" />
@@ -1073,14 +1127,41 @@ section {
   color: var(--lf-success);
 }
 
+.rule-badge[data-compatibility="compatible"] {
+  color: var(--lf-success);
+}
+
+.rule-badge[data-compatibility="warning"] {
+  color: var(--lf-accent);
+}
+
+.rule-badge[data-compatibility="incompatible"] {
+  color: var(--lf-danger-confirm);
+}
+
 .rule-card-desc {
   margin: 0;
   font-size: 12px;
   color: var(--lf-whisper);
 }
 
+.rule-card-evidence {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  color: var(--lf-whisper);
+}
+
+.rule-card-warnings {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 11px;
+  color: var(--lf-danger-confirm);
+}
+
 .rule-card-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 10px;
 }

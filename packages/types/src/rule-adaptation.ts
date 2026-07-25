@@ -35,6 +35,12 @@ export type RuleCompatibilityMetrics = {
   skipped: number
 }
 
+export type RuleCompatibilityDrift = {
+  changed: boolean
+  previous: RuleCompatibilityMetrics
+  deltas: RuleCompatibilityMetrics
+}
+
 export type RuleCompatibilitySnapshot = {
   status: RuleCompatibilityStatus
   baseline: RuleCompatibilityMetrics
@@ -42,6 +48,8 @@ export type RuleCompatibilitySnapshot = {
   deltas: RuleCompatibilityMetrics
   warnings: string[]
   evaluatedAt: string
+  pageUrl?: string
+  drift?: RuleCompatibilityDrift
 }
 
 export type UserRuleProvenance = {

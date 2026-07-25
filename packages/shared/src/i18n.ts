@@ -130,6 +130,16 @@ export type UiCopyKey =
   | 'options.exportRules'
   | 'options.testOnCurrentPage'
   | 'options.testingPage'
+  | 'options.checkCompatibility'
+  | 'options.checkingCompatibility'
+  | 'options.compatibilityCompatible'
+  | 'options.compatibilityWarning'
+  | 'options.compatibilityIncompatible'
+  | 'options.compatibilityUnchecked'
+  | 'options.compatibilityChecked'
+  | 'options.compatibilityAutoDisabled'
+  | 'options.compatibilityCheckFailed'
+  | 'options.compatibilityRecheckRequired'
   | 'options.ruleValidationFailed'
   | 'options.ruleSaved'
   | 'options.ruleDeleted'
@@ -277,6 +287,16 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.exportRules': '导出规则',
     'options.testOnCurrentPage': '在当前页面测试',
     'options.testingPage': '正在测试…',
+    'options.checkCompatibility': '复检兼容性',
+    'options.checkingCompatibility': '正在复检…',
+    'options.compatibilityCompatible': '兼容',
+    'options.compatibilityWarning': '需关注',
+    'options.compatibilityIncompatible': '不兼容',
+    'options.compatibilityUnchecked': '尚未验证',
+    'options.compatibilityChecked': '上次检查：{date}',
+    'options.compatibilityAutoDisabled': '规则已复检；检测到不兼容并已自动停用。',
+    'options.compatibilityCheckFailed': '规则兼容性复检失败',
+    'options.compatibilityRecheckRequired': '该规则已判定为不兼容，请先在目标页面复检后再启用。',
     'options.ruleValidationFailed': '规则验证失败',
     'options.ruleSaved': '规则已保存',
     'options.ruleDeleted': '规则已删除',
@@ -423,6 +443,16 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.exportRules': 'Export rules',
     'options.testOnCurrentPage': 'Test on current page',
     'options.testingPage': 'Testing…',
+    'options.checkCompatibility': 'Check compatibility',
+    'options.checkingCompatibility': 'Checking…',
+    'options.compatibilityCompatible': 'compatible',
+    'options.compatibilityWarning': 'warning',
+    'options.compatibilityIncompatible': 'incompatible',
+    'options.compatibilityUnchecked': 'not checked',
+    'options.compatibilityChecked': 'Last checked: {date}',
+    'options.compatibilityAutoDisabled': 'Compatibility checked; the incompatible rule was disabled automatically.',
+    'options.compatibilityCheckFailed': 'Rule compatibility check failed',
+    'options.compatibilityRecheckRequired': 'This rule is incompatible. Check it again on the target page before enabling it.',
     'options.ruleValidationFailed': 'Rule validation failed',
     'options.ruleSaved': 'Rule saved',
     'options.ruleDeleted': 'Rule deleted',

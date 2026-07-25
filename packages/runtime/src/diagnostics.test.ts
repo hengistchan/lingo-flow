@@ -279,6 +279,61 @@ describe('page/diagnose', () => {
     expect(document.querySelector('[data-lingoflow-block-id]')).toBeNull()
   })
 
+  it('can exclude a saved user rule to produce an uncontaminated baseline', async () => {
+    document.body.innerHTML = `
+      <article>
+        <p>This paragraph is readable with the default threshold but not with the saved rule.</p>
+      </article>
+    `
+    const settings = {
+      ...runtimeSettings(),
+      userRules: [{
+        id: 'user:strict-threshold',
+        version: 1,
+        source: 'user' as const,
+        enabled: true,
+        priority: 50,
+        createdAt: '2026-07-24T00:00:00.000Z',
+        updatedAt: '2026-07-24T00:00:00.000Z',
+        match: { selectorMatches: ['article'] },
+        thresholds: { minTextLength: 500 },
+      }],
+    }
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      throw new Error(`Unexpected message: ${message.type}`)
+    })
+    const runtime = createContentRuntime({ document, chromeRuntime })
+
+    const withRule = await runtime.runDryDiagnostics()
+    const withoutRule = await runtime.runDryDiagnostics({
+      excludedUserRuleIds: ['user:strict-threshold'],
+    })
+
+    expect(withRule.rule.matchedRuleIds).toContain('user:strict-threshold')
+    expect(withRule.counts.collected).toBe(0)
+    expect(withoutRule.rule.matchedRuleIds).not.toContain('user:strict-threshold')
+    expect(withoutRule.counts.collected).toBe(1)
+  })
+
+  it('rejects compatibility checks performed on a page the rule does not match', async () => {
+    document.body.innerHTML = '<article><p>This page is intentionally outside the rule scope.</p></article>'
+    const settings = runtimeSettings()
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      throw new Error(`Unexpected message: ${message.type}`)
+    })
+    const runtime = createContentRuntime({ document, chromeRuntime })
+
+    await expect(runtime.runDryDiagnostics({
+      ruleOverride: {
+        id: 'other-site-only',
+        match: { matches: ['https://other.example.com/*'] },
+      },
+      requireRuleMatch: true,
+    })).rejects.toThrow('does not match the page')
+  })
+
   it('returns block diagnostics with correct shape', async () => {
     document.body.innerHTML = `
       <article>

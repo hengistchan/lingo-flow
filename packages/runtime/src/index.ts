@@ -35,7 +35,12 @@ export function createContentRuntime(dependencies: ControllerDependencies = {}) 
     disableDynamicTranslation: () => controller.disableDynamicTranslation(),
     getProgress: () => controller.getProgress(),
     getDiagnostics: (options?: { includeBlocks?: boolean; includeEvents?: boolean; maxEvents?: number }) => controller.getDiagnostics(options),
-    runDryDiagnostics: (payload?: { ruleOverride?: import('@lingoflow/types').PageRule; includeSkipped?: boolean }) => controller.runDryDiagnostics(payload),
+    runDryDiagnostics: (payload?: {
+      ruleOverride?: import('@lingoflow/types').PageRule
+      requireRuleMatch?: boolean
+      excludedUserRuleIds?: string[]
+      includeSkipped?: boolean
+    }) => controller.runDryDiagnostics(payload),
     clearPage: () => controller.clearPage(),
   }
 }

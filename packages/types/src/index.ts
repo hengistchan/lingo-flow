@@ -869,6 +869,8 @@ export type PageDiagnoseMessage = {
   type: 'page/diagnose'
   payload?: {
     ruleOverride?: PageRule
+    requireRuleMatch?: boolean
+    excludedUserRuleIds?: string[]
     includeSkipped?: boolean
   }
 }

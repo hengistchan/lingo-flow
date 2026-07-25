@@ -1,6 +1,7 @@
 import type { PageDiagnostics, PageRule, SiteRule, UserSiteRule } from '@lingoflow/types'
 import {
   compareRuleDiagnostics,
+  revalidateRuleCompatibility,
   defaultPageRule,
   namespaceUserRuleId,
   resolvePageRule,
@@ -178,6 +179,7 @@ describe('rule compatibility comparison', () => {
       deltas: { rootsSelected: 0, collected: 2, skipped: -2 },
       warnings: [],
       evaluatedAt: '2026-07-25T00:00:00.000Z',
+      pageUrl: 'https://example.com/article',
     })
   })
 
@@ -199,6 +201,30 @@ describe('rule compatibility comparison', () => {
     expect(broad.status).toBe('warning')
     expect(broad.warnings.join(' ')).toContain('substantially more content')
     expect(broad.warnings.join(' ')).toContain('interactive controls')
+  })
+
+  it('detects drift against the previous compatibility evidence', () => {
+    const baseline = diagnostics({ rootsSelected: 1, collected: 12, skipped: 2 })
+    const previous = compareRuleDiagnostics(
+      baseline,
+      diagnostics({ rootsSelected: 1, collected: 12, skipped: 2 }),
+      '2026-07-24T00:00:00.000Z',
+    )
+    const current = revalidateRuleCompatibility(
+      previous,
+      baseline,
+      diagnostics({ rootsSelected: 1, collected: 3, skipped: 9 }),
+      '2026-07-25T00:00:00.000Z',
+    )
+
+    expect(current.status).toBe('incompatible')
+    expect(current.pageUrl).toBe('https://example.com/article')
+    expect(current.drift).toEqual({
+      changed: true,
+      previous: { rootsSelected: 1, collected: 12, skipped: 2 },
+      deltas: { rootsSelected: 0, collected: -9, skipped: 7 },
+    })
+    expect(current.warnings.join(' ')).toContain('since the last check')
   })
 })
 

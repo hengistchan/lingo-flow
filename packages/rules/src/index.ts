@@ -74,6 +74,56 @@ export function compareRuleDiagnostics(
     deltas,
     warnings,
     evaluatedAt,
+    pageUrl: candidate.pageUrl,
+  }
+}
+
+export function revalidateRuleCompatibility(
+  previous: RuleCompatibilitySnapshot | undefined,
+  baseline: PageDiagnostics,
+  candidate: PageDiagnostics,
+  evaluatedAt = new Date().toISOString(),
+): RuleCompatibilitySnapshot {
+  const snapshot = compareRuleDiagnostics(baseline, candidate, evaluatedAt)
+  const previousMetrics = previous?.candidate
+  if (!previousMetrics) {
+    return snapshot
+  }
+
+  const deltas = subtractMetrics(snapshot.candidate, previousMetrics)
+  const rootsDisappeared =
+    previousMetrics.rootsSelected > 0 &&
+    snapshot.candidate.rootsSelected === 0
+  const collectionCollapsed =
+    previousMetrics.collected > 0 &&
+    snapshot.candidate.collected < Math.max(1, Math.floor(previousMetrics.collected * 0.35))
+  const collectionExpanded =
+    previousMetrics.collected > 0 &&
+    snapshot.candidate.collected > Math.max(20, previousMetrics.collected * 3)
+  const warnings = [...snapshot.warnings]
+
+  if (rootsDisappeared) {
+    warnings.push('The previously selected content root has disappeared since the last check.')
+  }
+  if (collectionCollapsed) {
+    warnings.push('Readable content has dropped substantially since the last check.')
+  }
+  if (collectionExpanded) {
+    warnings.push('Readable content has expanded substantially since the last check.')
+  }
+
+  const incompatible = snapshot.status === 'incompatible' || rootsDisappeared || collectionCollapsed
+  const changed = Object.values(deltas).some(delta => delta !== 0)
+  return {
+    ...snapshot,
+    status: incompatible ? 'incompatible' : warnings.length > 0 ? 'warning' : 'compatible',
+    warnings,
+    pageUrl: candidate.pageUrl,
+    drift: {
+      changed,
+      previous: previousMetrics,
+      deltas,
+    },
   }
 }
 
@@ -82,6 +132,17 @@ function compatibilityMetrics(diagnostics: PageDiagnostics): RuleCompatibilityMe
     rootsSelected: diagnostics.counts.rootsSelected,
     collected: diagnostics.counts.collected,
     skipped: diagnostics.counts.skipped,
+  }
+}
+
+function subtractMetrics(
+  current: RuleCompatibilityMetrics,
+  previous: RuleCompatibilityMetrics,
+): RuleCompatibilityMetrics {
+  return {
+    rootsSelected: current.rootsSelected - previous.rootsSelected,
+    collected: current.collected - previous.collected,
+    skipped: current.skipped - previous.skipped,
   }
 }
 
