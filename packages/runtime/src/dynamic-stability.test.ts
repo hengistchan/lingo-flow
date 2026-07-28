@@ -447,7 +447,90 @@ describe('route change behavior', () => {
     resolveManual?.()
     await translatePromise
 
-    expect(manualBatchCount).toBe(1)
+    await waitFor(() => manualBatchCount === 2, 3000)
+    expect(document.body.textContent).toContain(
+      'translated:This dynamic paragraph should not translate while manual is running.',
+    )
+    runtime.stop()
+  })
+
+  it('translates initially hidden content only after it becomes visible', async () => {
+    document.body.innerHTML = `
+      <article>
+        <p>This visible paragraph starts the progressive translation session.</p>
+        <section id="hidden-tab" hidden>
+          <p>This hidden tab paragraph should wait until the tab is revealed.</p>
+        </section>
+      </article>
+    `
+    const settings = runtimeSettings()
+    const batches: TranslationTask[][] = []
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      if (message.type === 'translation/translateBatch') {
+        const tasks = message.payload.tasks as TranslationTask[]
+        batches.push(tasks)
+        return success({ results: tasks.map(successResult) })
+      }
+      throw new Error(`Unexpected: ${message.type}`)
+    })
+
+    const runtime = createContentRuntime({ document, chromeRuntime })
+    runtime.start()
+    runtime.enableDynamicTranslation()
+    await runtime.translatePage()
+
+    expect(batches).toHaveLength(1)
+    expect(batches[0].map(task => task.sourceText).join(' ')).not.toContain('hidden tab')
+
+    ;(document.querySelector('#hidden-tab') as HTMLElement).hidden = false
+
+    await waitFor(() => batches.length === 2, 3000)
+    expect(batches[1]).toHaveLength(1)
+    expect(batches[1][0].sourceText).toContain('hidden tab paragraph')
+    expect(document.body.textContent).toContain(
+      'translated:This hidden tab paragraph should wait until the tab is revealed.',
+    )
+    runtime.stop()
+  })
+
+  it('automatically retranslates visible source text after it changes', async () => {
+    document.body.innerHTML = `
+      <article>
+        <p>This original paragraph is long enough to translate before it changes.</p>
+      </article>
+    `
+    const settings = runtimeSettings()
+    const batches: TranslationTask[][] = []
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      if (message.type === 'translation/translateBatch') {
+        const tasks = message.payload.tasks as TranslationTask[]
+        batches.push(tasks)
+        return success({ results: tasks.map(successResult) })
+      }
+      throw new Error(`Unexpected: ${message.type}`)
+    })
+
+    const runtime = createContentRuntime({ document, chromeRuntime })
+    runtime.start()
+    runtime.enableDynamicTranslation()
+    await runtime.translatePage()
+
+    const paragraph = document.querySelector('p') as HTMLElement
+    paragraph.firstChild!.textContent =
+      'This updated paragraph should replace the old translation automatically.'
+
+    await waitFor(() => batches.length === 2, 3000)
+    await waitFor(() => document.body.textContent?.includes('translated:This updated paragraph') ?? false)
+
+    expect(document.querySelectorAll('[data-lingoflow-translation]')).toHaveLength(1)
+    expect(document.body.textContent).not.toContain('translated:This original paragraph')
+    expect(runtime.getProgress()).toMatchObject({
+      status: 'done',
+      totalBlocks: 1,
+      translatedBlocks: 1,
+    })
     runtime.stop()
   })
 })
@@ -638,6 +721,54 @@ describe('stale result and duplicate prevention', () => {
     const progress = await translatePromise
 
     expect(document.querySelectorAll('[data-lingoflow-translation]')).toHaveLength(0)
+    runtime.stop()
+  })
+
+  it('discards an in-flight result after source mutation and translates only the latest text', async () => {
+    document.body.innerHTML = `
+      <article>
+        <p>This original in-flight paragraph must never render after its text changes.</p>
+      </article>
+    `
+    const settings = runtimeSettings()
+    const batches: TranslationTask[][] = []
+    let resolveFirst: (() => void) | undefined
+    const chromeRuntime = fakeRuntime(async message => {
+      if (message.type === 'settings/getRuntime') return success(settings)
+      if (message.type === 'translation/translateBatch') {
+        const tasks = message.payload.tasks as TranslationTask[]
+        batches.push(tasks)
+        if (batches.length === 1) {
+          await new Promise<void>(resolve => { resolveFirst = resolve })
+        }
+        return success({ results: tasks.map(successResult) })
+      }
+      throw new Error(`Unexpected: ${message.type}`)
+    })
+
+    const runtime = createContentRuntime({ document, chromeRuntime })
+    runtime.start()
+    runtime.enableDynamicTranslation()
+    const initialTranslation = runtime.translatePage()
+    await waitFor(() => batches.length === 1)
+
+    const paragraph = document.querySelector('p') as HTMLElement
+    paragraph.firstChild!.textContent =
+      'This latest paragraph is the only version that may be rendered.'
+    await waitFor(() => !paragraph.hasAttribute('data-lingoflow-block-id'))
+    resolveFirst?.()
+    await initialTranslation
+
+    await waitFor(() => batches.length === 2, 3000)
+    await waitFor(() => document.body.textContent?.includes('translated:This latest paragraph') ?? false)
+
+    expect(document.body.textContent).not.toContain('translated:This original in-flight paragraph')
+    expect(document.querySelectorAll('[data-lingoflow-translation]')).toHaveLength(1)
+    expect(runtime.getProgress()).toMatchObject({
+      status: 'done',
+      totalBlocks: 1,
+      translatedBlocks: 1,
+    })
     runtime.stop()
   })
 

@@ -14,7 +14,7 @@ import type {
 } from '@lingoflow/types'
 import { CollectScanResultsOutput, ScanResult } from '@lingoflow/types'
 import { discoverContentRoots } from './content-root'
-import { extractInlineText } from './inline-tokenization'
+import { extractInlineText, getSourceOnlyText } from './inline-tokenization'
 import { findAllShadowRoots } from './page-adapters'
 import {
   IGNORE_SELECTORS,
@@ -28,6 +28,7 @@ import {
 } from './filters'
 
 export { generateSelectorCandidates } from './selector-candidates'
+export { getSourceOnlyText } from './inline-tokenization'
 
 export const BLOCK_SELECTORS = [
   'h1',
@@ -155,7 +156,7 @@ export async function collectScanResults(
       incrementSkipReason(skipReasons, 'inside-ignore-selector')
       continue
     }
-    if (element.dataset.lingoflowBlockId) {
+    if (element.dataset.lingoflowBlockId && !config.dryRun) {
       incrementSkipReason(skipReasons, 'already-bound')
       continue
     }
@@ -258,7 +259,7 @@ function meetsTextThreshold(element: HTMLElement, text: string, blockType: TextB
 
   if (blockType !== 'list' && element.children.length > 0) {
     const childTextLength = Array.from(element.children)
-      .map(child => ((child as HTMLElement).innerText || child.textContent || '').trim().length)
+      .map(child => getSourceOnlyText(child as HTMLElement).length)
       .reduce((sum, length) => sum + length, 0)
     if (childTextLength > text.length * 0.8) return false
   }
@@ -267,7 +268,7 @@ function meetsTextThreshold(element: HTMLElement, text: string, blockType: TextB
 }
 
 function getElementPlainText(element: HTMLElement): string {
-  return (element.innerText || element.textContent || '').trim()
+  return getSourceOnlyText(element)
 }
 
 function toLegacyTextBlock(block: TranslationBlock): TextBlock {
@@ -380,7 +381,7 @@ function resolveRootKind(
 function buildSourceSignature(carrier: HTMLElement): string {
   const tagName = carrier.tagName.toLowerCase()
   const depth = getElementDepth(carrier)
-  const text = (carrier.textContent || '').slice(0, 80)
+  const text = getSourceOnlyText(carrier).slice(0, 80)
   return `${tagName}:${depth}:${text}`
 }
 
@@ -407,16 +408,16 @@ function findPrimaryTextAnchor(element: HTMLElement): HTMLElement | null {
   const tagName = element.tagName.toLowerCase()
   if (!/^h[1-6]$/.test(tagName)) return null
 
-  const text = (element.innerText || element.textContent || '').trim()
+  const text = getSourceOnlyText(element)
   if (text.length < 20) return null
 
   const anchors = Array.from(element.querySelectorAll('a'))
-    .filter(node => ((node as HTMLElement).innerText || node.textContent || '').trim().length >= 20)
+    .filter(node => getSourceOnlyText(node as HTMLElement).length >= 20)
 
   if (anchors.length !== 1) return null
 
   const anchor = anchors[0] as HTMLElement
-  const anchorText = (anchor.innerText || anchor.textContent || '').trim()
+  const anchorText = getSourceOnlyText(anchor)
   if (anchorText.length / text.length < 0.8) return null
 
   return anchor

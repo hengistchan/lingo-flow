@@ -69,7 +69,13 @@ export function injectLingoFlowStyles(root: Document | ShadowRoot = document) {
       display: block;
     }
     .lingoflow-loading {
-      opacity: 0.5;
+      opacity: 0.68;
+    }
+    .lingoflow-loading .lingoflow-translation-inner {
+      display: inline-flex;
+      align-items: center;
+      min-width: 30px;
+      min-height: 1em;
     }
     .lingoflow-dot {
       display: inline-block;
@@ -83,8 +89,15 @@ export function injectLingoFlowStyles(root: Document | ShadowRoot = document) {
     .lingoflow-dot:nth-child(2) { animation-delay: 0.16s; }
     .lingoflow-dot:nth-child(3) { animation-delay: 0.32s; }
     @keyframes lingoflow-dot-pulse {
-      0%, 80%, 100% { opacity: 0.3; transform: scale(1); }
-      40% { opacity: 1; transform: scale(1); }
+      0%, 70%, 100% { opacity: 0.25; transform: translateY(1px) scale(0.78); }
+      35% { opacity: 1; transform: translateY(-2px) scale(1); }
+    }
+    .lingoflow-partial-ready .lingoflow-translation-inner {
+      animation: lingoflow-reading-reveal 180ms ease-out both;
+    }
+    @keyframes lingoflow-reading-reveal {
+      from { opacity: 0; transform: translateY(3px); }
+      to { opacity: 1; transform: translateY(0); }
     }
     .lingoflow-error {
       border-left-color: #b3261e;
@@ -98,6 +111,12 @@ export function injectLingoFlowStyles(root: Document | ShadowRoot = document) {
       .lingoflow-error {
         border-left-color: #ffb4ab;
         color: #ffb4ab;
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .lingoflow-dot,
+      .lingoflow-partial-ready .lingoflow-translation-inner {
+        animation: none;
       }
     }
   `
@@ -265,6 +284,8 @@ function updatePartialTranslationElement(
   translation.dataset.lingoflowPartialState = input.state
   translation.classList.toggle('lingoflow-loading', input.state === 'loading')
   translation.classList.toggle('lingoflow-error', input.state === 'error')
+  translation.classList.toggle('lingoflow-partial-ready', input.state === 'success')
+  translation.setAttribute('aria-busy', input.state === 'loading' ? 'true' : 'false')
   translation.setAttribute('aria-live', 'polite')
   translation.setAttribute('role', input.state === 'error' ? 'alert' : 'status')
   if (input.targetLang) translation.lang = input.targetLang

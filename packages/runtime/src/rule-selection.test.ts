@@ -49,4 +49,38 @@ describe('interactive rule selection', () => {
     await expect(result).rejects.toThrow('cancelled')
     expect(document.querySelector('[data-lingoflow-rule-selection-overlay]')).toBeNull()
   })
+
+  it('maps a generated translation back to its source instead of generating a LingoFlow selector', async () => {
+    const paragraph = document.querySelector('article p') as HTMLElement
+    paragraph.dataset.lingoflowBlockId = 'block_source'
+    paragraph.id = 'source-paragraph'
+    Object.defineProperty(paragraph, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ left: 24, top: 40, width: 260, height: 72 }),
+    })
+
+    const translation = document.createElement('span')
+    translation.className = 'lingoflow-translation lingoflow-translation-inline'
+    translation.dataset.lingoflowGenerated = 'true'
+    translation.dataset.lingoflowBlockId = 'block_source'
+    translation.dataset.lingoflowTranslation = 'block_source'
+    translation.textContent = '这是 LingoFlow 生成的译文。'
+    paragraph.appendChild(translation)
+
+    const controller = new RuleSelectionController(document)
+    const resultPromise = controller.select('placement')
+    translation.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, composed: true }))
+
+    const highlight = document.querySelector('[data-lingoflow-rule-selection-overlay="highlight"]') as HTMLElement
+    expect(highlight.style.left).toBe('24px')
+    expect(highlight.style.width).toBe('260px')
+
+    translation.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true, cancelable: true }))
+    const result = await resultPromise
+
+    expect(result.element.tagName).toBe('p')
+    expect(result.element.textPreview).not.toContain('这是 LingoFlow 生成的译文')
+    expect(result.candidates[0].selector).toBe('#source-paragraph')
+    expect(result.candidates.every(candidate => !candidate.selector.includes('lingoflow'))).toBe(true)
+  })
 })

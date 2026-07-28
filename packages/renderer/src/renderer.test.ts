@@ -300,6 +300,7 @@ describe('renderer', () => {
       state: 'loading',
     })
     expect(loading.parentElement?.parentElement).toBe(source)
+    expect(loading.getAttribute('aria-busy')).toBe('true')
     expect(loading.querySelectorAll('.lingoflow-dot')).toHaveLength(3)
 
     const failed = renderPartialTranslation({
@@ -312,6 +313,18 @@ describe('renderer', () => {
     })
     expect(failed.classList.contains('lingoflow-error')).toBe(true)
     expect(failed.getAttribute('role')).toBe('alert')
+    expect(failed.getAttribute('aria-busy')).toBe('false')
+
+    const translated = renderPartialTranslation({
+      id: 'partial_1',
+      sourceElement: source,
+      sourceKey: 'source_1',
+      sourceOrder: 0,
+      translatedText: '已翻译。',
+      state: 'success',
+    })
+    expect(translated.classList.contains('lingoflow-partial-ready')).toBe(true)
+    expect(translated.getAttribute('aria-busy')).toBe('false')
 
     clearTranslations()
     expect(document.querySelector('[data-lingoflow-partial-translation-group]')).toBeNull()

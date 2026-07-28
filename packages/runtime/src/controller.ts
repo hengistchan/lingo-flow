@@ -66,6 +66,7 @@ export class RuntimeController {
   private translating = false
   private manualTranslating = false
   private dynamicTranslationEnabled = false
+  private pendingDynamicScan = false
   private started = false
   private pendingIncremental: PageTranslationOverrides | null = null
   private latestDiagnostics: PageDiagnostics | null = null
@@ -125,6 +126,7 @@ export class RuntimeController {
       cacheHits: 0,
       failedBlocks: 0,
     }
+    this.emitProgressUpdate()
 
     this.memoryCacheHits = 0
     this.indexeddbCacheHits = 0
@@ -163,12 +165,14 @@ export class RuntimeController {
       const tasks = this.createTasks(scanOutput.blocks, context)
       this.latestTerminology = summarizeTerminology(tasks)
       this.progress.totalBlocks = tasks.length
+      this.emitProgressUpdate()
 
       if (tasks.length === 0) {
         this.progress.status = 'failed'
         this.progress.messageCode = 'no_readable_text'
         this.progress.message = 'No readable text blocks found.'
         this.updateDiagnosticsSnapshot(context)
+        this.emitProgressUpdate()
         return this.progress
       }
 
@@ -180,15 +184,18 @@ export class RuntimeController {
         total: this.progress.totalBlocks,
       })
       this.updateDiagnosticsSnapshot(context)
+      this.emitProgressUpdate()
       return this.progress
     } catch (error) {
       this.progress.status = 'failed'
       this.progress.messageCode = 'runtime_error'
       this.progress.message = error instanceof Error ? error.message : String(error)
+      this.emitProgressUpdate()
       return this.progress
     } finally {
       this.translating = false
       this.manualTranslating = false
+      this.drainPendingDynamicScan()
     }
   }
 
@@ -218,6 +225,13 @@ export class RuntimeController {
           .then(result => sendResponse({ ok: true, data: result }))
           .catch(error => sendResponse({ ok: false, error: { message: error.message } }))
         return true
+      }
+
+      if (message?.type === 'page/startTranslation') {
+        this.dynamicTranslationEnabled = true
+        void this.translatePage((message.payload ?? {}) as PageTranslationOverrides)
+        sendResponse({ ok: true, data: this.progress })
+        return false
       }
 
       if (message?.type === 'page/translateHoveredText') {
@@ -311,6 +325,7 @@ export class RuntimeController {
     this.bindings.clear()
     this.store.clear()
     this.queue.clear()
+    this.pendingDynamicScan = false
     this.memoryCache.clear()
     this.eventRingBuffer.clear()
     this.latestDiagnostics = null
@@ -333,6 +348,7 @@ export class RuntimeController {
 
   enableDynamicTranslation(): void {
     this.dynamicTranslationEnabled = true
+    this.drainPendingDynamicScan()
   }
 
   disableDynamicTranslation(): void {
@@ -376,6 +392,7 @@ export class RuntimeController {
         targetLang,
         totalBlocks: this.progress.totalBlocks + tasks.length,
       }
+      this.emitProgressUpdate()
 
       await this.translateTasks(tasks, context, effectiveSettings)
       this.progress.status = this.deriveProgressStatus({
@@ -383,6 +400,7 @@ export class RuntimeController {
         failed: this.progress.failedBlocks,
         total: this.progress.totalBlocks,
       })
+      this.emitProgressUpdate()
       return this.progress
     } catch (error) {
       console.warn('[LingoFlow] Incremental translation failed', error)
@@ -394,6 +412,7 @@ export class RuntimeController {
       if (pending) {
         await this.translateIncremental(pending)
       }
+      this.drainPendingDynamicScan()
     }
   }
 
@@ -404,15 +423,29 @@ export class RuntimeController {
 
     this.events.on('block:dirty', event => {
       const { blockId } = event
-      const mutated = this.store.dispatch(blockId, 'DOM_MUTATED')
-      if (mutated) {
-        this.bindings.removeRenderedNodes(blockId)
-        this.store.dispatch(blockId, 'REQUEUE')
-        const block = this.store.get(blockId)
-        if (block) {
-          this.queue.enqueue(blockId, block.normalizedText.length)
-        }
+      const binding = this.bindings.get(blockId)
+      if (!binding) return
+
+      const block = this.store.get(blockId)
+      if (this.progress.totalBlocks > 0) this.progress.totalBlocks -= 1
+      if (
+        block &&
+        ['cache-hit', 'translated', 'rendering', 'rendered'].includes(block.state) &&
+        this.progress.translatedBlocks > 0
+      ) {
+        this.progress.translatedBlocks -= 1
       }
+      if (block?.state === 'failed' && this.progress.failedBlocks > 0) {
+        this.progress.failedBlocks -= 1
+      }
+
+      this.version.removeBlock(blockId)
+      this.bindings.removeRenderedNodes(blockId)
+      delete binding.carrierElement.dataset.lingoflowBlockId
+      binding.carrierElement.removeAttribute('data-lingoflow-block-id')
+      this.bindings.remove(blockId)
+      this.store.remove(blockId)
+      this.requestDynamicScan()
     })
 
     this.events.on('observer:newContent', event => {
@@ -421,16 +454,42 @@ export class RuntimeController {
         return
       }
 
-      if (this.dynamicTranslationEnabled && !this.manualTranslating) {
-        this.translateIncremental().catch(error => {
-          console.warn('[LingoFlow] Dynamic translation failed', error)
-        })
-      }
+      this.requestDynamicScan()
     })
 
     this.events.on('binding:disconnected', event => {
       this.bindings.remove(event.blockId)
       this.version.removeBlock(event.blockId)
+    })
+  }
+
+  private requestDynamicScan(): void {
+    this.pendingDynamicScan = true
+    this.drainPendingDynamicScan()
+  }
+
+  private drainPendingDynamicScan(): void {
+    if (
+      !this.pendingDynamicScan ||
+      !this.dynamicTranslationEnabled ||
+      this.translating ||
+      this.manualTranslating
+    ) {
+      return
+    }
+
+    this.pendingDynamicScan = false
+    void this.translateIncremental().catch(error => {
+      console.warn('[LingoFlow] Dynamic translation failed', error)
+    })
+  }
+
+  private emitProgressUpdate(): void {
+    void this.runtime.sendMessage({
+      type: 'page/progressUpdate',
+      payload: { ...this.progress },
+    }).catch(() => {
+      // The extension UI may be closed while the page continues translating.
     })
   }
 
@@ -599,10 +658,10 @@ export class RuntimeController {
       this.store.dispatch(hit.blockId, 'LOADING_START')
       this.store.dispatch(hit.blockId, 'CACHE_HIT')
     }
-    this.renderResults(memoryHits, context)
-    this.memoryCacheHits += memoryHits.length
-    this.progress.cacheHits += memoryHits.length
-    this.progress.translatedBlocks += memoryHits.length
+    const renderedMemoryHits = this.renderResults(memoryHits, context)
+    this.memoryCacheHits += renderedMemoryHits.size
+    this.progress.cacheHits += renderedMemoryHits.size
+    this.progress.translatedBlocks += renderedMemoryHits.size
 
     let misses = memoryMisses
     for (const task of misses) {
@@ -623,12 +682,12 @@ export class RuntimeController {
         for (const hit of cache.hits) {
           this.store.dispatch(hit.blockId, 'CACHE_HIT')
         }
-        this.renderResults(cache.hits, context)
+        const renderedCacheHits = this.renderResults(cache.hits, context)
         for (const hit of cache.hits) this.memoryCache.set(hit.cacheKey, hit)
         this.evictOldestCacheEntries()
-        this.indexeddbCacheHits += cache.hits.length
-        this.progress.cacheHits += cache.hits.length
-        this.progress.translatedBlocks += cache.hits.length
+        this.indexeddbCacheHits += renderedCacheHits.size
+        this.progress.cacheHits += renderedCacheHits.size
+        this.progress.translatedBlocks += renderedCacheHits.size
         misses = cache.misses
       } catch (error) {
         console.warn('[LingoFlow] Cache resolve degraded to misses', error)
@@ -655,21 +714,24 @@ export class RuntimeController {
           payload: { tasks: batch },
         })
 
-        this.renderResults(response.results, context)
-      for (const result of response.results) {
-        if (result.status === 'success') {
-          this.memoryCache.set(result.cacheKey, result)
-          this.evictOldestCacheEntries()
-          this.progress.translatedBlocks += 1
-        } else {
-          this.store.dispatch(result.blockId, 'TRANSLATE_FAIL')
-          this.progress.failedBlocks += 1
-          this.coordinator.renderError(result.blockId, result.error.message)
+        const renderedResults = this.renderResults(response.results, context)
+        for (const result of response.results) {
+          if (result.status === 'success') {
+            this.memoryCache.set(result.cacheKey, result)
+            this.evictOldestCacheEntries()
+            if (renderedResults.has(result.blockId)) {
+              this.progress.translatedBlocks += 1
+            }
+          } else if (this.store.get(result.blockId)) {
+            this.store.dispatch(result.blockId, 'TRANSLATE_FAIL')
+            this.progress.failedBlocks += 1
+            this.coordinator.renderError(result.blockId, result.error.message)
+          }
         }
-      }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         for (const task of batch) {
+          if (!this.store.get(task.blockId)) continue
           this.store.dispatch(task.blockId, 'TRANSLATE_FAIL')
           this.progress.failedBlocks += 1
           this.coordinator.renderError(task.blockId, message)
@@ -684,7 +746,8 @@ export class RuntimeController {
     })
   }
 
-  private renderResults(results: TranslationResult[], context: RuntimeContext): void {
+  private renderResults(results: TranslationResult[], context: RuntimeContext): Set<string> {
+    const rendered = new Set<string>()
     for (const result of results) {
       if (result.status !== 'success') continue
 
@@ -693,7 +756,7 @@ export class RuntimeController {
 
       this.store.dispatch(result.blockId, 'TRANSLATE_SUCCESS')
 
-      this.coordinator.renderTranslation({
+      const renderResult = this.coordinator.renderTranslation({
         blockId: result.blockId,
         translatedText: result.translatedText,
         runId: result.meta?.runId ?? context.runId,
@@ -701,7 +764,9 @@ export class RuntimeController {
         textHash: block.textHash,
         sourceSignature: this.bindings.get(result.blockId)?.sourceSignature ?? '',
       })
+      if (renderResult.ok) rendered.add(result.blockId)
     }
+    return rendered
   }
 
   private resolveMemoryCache(tasks: TranslationTask[]) {

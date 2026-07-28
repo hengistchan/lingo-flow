@@ -7,7 +7,7 @@ describe('settings', () => {
     expect(DEFAULT_SETTINGS.targetLang).toBe('zh-Hans')
     expect(DEFAULT_SETTINGS.renderMode).toBe('below-original')
     expect(DEFAULT_SETTINGS.defaultProviderId).toBe('google-free-translate')
-    expect(DEFAULT_SETTINGS.translationConcurrency).toBe(3)
+    expect(DEFAULT_SETTINGS.translationConcurrency).toBe(4)
     expect(DEFAULT_SETTINGS.userRules).toEqual([])
     expect(DEFAULT_SETTINGS.glossaries).toEqual([])
     expect(DEFAULT_SETTINGS.onboarding).toEqual({
@@ -158,7 +158,7 @@ describe('settings', () => {
 
     expect(JSON.stringify(runtime)).not.toContain('secret')
     expect(runtime.providerId).toBe('google-free-translate')
-    expect(runtime.translationConcurrency).toBe(3)
+    expect(runtime.translationConcurrency).toBe(4)
   })
 
   it('public runtime settings expose only enabled user rules without provider secrets', () => {

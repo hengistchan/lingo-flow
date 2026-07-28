@@ -139,6 +139,54 @@ describe('isVisible', () => {
     expect(isVisible(el)).toBe(false)
   })
 
+  it('Returns false when an ancestor is hidden', () => {
+    document.body.innerHTML = `
+      <section hidden>
+        <p id="target">This paragraph is hidden by its ancestor.</p>
+      </section>
+    `
+
+    expect(isVisible(document.querySelector('#target') as HTMLElement)).toBe(false)
+  })
+
+  it('Returns false when an ancestor has aria-hidden=true', () => {
+    document.body.innerHTML = `
+      <section aria-hidden="true">
+        <p id="target">This paragraph is hidden from the accessibility tree.</p>
+      </section>
+    `
+
+    expect(isVisible(document.querySelector('#target') as HTMLElement)).toBe(false)
+  })
+
+  it('Returns false when an ancestor uses display:none through a class', () => {
+    const style = document.createElement('style')
+    style.textContent = '.collapsed-panel { display: none; }'
+    document.head.appendChild(style)
+    document.body.innerHTML = `
+      <section class="collapsed-panel">
+        <p id="target">This paragraph is inside a collapsed panel.</p>
+      </section>
+    `
+
+    expect(isVisible(document.querySelector('#target') as HTMLElement)).toBe(false)
+  })
+
+  it('Returns false for content inside a closed details element but keeps its summary visible', () => {
+    document.body.innerHTML = `
+      <details>
+        <summary id="summary">Read more</summary>
+        <p id="target">This paragraph is hidden until the details element opens.</p>
+      </details>
+    `
+
+    expect(isVisible(document.querySelector('#summary') as HTMLElement)).toBe(true)
+    expect(isVisible(document.querySelector('#target') as HTMLElement)).toBe(false)
+
+    document.querySelector('details')!.open = true
+    expect(isVisible(document.querySelector('#target') as HTMLElement)).toBe(true)
+  })
+
   it('Returns true for visible elements', () => {
     const el = document.createElement('div')
     document.body.appendChild(el)
@@ -1349,6 +1397,40 @@ describe('Phase 3: dry-run mode', () => {
     expect(output.diagnostics.acceptedBlockCount).toBe(1)
   })
 
+  it('dry-run mode re-collects bound source without reading generated translations', async () => {
+    const sourceText = 'This already translated paragraph should remain the only diagnostic source text.'
+    document.body.innerHTML = `
+      <article>
+        <p data-lingoflow-block-id="block_existing">
+          ${sourceText}
+          <br
+            data-lingoflow-generated="true"
+            data-lingoflow-block-id="block_existing"
+            data-lingoflow-translation-break="block_existing"
+          >
+          <span
+            class="lingoflow-translation"
+            data-lingoflow-generated="true"
+            data-lingoflow-block-id="block_existing"
+            data-lingoflow-translation="block_existing"
+          >这段生成的译文绝不能进入诊断文本。</span>
+        </p>
+      </article>
+    `
+    const boundSource = document.querySelector('p') as HTMLElement
+    const generatedBefore = document.querySelectorAll('[data-lingoflow-generated]').length
+
+    const output = await collectScanResults(document, { ...scanOptions, dryRun: true })
+
+    expect(output.blocks).toHaveLength(1)
+    expect(output.blocks[0].block.text).toBe(sourceText)
+    expect(output.blocks[0].block.requestText).toBe(sourceText)
+    expect(output.diagnostics.skipReasons['already-bound']).toBeUndefined()
+    expect(boundSource.dataset.lingoflowBlockId).toBe('block_existing')
+    expect(document.querySelectorAll('[data-lingoflow-generated]')).toHaveLength(generatedBefore)
+    expect(document.body.textContent).toContain('这段生成的译文绝不能进入诊断文本。')
+  })
+
   it('normal collection mode still marks accepted carriers as expected', async () => {
     document.body.innerHTML = `
       <main>
@@ -1671,6 +1753,42 @@ describe('P8: generic root discovery v2', () => {
     expect(result.roots.map(root => root.id)).toContain('comment')
     expect(result.roots.map(root => root.id)).not.toContain('reply-form')
     expect(result.diagnostics.rejected.some(root => root.id === 'reply-form' && root.rejectReason === 'high-interactive-density')).toBe(true)
+  })
+
+  it('keeps root selection metrics stable when generated translations are present', () => {
+    document.body.innerHTML = `
+      <main id="shell">
+        <article id="story">
+          <h1>Stable source-only diagnostics</h1>
+          <p>The first source paragraph is long enough to make this article a reliable reading root.</p>
+          <p>The second source paragraph keeps the root selection deterministic for this test.</p>
+        </article>
+      </main>
+    `
+
+    const before = discoverContentRoots(document, {
+      contentRootSelectors: ['main', 'article'],
+    })
+    const story = document.querySelector('#story') as HTMLElement
+    const generated = document.createElement('div')
+    generated.dataset.lingoflowGenerated = 'true'
+    generated.dataset.lingoflowTranslation = 'block_story'
+    generated.innerHTML = `
+      <p>这是一段很长的生成译文，不得改变正文根节点的段落数量、文本长度或评分。</p>
+      <a href="/generated">生成的链接也不得影响链接密度。</a>
+      <button type="button">生成按钮</button>
+    `
+    story.appendChild(generated)
+
+    const after = discoverContentRoots(document, {
+      contentRootSelectors: ['main', 'article'],
+    })
+    const beforeStory = before.diagnostics.considered.find(root => root.id === 'story')
+    const afterStory = after.diagnostics.considered.find(root => root.id === 'story')
+
+    expect(after.roots.map(root => root.id)).toEqual(before.roots.map(root => root.id))
+    expect(afterStory?.metrics).toEqual(beforeStory?.metrics)
+    expect(afterStory?.score).toBe(beforeStory?.score)
   })
 })
 

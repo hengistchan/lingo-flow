@@ -32,7 +32,7 @@ export function useSiteAdaptation(existingRules: () => UserSiteRule[]) {
     draftRule.value?.compatibility?.status !== 'incompatible',
   )
 
-  async function begin(kind: RuleSelectionKind): Promise<void> {
+  async function begin(kind: RuleSelectionKind, preferredTargetTabId?: number): Promise<void> {
     stage.value = 'selecting'
     error.value = ''
     selection.value = null
@@ -42,7 +42,9 @@ export function useSiteAdaptation(existingRules: () => UserSiteRule[]) {
     try {
       const optionsTab = await chrome.tabs.getCurrent()
       optionsTabId.value = optionsTab?.id
-      const targetTab = await findAdaptableTab(optionsTab?.id)
+      const targetTab = preferredTargetTabId !== undefined
+        ? await chrome.tabs.get(preferredTargetTabId)
+        : await findAdaptableTab(optionsTab?.id)
       if (targetTab?.id === undefined) {
         throw new Error('Open a normal webpage before starting site adaptation.')
       }

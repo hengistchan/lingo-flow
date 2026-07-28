@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { BUILT_IN_PRESETS, isProviderConfigured } from '@lingoflow/providers'
 import { sendChromeMessage, t } from '@lingoflow/shared'
 import type {
@@ -11,6 +11,7 @@ import type {
 import { getProviderEndpoint, hasRuntimeApi, requestProviderOriginAccess } from '../provider-access'
 import LfButton from './LfButton.vue'
 import LfFormField from './LfFormField.vue'
+import { advanceDestructiveConfirmation } from './destructive-confirmation'
 
 const props = withDefaults(defineProps<{
   modelValue: AppSettings
@@ -35,6 +36,8 @@ const customProviderName = ref('')
 const customProviderBaseUrl = ref('')
 const customProviderApiKey = ref('')
 const customProviderModel = ref('')
+const pendingRemoveProviderId = ref<string | null>(null)
+let removeProviderConfirmationTimer: ReturnType<typeof setTimeout> | undefined
 const reasoningEffortOptions = ['auto', 'none', 'minimal', 'low', 'medium', 'high'] as const
 
 const activeProvider = computed(() =>
@@ -71,6 +74,11 @@ const providerGuide = computed(() => {
 
 watch(() => props.modelValue.defaultProviderId, () => {
   connectionResult.value = undefined
+  pendingRemoveProviderId.value = null
+})
+
+onUnmounted(() => {
+  if (removeProviderConfirmationTimer) clearTimeout(removeProviderConfirmationTimer)
 })
 
 function copy(key: Parameters<typeof t>[1]): string {
@@ -135,6 +143,21 @@ function removeProvider(id: string): void {
     }
     if (settings.fallbackProviderId === id) settings.fallbackProviderId = ''
   })
+}
+
+function requestRemoveProvider(id: string): void {
+  const next = advanceDestructiveConfirmation(pendingRemoveProviderId.value, id)
+  pendingRemoveProviderId.value = next.pendingId
+  if (removeProviderConfirmationTimer) clearTimeout(removeProviderConfirmationTimer)
+
+  if (next.confirmed) {
+    removeProvider(id)
+    return
+  }
+
+  removeProviderConfirmationTimer = setTimeout(() => {
+    if (pendingRemoveProviderId.value === id) pendingRemoveProviderId.value = null
+  }, 5000)
 }
 
 function openCustomProviderForm(): void {
@@ -239,14 +262,14 @@ function cloneJson<T>(value: T): T {
 const LOCAL_COPY = {
   en: {
     guide: 'Before you connect',
-    googleGuide: 'Ready immediately. No API key or extra website permission is required. This experimental option is best for a quick start; use a dedicated service when privacy, reliability, or terminology control is critical.',
+    googleGuide: 'Ready immediately. No API key or extra website permission is required. Four concurrent batches tested fastest; LingoFlow caps Google requests at 40 across tabs. Use a dedicated service when privacy, reliability, or terminology control is critical.',
     azureGuide: 'Enter the Translator endpoint, subscription key, and resource region. LingoFlow asks for access only to the endpoint origin you configure.',
     openAIGuide: 'Works with OpenAI and compatible servers such as Ollama or LM Studio. Confirm the Base URL includes /v1, choose a model that supports chat completions, then grant access only to that origin.',
     optional: 'Optional',
   },
   'zh-Hans': {
     guide: '连接前说明',
-    googleGuide: '无需 API Key 或额外网站权限，可立即使用。它适合快速开始；如果隐私、稳定性或术语控制很重要，请使用已配置的翻译服务。',
+    googleGuide: '无需 API Key 或额外网站权限，可立即使用。实测 4 个并发批次最快，LingoFlow 会将跨标签页的 Google 请求总数限制在 40；如果隐私、稳定性或术语控制很重要，请使用已配置的翻译服务。',
     azureGuide: '填写 Translator Endpoint、订阅密钥和资源区域。LingoFlow 只会请求访问你配置的 Endpoint 来源。',
     openAIGuide: '兼容 OpenAI、Ollama、LM Studio 等服务。确认 Base URL 包含 /v1，选择支持 Chat Completions 的模型，然后仅授权该来源。',
     optional: '可选',
@@ -325,9 +348,9 @@ const LOCAL_COPY = {
     <div class="provider-actions">
       <lf-button
         v-if="Object.keys(modelValue.providers).length > 1"
-        variant="danger"
-        :label="copy('options.removeProvider')"
-        @click="removeProvider(modelValue.defaultProviderId)"
+        :variant="pendingRemoveProviderId === modelValue.defaultProviderId ? 'danger-confirm' : 'danger'"
+        :label="pendingRemoveProviderId === modelValue.defaultProviderId ? copy('options.confirmRemoveProvider') : copy('options.removeProvider')"
+        @click="requestRemoveProvider(modelValue.defaultProviderId)"
       />
       <div class="add-provider-area">
         <lf-button

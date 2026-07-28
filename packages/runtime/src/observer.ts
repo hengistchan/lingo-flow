@@ -11,6 +11,23 @@ const GENERATED_SELECTORS = [
   '#lingoflow-style',
 ]
 
+const GENERATED_NODE_SELECTORS = [
+  ...GENERATED_SELECTORS,
+  '[data-lingoflow-source-wrapper]',
+]
+
+const VISIBILITY_ATTRIBUTES = [
+  'hidden',
+  'aria-hidden',
+  'class',
+  'style',
+  'open',
+]
+
+const INTERNAL_SOURCE_ATTRIBUTES = [
+  'data-lingoflow-source-hidden',
+]
+
 type PageObserverDeps = {
   document: Document
   events: RuntimeEventBus
@@ -31,6 +48,7 @@ export class PageObserver {
   private newContentTimer: ReturnType<typeof setTimeout> | null = null
   private newContentMaxTimer: ReturnType<typeof setTimeout> | null = null
   private pendingDirty = new Set<string>()
+  private pendingNewContentCause: MutationCause | null = null
   private rootGeneration = 1
 
   constructor(deps: PageObserverDeps) {
@@ -82,19 +100,31 @@ export class PageObserver {
     }
 
     this.pendingDirty.clear()
+    this.pendingNewContentCause = null
   }
 
   private startMutationObserver(): void {
     this.mutationObserver = new MutationObserver(mutations => {
       const dirtyBlockIds = new Set<string>()
-      let hasNewContent = false
+      let newContentCause: MutationCause | null = null
 
       for (const mutation of mutations) {
+        if (
+          mutation.type === 'attributes' &&
+          mutation.attributeName &&
+          INTERNAL_SOURCE_ATTRIBUTES.includes(mutation.attributeName)
+        ) {
+          continue
+        }
         if (this.isGeneratedMutation(mutation)) continue
 
         if (mutation.type === 'characterData') {
           const blockId = this.findBlockIdForNode(mutation.target)
           if (blockId) dirtyBlockIds.add(blockId)
+        }
+
+        if (mutation.type === 'attributes' && mutation.target instanceof HTMLElement) {
+          newContentCause = 'attributes'
         }
 
         if (mutation.type === 'childList') {
@@ -114,7 +144,7 @@ export class PageObserver {
 
           for (const node of mutation.addedNodes) {
             if (node instanceof HTMLElement && !this.isGeneratedNode(node)) {
-              hasNewContent = true
+              newContentCause ??= 'child-list'
             }
           }
         }
@@ -124,12 +154,14 @@ export class PageObserver {
         this.scheduleDirty([...dirtyBlockIds])
       }
 
-      if (hasNewContent) {
-        this.scheduleNewContent()
+      if (newContentCause) {
+        this.scheduleNewContent(newContentCause)
       }
     })
 
     this.mutationObserver.observe(this.doc.body, {
+      attributes: true,
+      attributeFilter: [...VISIBILITY_ATTRIBUTES, ...INTERNAL_SOURCE_ATTRIBUTES],
       childList: true,
       characterData: true,
       subtree: true,
@@ -187,7 +219,9 @@ export class PageObserver {
     }, 80)
   }
 
-  private scheduleNewContent(): void {
+  private scheduleNewContent(cause: MutationCause): void {
+    this.pendingNewContentCause = cause
+
     if (this.newContentMaxTimer === null) {
       this.newContentMaxTimer = setTimeout(() => {
         this.newContentMaxTimer = null
@@ -195,7 +229,9 @@ export class PageObserver {
       }, 1000)
     }
 
-    if (this.newContentTimer) return
+    if (this.newContentTimer) {
+      clearTimeout(this.newContentTimer)
+    }
 
     this.newContentTimer = setTimeout(() => {
       this.newContentTimer = null
@@ -212,9 +248,11 @@ export class PageObserver {
       clearTimeout(this.newContentMaxTimer)
       this.newContentMaxTimer = null
     }
+    const cause = this.pendingNewContentCause ?? 'child-list'
+    this.pendingNewContentCause = null
     this.events.emit({
       type: 'observer:newContent',
-      cause: 'child-list',
+      cause,
       rootKind: 'html',
       rootGeneration: this.rootGeneration,
       rootId: `root_${this.rootGeneration}`,
@@ -229,28 +267,23 @@ export class PageObserver {
     }
 
     if (mutation.type === 'childList') {
-      const addedHtml = Array.from(mutation.addedNodes).filter(
-        (n): n is HTMLElement => n instanceof HTMLElement,
-      )
-      if (addedHtml.length > 0 && addedHtml.every(n => this.isGeneratedNode(n))) return true
-
-      const removedHtml = Array.from(mutation.removedNodes).filter(
-        (n): n is HTMLElement => n instanceof HTMLElement,
-      )
-      if (removedHtml.length > 0 && removedHtml.every(n => this.isGeneratedNode(n))) return true
+      const changedNodes = [
+        ...Array.from(mutation.addedNodes),
+        ...Array.from(mutation.removedNodes),
+      ]
+      if (
+        changedNodes.length > 0 &&
+        changedNodes.every(node => node instanceof HTMLElement && this.isGeneratedNode(node))
+      ) {
+        return true
+      }
     }
 
     return false
   }
 
   private isGeneratedNode(node: HTMLElement): boolean {
-    return !!(
-      node.dataset.lingoflowGenerated ||
-      node.dataset.lingoflowTranslation ||
-      node.dataset.lingoflowTranslationBreak ||
-      node.dataset.lingoflowTranslationSpacer ||
-      node.id === 'lingoflow-style'
-    )
+    return node.matches(GENERATED_NODE_SELECTORS.join(','))
   }
 
   private findBlockIdForNode(node: Node): string | null {

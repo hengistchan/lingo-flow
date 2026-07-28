@@ -94,6 +94,7 @@ export type UiCopyKey =
   | 'options.model'
   | 'options.invalidEndpoint'
   | 'options.removeProvider'
+  | 'options.confirmRemoveProvider'
   | 'options.addProvider'
   | 'options.customOpenAI'
   | 'options.customProviderName'
@@ -117,6 +118,7 @@ export type UiCopyKey =
   | 'options.editUserRule'
   | 'options.duplicateRule'
   | 'options.deleteRule'
+  | 'options.confirmDeleteRule'
   | 'options.ruleId'
   | 'options.ruleEnabled'
   | 'options.rulePriority'
@@ -156,6 +158,7 @@ export type UiCopyKey =
   | 'options.selectedRoots'
   | 'options.rejectedRoots'
   | 'popup.viewDetails'
+  | 'popup.addPageRule'
 
 const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
   'zh-Hans': {
@@ -251,6 +254,7 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.model': '模型',
     'options.invalidEndpoint': '请输入有效的 URL',
     'options.removeProvider': '移除此翻译服务',
+    'options.confirmRemoveProvider': '确认移除此翻译服务',
     'options.addProvider': '添加翻译服务',
     'options.customOpenAI': '自定义 OpenAI 兼容',
     'options.customProviderName': '名称',
@@ -274,6 +278,7 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.editUserRule': '编辑规则',
     'options.duplicateRule': '复制',
     'options.deleteRule': '删除',
+    'options.confirmDeleteRule': '确认删除规则',
     'options.ruleId': '规则 ID',
     'options.ruleEnabled': '启用',
     'options.rulePriority': '优先级',
@@ -313,6 +318,7 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.selectedRoots': '已选内容根',
     'options.rejectedRoots': '已拒绝内容根',
     'popup.viewDetails': '查看详情',
+    'popup.addPageRule': '为此页添加规则',
   },
   en: {
     'popup.autoDetect': 'Auto-detect page language',
@@ -407,6 +413,7 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.model': 'Model',
     'options.invalidEndpoint': 'Please enter a valid URL',
     'options.removeProvider': 'Remove provider',
+    'options.confirmRemoveProvider': 'Confirm provider removal',
     'options.addProvider': 'Add provider',
     'options.customOpenAI': 'Custom OpenAI-compatible',
     'options.customProviderName': 'Name',
@@ -430,6 +437,7 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.editUserRule': 'Edit rule',
     'options.duplicateRule': 'Duplicate',
     'options.deleteRule': 'Delete',
+    'options.confirmDeleteRule': 'Confirm delete rule',
     'options.ruleId': 'Rule ID',
     'options.ruleEnabled': 'Enabled',
     'options.rulePriority': 'Priority',
@@ -469,6 +477,7 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'options.selectedRoots': 'Selected roots',
     'options.rejectedRoots': 'Rejected roots',
     'popup.viewDetails': 'View details',
+    'popup.addPageRule': 'Add a rule for this page',
   },
 }
 

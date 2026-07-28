@@ -163,6 +163,12 @@ test('interactive site adaptation selects, simulates, and saves a compatible loc
       has: options.getByText(`${originalRuleId}-copy`, { exact: true }),
     })
     await duplicateRuleCard.getByRole('button', { name: 'Delete' }).click()
+    await expect(duplicateRuleCard.getByRole('button', { name: 'Confirm delete rule' })).toBeVisible()
+    const afterFirstDeleteAction = await options.evaluate(() =>
+      chrome.runtime.sendMessage({ type: 'userRules/get' }),
+    )
+    expect(afterFirstDeleteAction.data).toHaveLength(2)
+    await duplicateRuleCard.getByRole('button', { name: 'Confirm delete rule' }).click()
     await expect(duplicateRuleCard).toHaveCount(0)
 
     const afterDelete = await options.evaluate(() =>
@@ -478,8 +484,12 @@ test('popup translate enables dynamic translation for newly loaded content', asy
     await popup.goto(extension.url('popup.html'))
     await page.bringToFront()
 
+    const popupClosed = popup.waitForEvent('close')
     await popup.getByRole('button', { name: 'Translate to Simplified Chinese' }).click()
-    await expect(popup.locator('.status')).toHaveText('Translation complete', { timeout: 8_000 })
+    await popupClosed
+    await expect.poll(() => page.locator('[data-lingoflow-translation]').count(), {
+      timeout: 8_000,
+    }).toBeGreaterThan(0)
     const initialCount = await page.locator('[data-lingoflow-translation]').count()
 
     await page.evaluate(() => {
@@ -491,7 +501,13 @@ test('popup translate enables dynamic translation for newly loaded content', asy
     })
 
     await expect(page.locator('[data-lingoflow-translation]')).toHaveCount(initialCount + 1, { timeout: 8_000 })
-    await expect(popup.locator('.result-summary')).toContainText(`${initialCount + 1}/${initialCount + 1}`, { timeout: 8_000 })
+    const statusPopup = await extension.context.newPage()
+    await statusPopup.goto(extension.url('popup.html'))
+    await page.bringToFront()
+    await expect(statusPopup.locator('.result-summary')).toContainText(
+      `${initialCount + 1}/${initialCount + 1}`,
+      { timeout: 8_000 },
+    )
 
     await clearTranslation(extension)
   } finally {

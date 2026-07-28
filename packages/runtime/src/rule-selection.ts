@@ -1,8 +1,14 @@
-import { generateSelectorCandidates } from '@lingoflow/dom'
+import { generateSelectorCandidates, getSourceOnlyText } from '@lingoflow/dom'
 import { getDomain, normalizeText } from '@lingoflow/shared'
 import type { RuleSelectionKind, RuleSelectionResult } from '@lingoflow/types'
 
 const OVERLAY_ATTRIBUTE = 'data-lingoflow-rule-selection-overlay'
+const GENERATED_TARGET_SELECTOR = [
+  '[data-lingoflow-generated]',
+  '[data-lingoflow-translation]',
+  '[data-lingoflow-translation-break]',
+  '[data-lingoflow-translation-spacer]',
+].join(',')
 
 type PendingSelection = {
   kind: RuleSelectionKind
@@ -44,33 +50,60 @@ export class RuleSelectionController {
   }
 
   private readonly handlePointerMove = (event: Event): void => {
-    const target = event.composedPath().find(
-      item => item instanceof Element && !item.hasAttribute(OVERLAY_ATTRIBUTE),
-    )
-    if (!(target instanceof Element)) return
+    const target = this.resolveSelectableTarget(event)
+    if (!target) {
+      this.hovered = null
+      if (this.highlight) this.highlight.style.display = 'none'
+      return
+    }
     this.hovered = target
     this.positionHighlight(target)
   }
 
   private readonly handleClick = (event: MouseEvent): void => {
-    if (!this.pending || !this.hovered) return
+    if (!this.pending) return
+    const element = this.resolveSelectableTarget(event)
+    if (!element) return
     event.preventDefault()
     event.stopImmediatePropagation()
 
-    const element = this.hovered
     const result: RuleSelectionResult = {
       kind: this.pending.kind,
       pageUrl: this.document.location.href,
       domain: getDomain(this.document.location.href),
       element: {
         tagName: element.tagName.toLocaleLowerCase(),
-        textPreview: normalizeText(element.textContent ?? '').slice(0, 160),
+        textPreview: element instanceof HTMLElement
+          ? getSourceOnlyText(element).slice(0, 160)
+          : normalizeText(element.textContent ?? '').slice(0, 160),
       },
       candidates: generateSelectorCandidates(element, this.document),
     }
     const { resolve } = this.pending
     this.cleanup()
     resolve(result)
+  }
+
+  private resolveSelectableTarget(event: Event): Element | null {
+    const origin = event.composedPath().find(item => item instanceof Element)
+    if (!(origin instanceof Element)) return null
+    if (origin.closest(`[${OVERLAY_ATTRIBUTE}]`)) return null
+
+    const generated = origin.closest(GENERATED_TARGET_SELECTOR)
+    if (!generated) return origin
+
+    const blockId =
+      generated.getAttribute('data-lingoflow-block-id') ??
+      generated.getAttribute('data-lingoflow-translation') ??
+      generated.getAttribute('data-lingoflow-translation-break') ??
+      generated.getAttribute('data-lingoflow-translation-spacer')
+    if (!blockId) return null
+
+    return Array.from(this.document.querySelectorAll<HTMLElement>('[data-lingoflow-block-id]'))
+      .find(candidate =>
+        candidate.dataset.lingoflowBlockId === blockId &&
+        !candidate.closest(GENERATED_TARGET_SELECTOR),
+      ) ?? null
   }
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {

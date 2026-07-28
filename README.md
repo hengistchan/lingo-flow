@@ -124,7 +124,7 @@ For OpenAI-compatible providers, you can control translation speed vs quality:
 
 ### Translation Concurrency
 
-Control how many translation batches run in parallel (1–10). Higher values are faster but may hit rate limits.
+Control how many translation batches run in parallel (1–6). The tested default is 4. Google Translate Free also enforces a shared ceiling of 40 in-flight requests across tabs; values above 4 did not improve its measured throughput.
 
 ## User Rules
 

@@ -1,12 +1,19 @@
 import { normalizeText } from '@lingoflow/shared'
 import type { InlineToken, InlineTokenType } from '@lingoflow/types'
 
+const GENERATED_CONTENT_SELECTOR = [
+  '[data-lingoflow-generated]',
+  '[data-lingoflow-translation]',
+  '[data-lingoflow-translation-break]',
+  '[data-lingoflow-translation-spacer]',
+].join(',')
+
 export function extractInlineText(element: HTMLElement): {
   text: string
   requestText: string
   inlineTokens: InlineToken[]
 } {
-  const text = normalizeText(getElementText(element))
+  const text = getSourceOnlyText(element)
   const clone = prepareTextClone(element)
   const inlineTokens: InlineToken[] = []
 
@@ -35,22 +42,30 @@ export function extractInlineText(element: HTMLElement): {
 
 export function prepareTextClone(element: HTMLElement): HTMLElement {
   const clone = element.cloneNode(true) as HTMLElement
+  if (clone.matches(GENERATED_CONTENT_SELECTOR)) {
+    clone.replaceChildren()
+    return clone
+  }
+  clone.querySelectorAll(GENERATED_CONTENT_SELECTOR).forEach(node => node.remove())
   if (element.tagName.toLowerCase() === 'li') {
     clone.querySelectorAll('ul, ol').forEach(node => node.remove())
   }
   return clone
 }
 
-function getElementText(element: HTMLElement): string {
-  if (element.tagName.toLowerCase() === 'li') {
-    return getElementTextFromPreparedClone(element)
+export function getSourceOnlyText(element: HTMLElement): string {
+  if (
+    element.tagName.toLowerCase() !== 'li' &&
+    !element.matches(GENERATED_CONTENT_SELECTOR) &&
+    !element.querySelector(GENERATED_CONTENT_SELECTOR)
+  ) {
+    return normalizeText(element.innerText || element.textContent || '')
   }
-  return element.innerText || element.textContent || ''
+  return normalizeText(getPreparedElementText(prepareTextClone(element)))
 }
 
-function getElementTextFromPreparedClone(element: HTMLElement): string {
-  const clone = prepareTextClone(element)
-  return clone.innerText || clone.textContent || ''
+function getPreparedElementText(element: HTMLElement): string {
+  return element.innerText || element.textContent || ''
 }
 
 function getInlineTokenType(element: HTMLElement): InlineTokenType {

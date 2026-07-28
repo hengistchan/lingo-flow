@@ -15,6 +15,7 @@ import type {
   SettingsSummary,
   UiLocale,
 } from '@lingoflow/types'
+import { shouldSuggestPageRule } from './popup-state'
 
 const extensionApiAvailable = ref(hasExtensionPageApi())
 const uiLocale = ref<UiLocale>(resolveUiLocale(globalThis.navigator?.language))
@@ -30,16 +31,20 @@ const summary = ref<SettingsSummary>({
 const progress = ref<PageTranslationProgress>(idleProgress())
 const pendingTargetLang = ref(summary.value.targetLang)
 const targetSelectionTouched = ref(false)
-const busy = ref(false)
+const busyAction = ref<'starting' | 'clearing' | 'cache' | null>(null)
+const initializing = ref(extensionApiAvailable.value)
 const actionFailed = ref(false)
 const contentInjected = ref(false)
+const activeTabId = ref<number>()
 const isDarkMode = ref(resolveInitialDarkMode())
 const cacheMessage = ref('')
 let pollTimer: number | undefined
 
 const targetLanguages = getTargetLanguageOptions()
+const busy = computed(() => busyAction.value !== null)
 const targetLanguageName = computed(() => getLanguageLabel(pendingTargetLang.value, uiLocale.value))
 const hasTranslations = computed(() => progress.value.translatedBlocks > 0)
+const showRuleSuggestion = computed(() => shouldSuggestPageRule(progress.value))
 const statusLabel = computed(() => {
   if (!summary.value.providerConfigured) return copy('popup.providerNotConfigured')
   if (progress.value.status === 'translating') return copy('popup.translating')
@@ -49,7 +54,7 @@ const statusLabel = computed(() => {
   return copy('popup.ready')
 })
 const primaryActionLabel = computed(() => {
-  if (busy.value || progress.value.status === 'translating') {
+  if (busyAction.value === 'starting' || progress.value.status === 'translating') {
     return copy('popup.translatingTo', { language: targetLanguageName.value })
   }
   if (hasTranslations.value) {
@@ -57,7 +62,9 @@ const primaryActionLabel = computed(() => {
   }
   return copy('popup.translateTo', { language: targetLanguageName.value })
 })
-const loading = computed(() => busy.value && progress.value.status === "idle")
+const loading = computed(() => initializing.value || (
+  busyAction.value === 'starting' && progress.value.status === 'idle'
+))
 const completion = computed(() => {
   if (progress.value.totalBlocks === 0) return 0
   return Math.round(((progress.value.translatedBlocks + progress.value.failedBlocks) / progress.value.totalBlocks) * 100)
@@ -68,7 +75,17 @@ const userMessage = computed(() => {
   return ''
 })
 
-function onProgressUpdate(message: { type?: string; payload?: PageTranslationProgress }) {
+function onProgressUpdate(
+  message: { type?: string; payload?: PageTranslationProgress },
+  sender: chrome.runtime.MessageSender,
+) {
+  if (
+    activeTabId.value !== undefined &&
+    sender.tab?.id !== undefined &&
+    sender.tab.id !== activeTabId.value
+  ) {
+    return
+  }
   if (message?.type === 'page/progressUpdate' && message.payload) {
     progress.value = { ...message.payload }
     if (!targetSelectionTouched.value && message.payload.status !== 'idle') {
@@ -91,6 +108,7 @@ onUnmounted(() => {
 })
 
 async function initialize() {
+  initializing.value = true
   try {
     summary.value = await sendChromeMessage<SettingsSummary>({ type: 'settings/getSummary' })
     if (summary.value.interfaceLocale !== 'auto') {
@@ -108,6 +126,8 @@ async function initialize() {
     await refreshStatus()
   } catch {
     actionFailed.value = true
+  } finally {
+    initializing.value = false
   }
 }
 
@@ -118,35 +138,30 @@ async function translatePage() {
   }
   if (!extensionApiAvailable.value) return
 
-  busy.value = true
+  busyAction.value = 'starting'
   actionFailed.value = false
 
   try {
     const tab = await getActiveTab()
     await ensureContentRuntime(tab.id)
     progress.value = await sendTabMessage<PageTranslationProgress>(tab.id, {
-      type: 'page/translate',
+      type: 'page/startTranslation',
       payload: { targetLang: pendingTargetLang.value },
     })
-    if (progress.value.translatedBlocks > 0) {
-      await sendTabMessage(tab.id, {
-        type: 'page/setDynamicTranslation',
-        payload: { enabled: true },
-      })
-    }
     contentInjected.value = true
+    closePopupWindow()
   } catch {
     actionFailed.value = true
     progress.value.status = 'failed'
   } finally {
-    busy.value = false
+    busyAction.value = null
   }
 }
 
 async function clearTranslation() {
   if (!extensionApiAvailable.value) return
 
-  busy.value = true
+  busyAction.value = 'clearing'
   actionFailed.value = false
 
   try {
@@ -160,14 +175,14 @@ async function clearTranslation() {
   } catch {
     actionFailed.value = true
   } finally {
-    busy.value = false
+    busyAction.value = null
   }
 }
 
 async function clearSiteCache() {
   if (!extensionApiAvailable.value) return
 
-  busy.value = true
+  busyAction.value = 'cache'
   cacheMessage.value = ''
 
   try {
@@ -183,7 +198,7 @@ async function clearSiteCache() {
     cacheMessage.value = copy('popup.siteCacheFailed')
     setTimeout(() => { cacheMessage.value = '' }, 5000)
   } finally {
-    busy.value = false
+    busyAction.value = null
   }
 }
 
@@ -216,6 +231,40 @@ async function openSettings() {
   window.location.href = 'options.html'
 }
 
+async function openDetails() {
+  await openOptionsAt('options.html?section=siteRules')
+}
+
+async function openRuleCapture() {
+  if (!extensionApiAvailable.value) {
+    window.location.href = 'options.html?section=siteRules&adapt=content-root'
+    return
+  }
+
+  try {
+    const tab = await getActiveTab()
+    const url = chrome.runtime.getURL(
+      `options.html?section=siteRules&adapt=content-root&targetTabId=${tab.id}`,
+    )
+    await chrome.tabs.create({ url })
+    closePopupWindow()
+  } catch {
+    actionFailed.value = true
+  }
+}
+
+async function openOptionsAt(path: string) {
+  const chromeApi = getPreviewSafeChrome()
+  if (
+    typeof chromeApi.runtime?.getURL === 'function' &&
+    typeof chromeApi.tabs?.create === 'function'
+  ) {
+    await chromeApi.tabs.create({ url: chromeApi.runtime.getURL(path) })
+    return
+  }
+  window.location.href = path
+}
+
 function resolveInitialDarkMode(): boolean {
   return window.matchMedia('(prefers-color-scheme: dark)').matches
 }
@@ -237,7 +286,12 @@ function toggleDarkMode() {
 async function getActiveTab(): Promise<chrome.tabs.Tab & { id: number }> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
   if (!tab?.id) throw new Error('No active tab is available.')
+  activeTabId.value = tab.id
   return tab as chrome.tabs.Tab & { id: number }
+}
+
+function closePopupWindow() {
+  window.close()
 }
 
 async function ensureContentRuntime(tabId: number) {
@@ -317,6 +371,7 @@ function getPreviewSafeChrome() {
   return (globalThis as {
     chrome?: {
       runtime?: {
+        getURL?: (path: string) => string
         openOptionsPage?: () => Promise<void> | void
         sendMessage?: unknown
       }
@@ -324,6 +379,7 @@ function getPreviewSafeChrome() {
         executeScript?: unknown
       }
       tabs?: {
+        create?: (properties: { url: string }) => Promise<unknown>
         query?: unknown
         sendMessage?: unknown
       }
@@ -367,8 +423,9 @@ function getPreviewSafeChrome() {
 
     <p class="status" aria-live="polite">{{ statusLabel }}</p>
 
-    <section v-if="loading" class="loading-indicator">
-      <p>{{ copy("popup.loading") }}</p>
+    <section v-if="loading" class="loading-indicator" role="status" aria-live="polite" aria-busy="true">
+      <span class="reading-sweep" aria-hidden="true"><span></span></span>
+      <p>{{ copy('popup.loading') }}</p>
     </section>
 
     <lf-language-pair
@@ -399,9 +456,16 @@ function getPreviewSafeChrome() {
     <p v-if="cacheMessage" class="message" aria-live="polite">{{ cacheMessage }}</p>
 
     <div v-if="hasTranslations || progress.status === 'failed'" class="diagnostics-affordance">
-      <button class="diagnostics-link" type="button" @click="openSettings">
+      <button class="diagnostics-link" type="button" @click="openDetails">
         {{ copy('popup.viewDetails') }}
       </button>
+      <template v-if="showRuleSuggestion">
+        <span class="diagnostics-divider" aria-hidden="true">·</span>
+        <button class="rule-suggestion" type="button" @click="openRuleCapture">
+          {{ copy('popup.addPageRule') }}
+          <span aria-hidden="true">→</span>
+        </button>
+      </template>
     </div>
 
     <div class="actions">
@@ -536,19 +600,47 @@ h1 {
 }
 
 .loading-indicator {
-  margin-top: 12px;
-  padding: 12px;
-  text-align: center;
+  margin: 0 0 14px;
+  padding: 10px 0 2px;
   color: var(--lf-ghost);
-  font-size: 13px;
+  font-size: 12px;
+}
+
+.loading-indicator p {
+  margin: 7px 0 0;
+}
+
+.reading-sweep {
+  position: relative;
+  display: block;
+  height: 2px;
+  overflow: hidden;
+  background: var(--lf-rule);
+}
+
+.reading-sweep span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 42%;
+  background: var(--lf-accent);
+  animation: reading-sweep 0.9s ease-in-out infinite;
+}
+
+@keyframes reading-sweep {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(340%); }
 }
 
 .diagnostics-affordance {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   margin-top: 10px;
-  text-align: center;
 }
 
-.diagnostics-link {
+.diagnostics-link,
+.rule-suggestion {
   border: none;
   background: transparent;
   color: var(--lf-whisper);
@@ -559,7 +651,30 @@ h1 {
   text-underline-offset: 2px;
 }
 
-.diagnostics-link:hover {
+.rule-suggestion {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  color: var(--lf-accent);
+  text-decoration: none;
+}
+
+.diagnostics-divider {
+  color: var(--lf-rule);
+  font-size: 11px;
+}
+
+.diagnostics-link:hover,
+.rule-suggestion:hover {
   color: var(--lf-ghost);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reading-sweep span {
+    animation: none;
+    width: 100%;
+    opacity: 0.65;
+  }
 }
 </style>

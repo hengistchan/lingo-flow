@@ -87,12 +87,50 @@ export function isInsideUIExclusion(element: HTMLElement): boolean {
 }
 
 export function isVisible(element: HTMLElement): boolean {
-  if (element.hidden || element.getAttribute('aria-hidden') === 'true') return false
+  const view = element.ownerDocument.defaultView
+  let current: HTMLElement | null = element
 
-  const style = element.ownerDocument.defaultView?.getComputedStyle(element)
-  if (style && (style.display === 'none' || style.visibility === 'hidden')) return false
+  while (current) {
+    if (current.hidden || current.getAttribute('aria-hidden') === 'true') return false
+
+    const style = view?.getComputedStyle(current)
+    if (
+      style?.display === 'none' ||
+      style?.visibility === 'hidden' ||
+      style?.visibility === 'collapse' ||
+      style?.contentVisibility === 'hidden'
+    ) {
+      return false
+    }
+
+    if (isHiddenDetailsContent(element, current)) return false
+    current = getComposedParent(current)
+  }
 
   return true
+}
+
+function getComposedParent(element: HTMLElement): HTMLElement | null {
+  if (element.parentElement) return element.parentElement
+
+  const root = element.getRootNode()
+  const ShadowRootConstructor = element.ownerDocument.defaultView?.ShadowRoot
+  if (ShadowRootConstructor && root instanceof ShadowRootConstructor) {
+    return root.host instanceof HTMLElement ? root.host : null
+  }
+
+  return null
+}
+
+function isHiddenDetailsContent(element: HTMLElement, ancestor: HTMLElement): boolean {
+  if (ancestor.tagName.toLowerCase() !== 'details' || (ancestor as HTMLDetailsElement).open) {
+    return false
+  }
+
+  const summary = Array.from(ancestor.children)
+    .find(child => child.tagName.toLowerCase() === 'summary')
+
+  return !(summary instanceof HTMLElement && (summary === element || summary.contains(element)))
 }
 
 export type TranslatableElementOptions = {

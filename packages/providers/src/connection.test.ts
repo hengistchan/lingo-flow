@@ -1,4 +1,8 @@
-import { googleFreeTranslateProvider, testProviderConnection } from './index'
+import {
+  GOOGLE_FREE_MAX_IN_FLIGHT,
+  googleFreeTranslateProvider,
+  testProviderConnection,
+} from './index'
 
 const azureValues = {
   endpoint: 'https://api.cognitive.microsofttranslator.com',
@@ -105,6 +109,53 @@ describe('testProviderConnection', () => {
     expect(firstUrl.searchParams.get('sl')).toBe('auto')
     expect(firstUrl.searchParams.get('tl')).toBe('zh-TW')
     expect(firstUrl.searchParams.get('q')).toBe('Hello, world')
+  })
+
+  it('bounds Google Free requests globally across concurrent translate calls', async () => {
+    let activeRequests = 0
+    let peakRequests = 0
+    let releaseRequests = () => {}
+    const requestGate = new Promise<void>(resolve => {
+      releaseRequests = resolve
+    })
+    const fetchMock = vi.fn().mockImplementation(async () => {
+      activeRequests += 1
+      peakRequests = Math.max(peakRequests, activeRequests)
+      try {
+        await requestGate
+        return jsonResponse([[['译文', 'Source', null, null, 1]], null, 'en'])
+      } finally {
+        activeRequests -= 1
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const translations = Array.from({ length: 5 }, (_, callIndex) => (
+      googleFreeTranslateProvider.translate(
+        {
+          sourceLang: 'en',
+          targetLang: 'zh-Hans',
+          texts: Array.from(
+            { length: 20 },
+            (_, textIndex) => `Concurrent source ${callIndex}-${textIndex}`,
+          ),
+        },
+        {},
+      )
+    ))
+
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(GOOGLE_FREE_MAX_IN_FLIGHT)
+    })
+    expect(peakRequests).toBe(GOOGLE_FREE_MAX_IN_FLIGHT)
+
+    releaseRequests()
+    const outputs = await Promise.all(translations)
+
+    expect(fetchMock).toHaveBeenCalledTimes(100)
+    expect(peakRequests).toBe(GOOGLE_FREE_MAX_IN_FLIGHT)
+    expect(outputs).toHaveLength(5)
+    expect(outputs.every(output => output.texts.length === 20)).toBe(true)
   })
 
   it('adds optional OpenAI-compatible speed controls to request bodies', async () => {

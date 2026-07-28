@@ -278,13 +278,23 @@ test('installed extension completes the local mock-provider happy path from the 
     await popup.goto(extension.url('popup.html'))
     await article.bringToFront()
 
+    const firstPopupClosed = popup.waitForEvent('close')
     await popup.getByRole('button', { name: 'Translate to Japanese' }).click()
+    await firstPopupClosed
 
-    await expect(popup.locator('.status')).toHaveText('Translation complete', { timeout: 8_000 })
     await expect(article.locator('[data-lingoflow-translation]')).toHaveCount(3)
     expect(articleServer.providerRequestCount()).toBe(1)
 
-    await popup.getByRole('button', { name: 'Translate again in Japanese' }).click()
+    const completedPopup = await extension.context.newPage()
+    const completedPopupErrors = collectRuntimeErrors(completedPopup)
+    await completedPopup.goto(extension.url('popup.html'))
+    await article.bringToFront()
+    await expect(completedPopup.locator('.status')).toHaveText('Translation complete')
+    await expect(completedPopup.getByRole('button', { name: 'Add a rule for this page' })).toBeVisible()
+
+    const secondPopupClosed = completedPopup.waitForEvent('close')
+    await completedPopup.getByRole('button', { name: 'Translate again in Japanese' }).click()
+    await secondPopupClosed
 
     await expect.poll(async () => {
       const response = await extension.worker.evaluate(async () => {
@@ -295,7 +305,6 @@ test('installed extension completes the local mock-provider happy path from the 
       if (!response?.ok) return 'not-ok'
       return `${response.data.status}:${response.data.cacheHits}`
     }, { timeout: 8_000 }).toBe('done:3')
-    await expect(popup.locator('.status')).toHaveText('Translation complete', { timeout: 8_000 })
     await expect(article.locator('[data-lingoflow-translation]')).toHaveCount(3)
     const cachedStatus = await extension.worker.evaluate(async () => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -311,11 +320,16 @@ test('installed extension completes the local mock-provider happy path from the 
     })
     expect(articleServer.providerRequestCount()).toBe(1)
 
-    await popup.getByRole('button', { name: 'Clear translation' }).click()
+    const clearPopup = await extension.context.newPage()
+    await clearPopup.goto(extension.url('popup.html'))
+    await article.bringToFront()
+    await expect(clearPopup.locator('.status')).toHaveText('Translation complete')
+    await clearPopup.getByRole('button', { name: 'Clear translation' }).click()
     await expect(article.locator('[data-lingoflow-translation]')).toHaveCount(0)
     await expect(article.getByRole('heading', { name: 'A field guide to quiet reading' })).toBeVisible()
     expect(articleErrors()).toEqual([])
     expect(popupErrors()).toEqual([])
+    expect(completedPopupErrors()).toEqual([])
   } finally {
     await extension.close()
     await articleServer.close()
@@ -381,6 +395,169 @@ test('installed popup keeps the translating target accurate and locks it until c
     await expect(popup.getByLabel('Target language')).toBeEnabled()
     await expect(popup.getByLabel('Target language')).toHaveValue('ja')
     await expect(popup.getByRole('button', { name: 'Translate again in Japanese' })).toBeVisible()
+  } finally {
+    await extension.close()
+    await articleServer.close()
+  }
+})
+
+test('installed extension progressively translates a hidden tab when it is revealed', async () => {
+  const articleServer = await startArticleServer()
+  const extension = await launchExtension({ allowLocalhost: true })
+
+  try {
+    const options = await extension.context.newPage()
+    await options.goto(extension.url('options.html'))
+    const saveResponse = await options.evaluate(async providerBaseUrl => {
+      const current = await chrome.runtime.sendMessage({ type: 'settings/get' })
+      if (!current?.ok) return current
+      return chrome.runtime.sendMessage({
+        type: 'settings/save',
+        payload: {
+          settings: {
+            ...current.data,
+            cacheEnabled: false,
+            defaultProviderId: 'openai-compatible',
+            fallbackProviderId: '',
+            providers: {
+              ...current.data.providers,
+              'openai-compatible': {
+                ...current.data.providers['openai-compatible'],
+                values: { baseUrl: providerBaseUrl, apiKey: 'test-only-key', model: 'test-model' },
+              },
+            },
+          },
+        },
+      })
+    }, articleServer.successProviderBaseUrl)
+    expect(saveResponse).toMatchObject({ ok: true })
+
+    const article = await extension.context.newPage()
+    await article.goto(articleServer.url)
+    await expect(article.locator('#hidden-tab')).toBeHidden()
+
+    const popup = await extension.context.newPage()
+    await popup.goto(extension.url('popup.html'))
+    await article.bringToFront()
+    const popupClosed = popup.waitForEvent('close')
+    await popup.getByRole('button', { name: 'Translate to Simplified Chinese' }).click()
+    await popupClosed
+
+    await expect(article.locator('[data-lingoflow-translation]')).toHaveCount(3)
+    expect(articleServer.providerRequestCount()).toBe(1)
+    await expect(article.getByText(/訳: This paragraph starts hidden/)).toHaveCount(0)
+
+    await article.getByRole('button', { name: 'Show hidden notes' }).click()
+
+    await expect(article.locator('#hidden-tab')).toBeVisible()
+    await expect(article.getByText(/訳: This paragraph starts hidden/)).toBeVisible({ timeout: 5_000 })
+    await expect(article.locator('[data-lingoflow-translation]')).toHaveCount(4)
+    expect(articleServer.providerRequestCount()).toBe(2)
+
+    await article.locator('#hidden-tab').evaluate(element => {
+      ;(element as HTMLElement).hidden = true
+      ;(element as HTMLElement).hidden = false
+    })
+    await article.waitForTimeout(1_200)
+    expect(articleServer.providerRequestCount()).toBe(2)
+    await expect(article.locator('[data-lingoflow-translation]')).toHaveCount(4)
+  } finally {
+    await extension.close()
+    await articleServer.close()
+  }
+})
+
+test('completed popup enters page-rule capture and saves a source-only rule', async () => {
+  const articleServer = await startArticleServer()
+  const extension = await launchExtension({ allowLocalhost: true })
+
+  try {
+    const setup = await extension.context.newPage()
+    await setup.goto(extension.url('options.html'))
+    const saveResponse = await setup.evaluate(async providerBaseUrl => {
+      const current = await chrome.runtime.sendMessage({ type: 'settings/get' })
+      if (!current?.ok) return current
+      return chrome.runtime.sendMessage({
+        type: 'settings/save',
+        payload: {
+          settings: {
+            ...current.data,
+            defaultProviderId: 'openai-compatible',
+            fallbackProviderId: '',
+            providers: {
+              ...current.data.providers,
+              'openai-compatible': {
+                ...current.data.providers['openai-compatible'],
+                values: { baseUrl: providerBaseUrl, apiKey: 'test-only-key', model: 'test-model' },
+              },
+            },
+          },
+        },
+      })
+    }, articleServer.successProviderBaseUrl)
+    expect(saveResponse).toMatchObject({ ok: true })
+
+    const article = await extension.context.newPage()
+    await article.goto(articleServer.url)
+
+    const startPopup = await extension.context.newPage()
+    await startPopup.goto(extension.url('popup.html'))
+    await article.bringToFront()
+    const startPopupClosed = startPopup.waitForEvent('close')
+    await startPopup.getByRole('button', { name: 'Translate to Simplified Chinese' }).click()
+    await startPopupClosed
+    await expect(article.locator('[data-lingoflow-translation]')).toHaveCount(3)
+
+    const completedPopup = await extension.context.newPage()
+    await completedPopup.goto(extension.url('popup.html'))
+    await article.bringToFront()
+    const addRule = completedPopup.getByRole('button', { name: 'Add a rule for this page' })
+    await expect(addRule).toBeVisible()
+
+    const optionsPagePromise = extension.context.waitForEvent('page', {
+      predicate: page => page.url().includes('options.html?section=siteRules'),
+    })
+    await addRule.click()
+    const ruleOptions = await optionsPagePromise
+
+    await expect(article.locator('[data-lingoflow-rule-selection-overlay="instruction"]')).toBeVisible()
+    await article.locator('article').evaluate(element => {
+      element.dispatchEvent(new PointerEvent('pointermove', {
+        bubbles: true,
+        composed: true,
+        clientX: 120,
+        clientY: 180,
+      }))
+      element.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        composed: true,
+        clientX: 120,
+        clientY: 180,
+      }))
+    })
+
+    await expect(ruleOptions.getByRole('button', { name: 'Save local rule' })).toBeEnabled({
+      timeout: 8_000,
+    })
+    const compatibility = ruleOptions.locator('.compatibility-strip')
+    await expect(compatibility).toBeVisible()
+    await expect(compatibility).not.toHaveAttribute('data-status', 'incompatible')
+    await ruleOptions.getByRole('button', { name: 'Save local rule' }).click()
+    await expect(ruleOptions.getByText('Rule saved')).toBeVisible()
+
+    const rules = await ruleOptions.evaluate(() =>
+      chrome.runtime.sendMessage({ type: 'userRules/get' }),
+    )
+    expect(rules).toMatchObject({
+      ok: true,
+      data: [expect.objectContaining({
+        source: 'user',
+        selectors: expect.objectContaining({
+          contentRoots: expect.arrayContaining(['article']),
+        }),
+      })],
+    })
+    expect(JSON.stringify(rules.data)).not.toContain('lingoflow-')
   } finally {
     await extension.close()
     await articleServer.close()
@@ -628,6 +805,65 @@ test('background validates user-rule writes and settings saves do not clobber th
       ok: true,
       data: [{ id: 'reader-rule' }],
     })
+  } finally {
+    await extension.close()
+  }
+})
+
+test('durable rule and provider removals require an explicit second action', async () => {
+  const extension = await launchExtension()
+
+  try {
+    const options = await extension.context.newPage()
+    await options.goto(extension.url('options.html'))
+    const seeded = await options.evaluate(async () => {
+      const now = new Date().toISOString()
+      return chrome.runtime.sendMessage({
+        type: 'userRules/save',
+        payload: {
+          rules: [{
+            id: 'user:delete-confirmation',
+            version: 1,
+            source: 'user',
+            enabled: true,
+            priority: 50,
+            createdAt: now,
+            updatedAt: now,
+            match: { matches: ['*://example.com/*'] },
+            selectors: { contentRoots: ['article'] },
+          }],
+        },
+      })
+    })
+    expect(seeded).toMatchObject({ ok: true })
+
+    await options.reload()
+    await options.getByRole('button', { name: 'Site rules' }).click()
+    const ruleCard = options.locator('.user-rule-card').filter({ hasText: 'user:delete-confirmation' })
+    await ruleCard.getByRole('button', { name: 'Delete' }).click()
+    await expect(ruleCard.getByRole('button', { name: 'Confirm delete rule' })).toBeVisible()
+    const afterFirstRuleAction = await options.evaluate(() =>
+      chrome.runtime.sendMessage({ type: 'userRules/get' }),
+    )
+    expect(afterFirstRuleAction.data).toHaveLength(1)
+
+    await ruleCard.getByRole('button', { name: 'Confirm delete rule' }).click()
+    await expect(ruleCard).toHaveCount(0)
+    const afterRuleConfirmation = await options.evaluate(() =>
+      chrome.runtime.sendMessage({ type: 'userRules/get' }),
+    )
+    expect(afterRuleConfirmation.data).toHaveLength(0)
+
+    await options.getByRole('button', { name: 'Translation service' }).click()
+    await expect(options.getByLabel('Default provider')).toHaveValue('google-free-translate')
+    await options.getByRole('button', { name: 'Remove provider' }).click()
+    await expect(options.getByRole('button', { name: 'Confirm provider removal' })).toBeVisible()
+    await expect(options.getByLabel('Default provider')).toHaveValue('google-free-translate')
+    await expect(options.getByLabel('Default provider').locator('option[value="google-free-translate"]')).toHaveCount(1)
+
+    await options.getByRole('button', { name: 'Confirm provider removal' }).click()
+    await expect(options.getByLabel('Default provider')).not.toHaveValue('google-free-translate')
+    await expect(options.getByLabel('Default provider').locator('option[value="google-free-translate"]')).toHaveCount(0)
   } finally {
     await extension.close()
   }
@@ -1413,6 +1649,10 @@ function startArticleServer() {
       <h1>A field guide to quiet reading</h1>
       <p>Reading a difficult page becomes easier when translation stays close to the original paragraph and does not interrupt the structure of the article.</p>
       <p>The extension should identify meaningful text blocks, keep the page stable, and avoid touching controls or navigation elements.</p>
+      <button id="show-hidden-tab" type="button" onclick="document.querySelector('#hidden-tab').hidden = false">Show hidden notes</button>
+      <section id="hidden-tab" hidden>
+        <p>This paragraph starts hidden and should be translated only after the reader reveals its tab.</p>
+      </section>
     </article>
   </body>
 </html>`)

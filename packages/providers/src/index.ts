@@ -14,6 +14,10 @@ export { isProviderConfigured } from '@lingoflow/shared'
 
 export const REQUEST_TIMEOUT_MS = 30000
 export const GOOGLE_FREE_TRANSLATE_ENDPOINT = 'https://translate.googleapis.com/translate_a/single'
+export const GOOGLE_FREE_MAX_IN_FLIGHT = 40
+
+let googleFreeInFlight = 0
+const googleFreeWaiters: Array<() => void> = []
 
 export async function mapWithConcurrency<T, R>(
   items: T[],
@@ -359,30 +363,58 @@ function assertOpenAIConfig(config: unknown): OpenAICompatibleConfig {
 }
 
 async function translateGoogleFreeText(text: string, input: TranslateInput): Promise<string> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
-  let response: Response
+  await acquireGoogleFreePermit()
   try {
-    response = await fetch(createGoogleFreeTranslateUrl(text, input), {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      signal: controller.signal,
-    })
-  } catch (error: unknown) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('Google Translate Free request timed out after 30 seconds')
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    let response: Response
+    try {
+      response = await fetch(createGoogleFreeTranslateUrl(text, input), {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      })
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Google Translate Free request timed out after 30 seconds')
+      }
+      throw error
+    } finally {
+      clearTimeout(timer)
     }
-    throw error
+
+    if (!response.ok) {
+      throw providerHttpError(response.status, `Google Translate Free failed with HTTP ${response.status}`)
+    }
+
+    const raw = await response.json()
+    return parseGoogleFreeTranslateResponse(raw)
   } finally {
-    clearTimeout(timer)
+    releaseGoogleFreePermit()
+  }
+}
+
+async function acquireGoogleFreePermit(): Promise<void> {
+  if (googleFreeInFlight < GOOGLE_FREE_MAX_IN_FLIGHT) {
+    googleFreeInFlight += 1
+    return
   }
 
-  if (!response.ok) {
-    throw providerHttpError(response.status, `Google Translate Free failed with HTTP ${response.status}`)
+  await new Promise<void>(resolve => {
+    googleFreeWaiters.push(resolve)
+  })
+}
+
+function releaseGoogleFreePermit(): void {
+  const next = googleFreeWaiters.shift()
+  if (next) {
+    // Transfer the released permit directly to the oldest waiter. Keeping the
+    // counter unchanged prevents a new request from overtaking that waiter.
+    next()
+    return
   }
 
-  const raw = await response.json()
-  return parseGoogleFreeTranslateResponse(raw)
+  googleFreeInFlight -= 1
 }
 
 function createGoogleFreeTranslateUrl(text: string, input: TranslateInput): string {

@@ -1,6 +1,6 @@
 import type { RootDiagnostic } from '@lingoflow/types'
-import { normalizeText } from '@lingoflow/shared'
 import { IGNORE_SELECTORS, INTERACTIVE_SELECTORS, isGeneratedByLingoFlow, isVisible } from './filters'
+import { getSourceOnlyText } from './inline-tokenization'
 
 export const CONTENT_ROOT_SELECTORS = [
   'main',
@@ -190,22 +190,27 @@ function createFallbackCandidate(element: HTMLElement, documentIndex: number): R
 }
 
 function measureRoot(element: HTMLElement): RootMetrics {
-  const text = normalizeText(element.innerText || element.textContent || '')
-  const linkTextLength = Array.from(element.querySelectorAll('a'))
-    .map(link => normalizeText((link as HTMLElement).innerText || link.textContent || '').length)
+  const text = getSourceOnlyText(element)
+  const sourceDescendants = Array.from(element.querySelectorAll<HTMLElement>('*'))
+    .filter(descendant => !isGeneratedByLingoFlow(descendant))
+  const linkTextLength = sourceDescendants
+    .filter(descendant => descendant.tagName.toLowerCase() === 'a')
+    .map(link => getSourceOnlyText(link).length)
     .reduce((sum, length) => sum + length, 0)
-  const interactiveCount = element.querySelectorAll(INTERACTIVE_SELECTORS.join(',')).length
-  const descendantCount = element.querySelectorAll('*').length
+  const interactiveCount = sourceDescendants
+    .filter(descendant => descendant.matches(INTERACTIVE_SELECTORS.join(',')))
+    .length
+  const descendantCount = sourceDescendants.length
   const rect = element.getBoundingClientRect?.()
   const visibleArea = rect ? Math.max(0, rect.width) * Math.max(0, rect.height) : 0
 
   return {
     textLength: text.length,
     normalizedTextLength: text.length,
-    paragraphCount: element.querySelectorAll('p').length,
-    headingCount: element.querySelectorAll('h1,h2,h3,h4,h5,h6').length,
-    listItemCount: element.querySelectorAll('li').length,
-    tableCount: element.querySelectorAll('table,td,th').length,
+    paragraphCount: sourceDescendants.filter(descendant => descendant.tagName.toLowerCase() === 'p').length,
+    headingCount: sourceDescendants.filter(descendant => /^h[1-6]$/.test(descendant.tagName.toLowerCase())).length,
+    listItemCount: sourceDescendants.filter(descendant => descendant.tagName.toLowerCase() === 'li').length,
+    tableCount: sourceDescendants.filter(descendant => /^(table|td|th)$/.test(descendant.tagName.toLowerCase())).length,
     linkTextLength,
     linkDensity: text.length === 0 ? 0 : linkTextLength / text.length,
     interactiveCount,
@@ -395,9 +400,10 @@ function isCustomFirstRootHint(candidate: RootCandidate): boolean {
 function hasDirectReadableChildren(element: HTMLElement): boolean {
   return Array.from(element.children).some(child => {
     if (!(child instanceof HTMLElement)) return false
+    if (isGeneratedByLingoFlow(child)) return false
     const tagName = child.tagName.toLowerCase()
     if (!/^(p|h[1-6]|li|blockquote|td|th|dd|figcaption)$/.test(tagName)) return false
-    return normalizeText(child.innerText || child.textContent || '').length >= 20
+    return getSourceOnlyText(child).length >= 20
   })
 }
 

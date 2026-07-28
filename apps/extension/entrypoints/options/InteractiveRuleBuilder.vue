@@ -1,18 +1,33 @@
 <script setup lang="ts">
 import type {
+  RuleSelectionKind,
   SelectorCandidate,
   UiLocale,
   UserSiteRule,
 } from '@lingoflow/types'
+import { watch } from 'vue'
 import { useSiteAdaptation } from './useSiteAdaptation'
 
 const props = defineProps<{
   existingRules: UserSiteRule[]
   locale: UiLocale
   saveRule: (rule: UserSiteRule) => Promise<boolean>
+  autoStartKind?: RuleSelectionKind
+  targetTabId?: number
 }>()
 
 const adaptation = useSiteAdaptation(() => props.existingRules)
+let autoStarted = false
+
+watch(
+  () => props.autoStartKind,
+  kind => {
+    if (!kind || autoStarted || adaptation.stage.value !== 'idle') return
+    autoStarted = true
+    void adaptation.begin(kind, props.targetTabId)
+  },
+  { immediate: true },
+)
 
 function copy(key: keyof typeof COPY.en): string {
   return COPY[props.locale][key]

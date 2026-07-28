@@ -94,8 +94,8 @@ test('options preview exposes LLM translation speed controls', async ({ page }) 
 
   await page.getByRole('button', { name: 'Translation service' }).click()
   await expect(page.getByText('Request concurrency')).toBeVisible()
-  await expect(page.getByLabel('Concurrent translation batches')).toHaveValue('3')
-  await page.getByLabel('Concurrent translation batches').fill('4')
+  await expect(page.getByLabel('Concurrent translation batches')).toHaveValue('4')
+  await page.getByLabel('Concurrent translation batches').fill('3')
   await expect(page.getByRole('button', { name: 'Save settings' })).toBeEnabled()
 
   await page.getByLabel('Default provider').selectOption('openai-compatible')

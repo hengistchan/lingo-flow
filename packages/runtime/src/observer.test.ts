@@ -101,6 +101,112 @@ describe('PageObserver', () => {
     observer.stop()
   })
 
+  it.each([
+    {
+      name: 'hidden',
+      prepare: (element: HTMLElement) => { element.hidden = true },
+      reveal: (element: HTMLElement) => { element.hidden = false },
+    },
+    {
+      name: 'aria-hidden',
+      prepare: (element: HTMLElement) => { element.setAttribute('aria-hidden', 'true') },
+      reveal: (element: HTMLElement) => { element.setAttribute('aria-hidden', 'false') },
+    },
+    {
+      name: 'class',
+      prepare: (element: HTMLElement) => { element.classList.add('collapsed') },
+      reveal: (element: HTMLElement) => { element.classList.remove('collapsed') },
+    },
+    {
+      name: 'style',
+      prepare: (element: HTMLElement) => { element.style.display = 'none' },
+      reveal: (element: HTMLElement) => { element.style.display = 'block' },
+    },
+  ])('emits one attributes new-content event when $name reveals content', async ({ prepare, reveal }) => {
+    const { observer, events } = createObserver()
+    const seen: RuntimeEvent[] = []
+    events.on('observer:newContent', event => seen.push(event))
+
+    const panel = document.createElement('section')
+    prepare(panel)
+    panel.innerHTML = '<p>This hidden panel contains enough readable text to translate after it becomes visible.</p>'
+    document.body.appendChild(panel)
+    observer.start()
+
+    reveal(panel)
+    await waitFor(() => seen.length >= 1)
+
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({ cause: 'attributes' })
+    observer.stop()
+  })
+
+  it('emits one attributes new-content event when a details element opens', async () => {
+    const { observer, events } = createObserver()
+    const seen: RuntimeEvent[] = []
+    events.on('observer:newContent', event => seen.push(event))
+
+    const details = document.createElement('details')
+    details.innerHTML = `
+      <summary>Read more</summary>
+      <p>This collapsed article content should be considered after the details element opens.</p>
+    `
+    document.body.appendChild(details)
+    observer.start()
+
+    details.open = true
+    await waitFor(() => seen.length >= 1)
+
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({ cause: 'attributes' })
+    observer.stop()
+  })
+
+  it('debounces a burst of visibility attributes into one new-content event', async () => {
+    const { observer, events } = createObserver()
+    const seen: RuntimeEvent[] = []
+    events.on('observer:newContent', event => seen.push(event))
+
+    const panel = document.createElement('section')
+    panel.innerHTML = '<p>This panel has enough readable content for the observer debounce test.</p>'
+    document.body.appendChild(panel)
+    observer.start()
+
+    panel.hidden = true
+    panel.setAttribute('aria-hidden', 'true')
+    panel.classList.add('collapsed')
+    panel.style.display = 'none'
+    panel.setAttribute('open', '')
+
+    await waitFor(() => seen.length >= 1)
+    await new Promise(resolve => setTimeout(resolve, 200))
+
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({ cause: 'attributes' })
+    observer.stop()
+  })
+
+  it('ignores visibility attribute changes on generated LingoFlow nodes', async () => {
+    const { observer, events } = createObserver()
+    const seen: RuntimeEvent[] = []
+    events.on('observer:newContent', event => seen.push(event))
+
+    const translation = document.createElement('div')
+    translation.dataset.lingoflowGenerated = 'true'
+    translation.textContent = 'Generated translation content.'
+    document.body.appendChild(translation)
+    observer.start()
+
+    translation.hidden = true
+    translation.classList.add('temporary-state')
+    translation.style.display = 'none'
+
+    await new Promise(resolve => setTimeout(resolve, 700))
+
+    expect(seen).toEqual([])
+    observer.stop()
+  })
+
   it('emits binding:disconnected when carrier is removed', async () => {
     const { observer, bindings, events } = createObserver()
     const seen: RuntimeEvent[] = []

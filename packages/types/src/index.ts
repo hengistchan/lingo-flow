@@ -827,6 +827,14 @@ export type PageTranslateMessage = {
   }
 }
 
+export type PageStartTranslationMessage = {
+  type: 'page/startTranslation'
+  payload?: {
+    sourceLang?: 'auto' | string
+    targetLang?: string
+  }
+}
+
 export type PageTranslateHoveredTextMessage = {
   type: 'page/translateHoveredText'
 }
@@ -949,6 +957,7 @@ export type LingoFlowMessage =
   | ClearCacheByDomainMessage
   | ClearAllCacheMessage
   | PageTranslateMessage
+  | PageStartTranslationMessage
   | PageTranslateHoveredTextMessage
   | PageClearMessage
   | PageClearCacheMessage

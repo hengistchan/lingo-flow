@@ -13,7 +13,9 @@ import {
 import ShortcutSetting from './ShortcutSetting.vue'
 import InteractiveRuleBuilder from './InteractiveRuleBuilder.vue'
 import TerminologySection from './TerminologySection.vue'
+import { advanceDestructiveConfirmation } from '../../src/ui/destructive-confirmation'
 import { diagnosePage, ensureContentRuntime, findAdaptableTab } from './page-adaptation-runtime'
+import { parseOptionsIntent, type SettingsSection } from './options-intent'
 import { cloneSerializable } from './serialization'
 import { useRuleCompatibility } from './useRuleCompatibility'
 import {
@@ -31,15 +33,16 @@ import type {
   PageDiagnostics,
   ProviderConfig,
   RootDiagnostic,
+  RuleSelectionKind,
   UiLocale,
   UserSiteRule,
 } from '@lingoflow/types'
 
-type SettingsSection = 'general' | 'providers' | 'terminology' | 'localData' | 'siteRules'
-
+const optionsIntent = parseOptionsIntent(globalThis.location?.search ?? '')
 const settings = reactive<AppSettings>(structuredClone(DEFAULT_SETTINGS))
 const savedSettings = ref<AppSettings>(structuredClone(DEFAULT_SETTINGS))
-const activeSection = ref<SettingsSection>('general')
+const activeSection = ref<SettingsSection>(optionsIntent.section)
+const autoStartRuleKind = ref<RuleSelectionKind>()
 const message = ref('')
 const busy = ref(false)
 const confirmClearAll = ref(false)
@@ -48,6 +51,7 @@ const sourceLanguages = getSourceLanguageOptions()
 const targetLanguages = getTargetLanguageOptions()
 
 const userRules = ref<UserSiteRule[]>([])
+const pendingDeleteRuleId = ref<string | null>(null)
 const editingRule = ref<UserSiteRule | null>(null)
 const editingOriginalRuleId = ref<string | null>(null)
 const editingRuleJson = ref('')
@@ -55,6 +59,7 @@ const editingRuleErrors = ref<string[]>([])
 const showRuleEditor = ref(false)
 const ruleEditorDialog = ref<HTMLElement>()
 let ruleEditorReturnFocus: HTMLElement | null = null
+let deleteRuleConfirmationTimer: ReturnType<typeof setTimeout> | undefined
 const diagnosticsResult = ref<PageDiagnostics | null>(null)
 const testingPage = ref(false)
 const {
@@ -117,9 +122,9 @@ function updateInterfaceTheme(value: string | number | boolean) {
   if (theme === 'system' || theme === 'light' || theme === 'dark') settings.uiTheme = theme
 }
 
-onMounted(() => {
-  loadSettings()
-  loadUserRules()
+onMounted(async () => {
+  await Promise.all([loadSettings(), loadUserRules()])
+  autoStartRuleKind.value = optionsIntent.adaptKind
 })
 
 const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -128,7 +133,10 @@ const handleBeforeUnload = (event: BeforeUnloadEvent) => {
   }
 }
 window.addEventListener('beforeunload', handleBeforeUnload)
-onUnmounted(() => window.removeEventListener('beforeunload', handleBeforeUnload))
+onUnmounted(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+  if (deleteRuleConfirmationTimer) clearTimeout(deleteRuleConfirmationTimer)
+})
 
 async function loadSettings() {
   busy.value = true
@@ -258,6 +266,21 @@ async function deleteUserRule(ruleId: string) {
     return
   }
   message.value = copy('options.ruleDeleted')
+}
+
+function requestDeleteUserRule(ruleId: string) {
+  const next = advanceDestructiveConfirmation(pendingDeleteRuleId.value, ruleId)
+  pendingDeleteRuleId.value = next.pendingId
+  if (deleteRuleConfirmationTimer) clearTimeout(deleteRuleConfirmationTimer)
+
+  if (next.confirmed) {
+    void deleteUserRule(ruleId)
+    return
+  }
+
+  deleteRuleConfirmationTimer = setTimeout(() => {
+    if (pendingDeleteRuleId.value === ruleId) pendingDeleteRuleId.value = null
+  }, 5000)
 }
 
 async function toggleUserRule(ruleId: string) {
@@ -660,6 +683,8 @@ async function testOnCurrentPage() {
             :existing-rules="userRules"
             :locale="uiLocale"
             :save-rule="saveInteractiveRule"
+            :auto-start-kind="autoStartRuleKind"
+            :target-tab-id="optionsIntent.targetTabId"
           />
 
           <h3>{{ copy('options.builtInRules') }}</h3>
@@ -727,7 +752,11 @@ async function testOnCurrentPage() {
                 <lf-button variant="ghost" :label="rule.enabled ? copy('options.disable') : copy('options.enable')" @click="toggleUserRule(rule.id)" />
                 <lf-button variant="ghost" :label="copy('options.editUserRule')" @click="editUserRule(rule)" />
                 <lf-button variant="ghost" :label="copy('options.duplicateRule')" @click="duplicateUserRule(rule)" />
-                <lf-button variant="danger" :label="copy('options.deleteRule')" @click="deleteUserRule(rule.id)" />
+                <lf-button
+                  :variant="pendingDeleteRuleId === rule.id ? 'danger-confirm' : 'danger'"
+                  :label="pendingDeleteRuleId === rule.id ? copy('options.confirmDeleteRule') : copy('options.deleteRule')"
+                  @click="requestDeleteUserRule(rule.id)"
+                />
               </div>
             </div>
           </div>
