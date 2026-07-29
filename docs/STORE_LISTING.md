@@ -7,9 +7,10 @@ It must be rechecked against the exact uploaded artifact. LingoFlow handles
 website content even though it has no developer-operated backend; dashboard
 answers must not claim that it handles no user data.
 
-Status: final engineering gates passed and the candidate is ready for an
-approved tag and GitHub prerelease. No Chrome Web Store or Microsoft Edge
-Add-ons submission has been made.
+Status: final engineering gates passed and the
+[v0.1.0-rc.1 GitHub prerelease](https://github.com/hengistchan/lingo-flow/releases/tag/v0.1.0-rc.1)
+is published. No Chrome Web Store or Microsoft Edge Add-ons submission has been
+made.
 
 ## Identity
 

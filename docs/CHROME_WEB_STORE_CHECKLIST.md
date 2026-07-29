@@ -6,10 +6,10 @@ Do not submit until every required item is complete for the exact packaged
 commit. Text intended for dashboard fields is in
 [STORE_LISTING.md](STORE_LISTING.md).
 
-The candidate's engineering gates have passed and it is ready for an approved
-tag and GitHub prerelease, neither of which has been created yet. Chrome Web
-Store and Microsoft Edge Add-ons have not received a submission; the unchecked
-items below are store-specific work.
+The candidate's engineering gates have passed and the
+[v0.1.0-rc.1 GitHub prerelease](https://github.com/hengistchan/lingo-flow/releases/tag/v0.1.0-rc.1)
+is published. Chrome Web Store and Microsoft Edge Add-ons have not received a
+submission; the unchecked items below are store-specific work.
 
 ## Automated release evidence
 
@@ -24,8 +24,8 @@ items below are store-specific work.
     acceptance test skipped
 - [x] Final Chrome and Edge ZIP packaging and release verification
 - [x] `git diff --check`
-- [ ] `apps/extension/output/SHA256SUMS` archived with the candidate
-- [ ] CI passes on the candidate commit
+- [x] `apps/extension/output/SHA256SUMS` archived with the candidate
+- [x] CI passes on candidate commit `a66b44ae`
 
 `pnpm package` must produce and verify:
 
@@ -55,8 +55,8 @@ items below are store-specific work.
 - [x] Google query-parameter behavior is disclosed
 - [x] Remote-code answer is documented as No
 - [x] Required and optional permission justifications are drafted
-- [ ] Push the current privacy policy to its public URL
-- [ ] Verify the privacy URL without authentication
+- [x] Push the current privacy policy to its public URL
+- [x] Verify the privacy URL without authentication
 - [ ] Complete website-content, browsing-activity, authentication-information,
   and user-provided-data fields in both dashboards
 - [ ] Confirm the dashboard answers match the exact current field names

@@ -217,10 +217,11 @@ acceptance test skipped in each of bundled Chromium, Chrome 150.0.7871.187, and
 Microsoft Edge 150.0.4078.105. Clean-profile package acceptance also passed in
 Chrome and Edge, and GitHub private vulnerability reporting is enabled.
 
-The candidate is ready for an approved tag and GitHub prerelease, but neither
-has been created yet. Chrome Web Store and Microsoft Edge Add-ons submissions
-have not started; their media, dashboard disclosures, publisher details, and
-the non-loopback HTTP custom-provider decision remain store-specific work.
+The candidate is published as the
+[v0.1.0-rc.1 GitHub prerelease](https://github.com/hengistchan/lingo-flow/releases/tag/v0.1.0-rc.1).
+Chrome Web Store and Microsoft Edge Add-ons submissions have not started; their
+media, dashboard disclosures, publisher details, and the non-loopback HTTP
+custom-provider decision remain store-specific work.
 
 See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the current RC evidence and
 [docs/RELEASE.md](docs/RELEASE.md) for the operator procedure.

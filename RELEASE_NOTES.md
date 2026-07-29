@@ -1,8 +1,8 @@
 # LingoFlow 0.1.0-rc.1
 
-Candidate status: **final gates passed; ready for an approved tag and GitHub
-prerelease**. The tag and prerelease have not yet been created, and neither
-Chrome Web Store nor Microsoft Edge Add-ons has received a submission.
+Release status: **published as a GitHub prerelease from tag
+`v0.1.0-rc.1`**. Neither Chrome Web Store nor Microsoft Edge Add-ons has
+received a submission.
 
 LingoFlow adds an inline bilingual reading layer to Chrome and Microsoft Edge.
 It keeps settings and reading data in the extension profile, has no
@@ -117,10 +117,10 @@ matrix item was exercised in both browsers.
 
 ## Publication status
 
-No engineering gate remains before the approved GitHub RC publication action.
-The next step is to create the tag and GitHub prerelease from the approved
-commit and attach the already verified artifacts. That action has not yet been
-performed.
+This RC is published on GitHub at
+[v0.1.0-rc.1](https://github.com/hengistchan/lingo-flow/releases/tag/v0.1.0-rc.1)
+from the approved candidate commit. The attached Chrome and Edge ZIPs and
+`SHA256SUMS` are the verified release artifacts described above.
 
 Browser-store distribution is a separate track and has not been submitted. It
 still requires:

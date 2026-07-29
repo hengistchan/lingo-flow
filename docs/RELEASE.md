@@ -2,8 +2,9 @@
 
 This procedure prepares and publishes a release candidate in explicit stages.
 For `0.1.0-rc.1`, the final engineering and packaged-browser gates have passed,
-so the candidate is ready for an approved tag and GitHub prerelease. Neither
-has been created yet, and browser-store submissions have not started.
+and the candidate is published as the
+[v0.1.0-rc.1 GitHub prerelease](https://github.com/hengistchan/lingo-flow/releases/tag/v0.1.0-rc.1).
+Browser-store submissions have not started.
 
 ## 1. Confirm release metadata
 
@@ -165,12 +166,14 @@ Official references:
 ## 7. Tag and publish the GitHub RC only after approval
 
 This repository procedure does not tag or publish automatically. After all RC
-gates pass and the exact commit is approved, the operator may create a signed
-tag and a release using the already verified artifacts. Re-run `pnpm package`
-from that exact commit and compare `SHA256SUMS` before upload.
+gates pass and the exact commit is approved, the operator may create an
+annotated or signed tag according to repository policy and a release using the
+already verified artifacts. Re-run `pnpm package` from that exact commit and
+compare `SHA256SUMS` before upload.
 
-For `0.1.0-rc.1`, the engineering gates described above are complete. Creating
-the tag and GitHub prerelease is the next external release action; it is
+For `0.1.0-rc.1`, tag `v0.1.0-rc.1` resolves to candidate commit
+`a66b44aece04ee284d0f38aea63eb72c2a9817d5`. The GitHub prerelease is
+published with both verified browser ZIPs and `SHA256SUMS`. This publication is
 independent of the still-unsubmitted Chrome Web Store and Microsoft Edge
 Add-ons tracks.
 

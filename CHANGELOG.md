@@ -6,13 +6,13 @@ published a stable release yet.
 ## [0.1.0-rc.1] - 2026-07-29
 
 The final engineering and packaged-browser gates for this release candidate
-have passed. The candidate is ready for an approved tag and GitHub prerelease;
-neither that publication action nor any browser-store submission is implied by
-this entry.
+have passed. It is published as the
+[v0.1.0-rc.1 GitHub prerelease](https://github.com/hengistchan/lingo-flow/releases/tag/v0.1.0-rc.1).
+No browser-store submission is implied by this entry.
 
 The packaged candidate passed clean-profile smoke acceptance in Google Chrome
-150.0.7871.187 and Microsoft Edge 150.0.4078.105. This is release evidence, not
-a claim that a GitHub prerelease or browser-store listing has been published.
+150.0.7871.187 and Microsoft Edge 150.0.4078.105. Chrome Web Store and
+Microsoft Edge Add-ons listings have not been submitted.
 
 Final verification included 498/498 unit tests, type checking, deterministic
 ZIP packaging and release verification, plus 48 passed tests and one optional
