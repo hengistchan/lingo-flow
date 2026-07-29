@@ -5,6 +5,8 @@ export type UiCopyKey =
   | 'popup.autoDetect'
   | 'popup.ready'
   | 'popup.translating'
+  | 'popup.cancelling'
+  | 'popup.cancelled'
   | 'popup.complete'
   | 'popup.partial'
   | 'popup.failed'
@@ -12,6 +14,9 @@ export type UiCopyKey =
   | 'popup.translateTo'
   | 'popup.translateAgain'
   | 'popup.translatingTo'
+  | 'popup.stopTranslation'
+  | 'popup.retryFailed'
+  | 'popup.retryingFailed'
   | 'popup.providerNotConfigured'
   | 'popup.configureProvider'
   | 'popup.clearTranslation'
@@ -165,6 +170,8 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'popup.autoDetect': '自动检测',
     'popup.ready': '可开始翻译',
     'popup.translating': '正在翻译',
+    'popup.cancelling': '正在停止翻译',
+    'popup.cancelled': '翻译已停止',
     'popup.complete': '翻译完成',
     'popup.partial': '部分内容未能翻译',
     'popup.failed': '翻译失败',
@@ -172,6 +179,9 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'popup.translateTo': '翻译为{language}',
     'popup.translateAgain': '重新翻译为{language}',
     'popup.translatingTo': '正在翻译为{language}',
+    'popup.stopTranslation': '停止翻译',
+    'popup.retryFailed': '重试失败项',
+    'popup.retryingFailed': '正在重试失败项',
     'popup.providerNotConfigured': '尚未配置翻译服务',
     'popup.configureProvider': '配置翻译服务',
     'popup.clearTranslation': '清除译文',
@@ -324,6 +334,8 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'popup.autoDetect': 'Auto-detect page language',
     'popup.ready': 'Ready to translate',
     'popup.translating': 'Translating',
+    'popup.cancelling': 'Stopping translation',
+    'popup.cancelled': 'Translation cancelled',
     'popup.complete': 'Translation complete',
     'popup.partial': 'Some content could not be translated',
     'popup.failed': 'Translation failed',
@@ -331,6 +343,9 @@ const COPY: Record<UiLocale, Record<UiCopyKey, string>> = {
     'popup.translateTo': 'Translate to {language}',
     'popup.translateAgain': 'Translate again in {language}',
     'popup.translatingTo': 'Translating to {language}',
+    'popup.stopTranslation': 'Stop translation',
+    'popup.retryFailed': 'Retry failed items',
+    'popup.retryingFailed': 'Retrying failed items',
     'popup.providerNotConfigured': 'Translation service is not configured',
     'popup.configureProvider': 'Configure translation service',
     'popup.clearTranslation': 'Clear translation',

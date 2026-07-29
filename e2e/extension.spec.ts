@@ -5,7 +5,9 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
 
-const builtExtensionPath = path.resolve('apps/extension/output/chrome-mv3')
+const builtExtensionPath = path.resolve(
+  process.env.PLAYWRIGHT_EXTENSION_DIR ?? 'apps/extension/output/chrome-mv3',
+)
 const undefinedError = /Cannot read properties of undefined/
 const LINGOFLOW_DEV_INSPECT_MARKER = 'lingoflow/dev-inspect'
 
@@ -88,7 +90,9 @@ test('installed extension renders popup and options with real extension APIs', a
     const shortcutsPagePromise = extension.context.waitForEvent('page')
     await options.getByRole('button', { name: 'Change in browser' }).click()
     const shortcutsPage = await shortcutsPagePromise
-    await expect.poll(() => shortcutsPage.url()).toContain('chrome://extensions/shortcuts')
+    await expect.poll(() => shortcutsPage.url()).toMatch(
+      /^(?:chrome|edge):\/\/extensions\/shortcuts/,
+    )
     await shortcutsPage.close()
     await options.bringToFront()
 
@@ -389,11 +393,12 @@ test('installed popup keeps the translating target accurate and locks it until c
     await expect(popup.locator('.status')).toHaveText('Translating')
     await expect(popup.getByLabel('Target language')).toHaveValue('ja')
     await expect(popup.getByLabel('Target language')).toBeDisabled()
-    await expect(popup.getByRole('button', { name: 'Translating to Japanese' })).toBeDisabled()
+    await expect(popup.getByRole('button', { name: 'Stop translation' })).toBeEnabled()
 
     await expect(popup.locator('.status')).toHaveText('Translation complete', { timeout: 8_000 })
     await expect(popup.getByLabel('Target language')).toBeEnabled()
     await expect(popup.getByLabel('Target language')).toHaveValue('ja')
+    await expect(popup.getByRole('button', { name: 'Stop translation' })).toHaveCount(0)
     await expect(popup.getByRole('button', { name: 'Translate again in Japanese' })).toBeVisible()
   } finally {
     await extension.close()
@@ -456,8 +461,15 @@ test('installed extension progressively translates a hidden tab when it is revea
 
     await article.locator('#hidden-tab').evaluate(element => {
       ;(element as HTMLElement).hidden = true
+    })
+    await expect(article.locator('#hidden-tab')).toBeHidden()
+    await article.waitForTimeout(700)
+    expect(articleServer.providerRequestCount()).toBe(2)
+
+    await article.locator('#hidden-tab').evaluate(element => {
       ;(element as HTMLElement).hidden = false
     })
+    await expect(article.locator('#hidden-tab')).toBeVisible()
     await article.waitForTimeout(1_200)
     expect(articleServer.providerRequestCount()).toBe(2)
     await expect(article.locator('[data-lingoflow-translation]')).toHaveCount(4)
@@ -643,7 +655,7 @@ test('installed extension reports mixed provider results as partial without savi
 
     await expect(popup.locator('.status')).toHaveText('Some content could not be translated')
     await expect(popup.getByLabel('Target language')).toHaveValue('ja')
-    await expect(popup.getByRole('button', { name: 'Translate again in Japanese' })).toBeVisible()
+    await expect(popup.getByRole('button', { name: 'Retry failed items' })).toBeVisible()
 
     await popup.getByLabel('Target language').selectOption('fr')
     await popup.waitForTimeout(1_100)
@@ -1346,10 +1358,13 @@ test('production manifest uses raster PNG icons for Chrome toolbar surfaces', ()
   }
 })
 
-test('production content script contains no Unicode noncharacters', () => {
+test('production scripts escape Unicode noncharacters without deleting Dexie range sentinels', () => {
   const contentScript = readFileSync(path.join(builtExtensionPath, 'lingoflow-content.js'), 'utf-8')
+  const background = readFileSync(path.join(builtExtensionPath, 'background.js'), 'utf-8')
 
   expect(contentScript).not.toContain('\uFFFF')
+  expect(background).not.toContain('\uFFFF')
+  expect(background).toContain('\\uffff')
 })
 
 test('production extension pages declare the packaged tab icon', () => {
@@ -1467,14 +1482,32 @@ async function launchExtension(options: ExtensionOptions = {}) {
     : builtExtensionPath
 
   const userDataDir = await mkdtemp(path.join(os.tmpdir(), 'lingoflow-extension-e2e-'))
+  const executablePath = process.env.PLAYWRIGHT_EXTENSION_EXECUTABLE_PATH
+  const brandedBrowser = Boolean(executablePath)
   const context = await chromium.launchPersistentContext(userDataDir, {
-    channel: process.env.PLAYWRIGHT_EXTENSION_CHANNEL ?? 'chromium',
+    ...(executablePath
+      ? { executablePath }
+      : { channel: process.env.PLAYWRIGHT_EXTENSION_CHANNEL ?? 'chromium' }),
     headless: true,
-    args: [
-      `--disable-extensions-except=${extensionDir}`,
-      `--load-extension=${extensionDir}`,
-    ],
+    ignoreDefaultArgs: brandedBrowser ? ['--disable-extensions'] : undefined,
+    args: brandedBrowser
+      ? ['--enable-unsafe-extension-debugging']
+      : [
+          `--disable-extensions-except=${extensionDir}`,
+          `--load-extension=${extensionDir}`,
+        ],
   })
+
+  if (brandedBrowser) {
+    const browser = context.browser()
+    if (!browser) throw new Error('Branded browser instance is unavailable.')
+    const session = await browser.newBrowserCDPSession()
+    try {
+      await session.send('Extensions.loadUnpacked', { path: extensionDir })
+    } finally {
+      await session.detach()
+    }
+  }
 
   let [worker] = context.serviceWorkers()
   if (!worker) {

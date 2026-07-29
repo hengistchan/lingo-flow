@@ -1,13 +1,51 @@
 # Manual QA Checklist
 
 Run this checklist before each release or when verifying a significant change.
+For a release candidate, repeat it from the extracted Chrome and Edge archives
+in separate clean browser profiles and record browser/OS versions.
+
+## Recorded final automated and browser matrix — 2026-07-29
+
+- [x] Unit tests: 498/498 passed
+- [x] Type checking passed
+- [x] Final Chrome and Edge ZIP packaging and release verification passed
+- [x] Bundled Chromium: 48 passed, 1 optional public-page acceptance test
+  skipped
+- [x] Google Chrome `150.0.7871.187`: 48 passed, 1 optional public-page
+  acceptance test skipped
+- [x] Microsoft Edge `150.0.4078.105`: 48 passed, 1 optional public-page
+  acceptance test skipped
+
+The skipped case requires `LINGOFLOW_PUBLIC_E2E=1`; it was not run and is not
+reported as passed.
+
+## Recorded 0.1.0-rc.1 smoke acceptance — 2026-07-29
+
+The Chrome and Edge RC ZIPs were extracted separately and loaded into clean
+profiles:
+
+- [x] Google Chrome `150.0.7871.187`: package installed and enabled
+- [x] Microsoft Edge `150.0.4078.105`: package installed and enabled
+- [x] Default Google translation completed in both browsers
+- [x] Starting translation closed the popup in both browsers
+- [x] Reopening the popup showed completion and “Add a rule for this page”
+- [x] Revealing initially hidden content increased translated blocks from 2 to 4
+- [x] No browser-extension or background-service-worker errors were observed
+
+This recorded pass covers the required default-provider RC smoke path. The
+unchecked sections below remain reusable extended QA and do not claim that live
+Azure, OpenAI-compatible, custom-provider, or every display/cache scenario was
+manually exercised in both browsers.
 
 ## Installation
 
-- [ ] Load unpacked extension from `apps/extension/output/chrome-mv3`
+- [ ] Load the extracted browser-specific RC ZIP (development checks may use
+  `apps/extension/output/chrome-mv3`)
 - [ ] Extension icon appears in toolbar
 - [ ] No errors in `chrome://extensions` page
 - [ ] Popup opens on icon click
+- [ ] Manifest shows the intended display and numeric versions
+- [ ] No service-worker or extension-page console errors
 
 ## Basic Translation Flow
 
@@ -15,6 +53,8 @@ Run this checklist before each release or when verifying a significant change.
 - [ ] Click "Translate" in popup
 - [ ] Translation appears inline alongside original text
 - [ ] Translation completes without console errors
+- [ ] Starting translation closes the popup
+- [ ] Reopening the popup shows the current live state
 - [ ] Click "Clear translation"
 - [ ] Original page DOM is fully restored
 - [ ] No leftover LingoFlow nodes or attributes
@@ -50,7 +90,8 @@ Run this checklist before each release or when verifying a significant change.
 - [ ] Rule validates and saves
 - [ ] Enable/disable toggle works
 - [ ] Edit rule — changes save correctly
-- [ ] Delete rule — removed from list
+- [ ] First Delete click only arms confirmation
+- [ ] Second Delete click removes the rule
 - [ ] Export rules — downloads JSON file
 - [ ] Import rules — validates and adds rules
 - [ ] Import rejects invalid rules with clear error messages
@@ -80,6 +121,24 @@ Run this checklist before each release or when verifying a significant change.
 - [ ] New content is translated after debounce
 - [ ] No duplicate translation nodes appear
 - [ ] Disable dynamic translation — no new content translated
+- [ ] Reveal an article/tab that was hidden during the first scan
+- [ ] Revealed content is translated exactly once
+- [ ] Hide and reveal it again — no duplicate request or translation appears
+
+## Translation Session Control
+
+- [ ] Start a long translation and click Stop
+- [ ] UI reaches cancelled state within 300 ms
+- [ ] No new provider requests start after cancellation
+- [ ] Loading placeholders are removed after cancellation
+- [ ] Already successful translations remain visible
+- [ ] A late provider response from the cancelled session is not rendered
+- [ ] Reopen the popup — cancelled/partial status is accurate
+- [ ] Retry failed items — only failed items are requested
+- [ ] Change target language while a request is in flight
+- [ ] The previous-language response is not rendered
+- [ ] Start translations in two tabs and stop only one
+- [ ] The other tab continues and reports its own state
 
 ## SPA Route Change
 
@@ -127,8 +186,8 @@ Run this checklist before each release or when verifying a significant change.
 
 ## Browser Compatibility
 
-- [ ] Works in Chrome (latest stable)
-- [ ] Works in Edge (latest stable)
+- [x] Works in Chrome `150.0.7871.187`
+- [x] Works in Edge `150.0.4078.105`
 - [ ] Dark mode renders correctly
 - [ ] Extension does not interfere with other extensions
 - [ ] Extension does not slow down page loading

@@ -1,6 +1,6 @@
 {
   "name": "lingoflow",
-  "version": "0.1.0",
+  "version": "0.1.0-rc.1",
   "private": true,
   "description": "AI-powered bilingual web reading browser extension",
   "license": "MIT",
@@ -19,13 +19,21 @@
     "bilingual-reading"
   ],
   "scripts": {
-    "build": "pnpm --filter @lingoflow/extension build",
+    "build": "pnpm build:chrome",
+    "build:chrome": "pnpm --filter @lingoflow/extension build:chrome",
+    "build:edge": "pnpm --filter @lingoflow/extension build:edge",
+    "build:browsers": "pnpm build:chrome && pnpm build:edge",
+    "clean:extension": "pnpm --filter @lingoflow/extension clean && node scripts/clean-release-output.mjs",
     "dev": "pnpm --filter @lingoflow/extension dev",
     "test": "vitest run",
     "test:e2e": "pnpm build && playwright test",
     "typecheck": "pnpm --filter @lingoflow/extension compile && tsc -p tsconfig.json --noEmit",
     "lint": "pnpm typecheck",
-    "package": "pnpm --filter @lingoflow/extension package"
+    "package": "pnpm package:rc",
+    "package:chrome": "pnpm --filter @lingoflow/extension package:chrome",
+    "package:edge": "pnpm --filter @lingoflow/extension package:edge",
+    "package:rc": "pnpm clean:extension && pnpm package:chrome && pnpm package:edge && pnpm verify:release",
+    "verify:release": "node scripts/verify-release.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

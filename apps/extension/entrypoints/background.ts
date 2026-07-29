@@ -14,6 +14,10 @@ import type {
   UserSiteRule,
 } from '@lingoflow/types'
 import { defineBackground } from 'wxt/utils/define-background'
+import {
+  TranslationSessionRegistry,
+  translationSessionCancelledError,
+} from '../src/translation-session-registry'
 
 const KNOWN_MESSAGE_TYPES = new Set<string>([
   'settings/get',
@@ -24,6 +28,7 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
   'provider/testConnection',
   'translation-cache/resolve',
   'translation/translateBatch',
+  'translation/cancelSession',
   'cache/clearByDomain',
   'cache/clearAll',
   'userRules/get',
@@ -34,6 +39,7 @@ const KNOWN_MESSAGE_TYPES = new Set<string>([
 ])
 
 const registry = createDefaultProviderRegistry()
+const translationSessions = new TranslationSessionRegistry()
 
 export default defineBackground(() => {
   chrome.runtime.onInstalled.addListener(details => {
@@ -70,7 +76,7 @@ async function openOnboardingForFirstRun(): Promise<void> {
   await chrome.tabs.create({ url: chrome.runtime.getURL('onboarding.html') })
 }
 
-async function handleMessage(message: LingoFlowMessage, _sender: chrome.runtime.MessageSender): Promise<unknown> {
+async function handleMessage(message: LingoFlowMessage, sender: chrome.runtime.MessageSender): Promise<unknown> {
   switch (message.type) {
     case 'settings/get':
       return getSettings()
@@ -94,7 +100,13 @@ async function handleMessage(message: LingoFlowMessage, _sender: chrome.runtime.
     case 'translation-cache/resolve':
       return resolveTranslationCache(message.payload.tasks)
     case 'translation/translateBatch':
-      return translateBatch(message.payload.tasks)
+      return translationSessions.run(
+        sender.tab?.id,
+        message.payload.sessionId,
+        signal => translateBatch(message.payload.tasks, signal),
+      )
+    case 'translation/cancelSession':
+      return translationSessions.cancel(sender.tab?.id, message.payload.sessionId)
     case 'cache/clearByDomain':
       await clearCacheByDomain(message.payload.domain)
       return { cleared: true }
@@ -116,6 +128,8 @@ async function handleMessage(message: LingoFlowMessage, _sender: chrome.runtime.
       return { received: true }
     case 'page/translate':
     case 'page/startTranslation':
+    case 'page/cancelTranslation':
+    case 'page/retryFailedTranslation':
     case 'page/translateHoveredText':
     case 'page/startRuleSelection':
     case 'page/cancelRuleSelection':
@@ -146,10 +160,16 @@ async function activateHoveredTextTranslation(commandTab?: chrome.tabs.Tab): Pro
   await chrome.tabs.sendMessage(tab.id, { type: 'page/translateHoveredText' })
 }
 
-async function translateBatch(tasks: TranslationTask[]) {
+async function translateBatch(tasks: TranslationTask[], signal?: AbortSignal) {
+  throwIfTranslationSessionCancelled(signal)
   const settings = await getSettings()
-  const results = await translateBatchWithDegrade(tasks, batch => translateBatchWithProviders(batch, settings))
+  throwIfTranslationSessionCancelled(signal)
+  const results = await translateBatchWithDegrade(
+    tasks,
+    batch => translateBatchWithProviders(batch, settings, signal),
+  )
 
+  throwIfTranslationSessionCancelled(signal)
   if (settings.cacheEnabled) {
     await pruneCache(settings.maxCacheItems)
   }
@@ -157,24 +177,31 @@ async function translateBatch(tasks: TranslationTask[]) {
   return { results }
 }
 
-async function translateBatchWithProviders(tasks: TranslationTask[], settings: AppSettings): Promise<TranslationResult[]> {
+async function translateBatchWithProviders(
+  tasks: TranslationTask[],
+  settings: AppSettings,
+  signal?: AbortSignal,
+): Promise<TranslationResult[]> {
   if (tasks.length === 0) return []
   const primaryProviderId = tasks[0].providerId
 
   try {
-    return await retry(() => translateWithProvider(tasks, settings, primaryProviderId), {
+    return await retry(() => translateWithProvider(tasks, settings, primaryProviderId, signal), {
       attempts: 3,
       delayMs: 350,
+      signal,
     })
   } catch (error) {
+    throwIfTranslationSessionCancelled(signal)
     const fallbackProviderId = settings.fallbackProviderId || undefined
     if (!fallbackProviderId || fallbackProviderId === primaryProviderId || !isFallbackEligible(error)) {
       throw error
     }
 
-    return retry(() => translateWithProvider(tasks, settings, fallbackProviderId), {
+    return retry(() => translateWithProvider(tasks, settings, fallbackProviderId, signal), {
       attempts: 2,
       delayMs: 350,
+      signal,
     })
   }
 }
@@ -183,7 +210,9 @@ async function translateWithProvider(
   tasks: TranslationTask[],
   settings: AppSettings,
   providerId: string,
+  signal?: AbortSignal,
 ): Promise<TranslationResult[]> {
+  throwIfTranslationSessionCancelled(signal)
   const providerConfig = getProviderConfigForProvider(settings, providerId)
   if (!providerConfig) throw new Error("Provider config not found: " + providerId)
   const presetId = providerConfig.presetId ?? providerId
@@ -203,8 +232,10 @@ async function translateWithProvider(
       },
     },
     config,
+    { signal },
   )
 
+  throwIfTranslationSessionCancelled(signal)
   if (output.texts.length !== tasks.length) {
     throw new Error('Provider returned a different number of translations')
   }
@@ -243,6 +274,7 @@ async function translateWithProvider(
   })
 
   if (settings.cacheEnabled) {
+    throwIfTranslationSessionCancelled(signal)
     await Promise.all(
       results.map((result, index) =>
         result.status === 'success'
@@ -263,6 +295,10 @@ async function translateWithProvider(
   }
 
   return results
+}
+
+function throwIfTranslationSessionCancelled(signal?: AbortSignal): void {
+  if (signal?.aborted) throw translationSessionCancelledError()
 }
 
 function mergeGlossaryConstraints(tasks: TranslationTask[]) {

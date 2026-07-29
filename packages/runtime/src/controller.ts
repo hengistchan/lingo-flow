@@ -47,6 +47,22 @@ export type PageTranslationOverrides = {
   targetLang?: string
 }
 
+type TranslationSession = {
+  id: string
+  tasks: Map<string, TranslationTask>
+  successfulBlockIds: Set<string>
+  failedBlockIds: Set<string>
+  cancelledBlockIds: Set<string>
+  context: RuntimeContext | null
+  settings: PublicRuntimeSettings | null
+  cancelled: boolean
+}
+
+type PendingIncrementalRequest = {
+  overrides: PageTranslationOverrides
+  requiresDynamicTranslation: boolean
+}
+
 export class RuntimeController {
   private readonly root: Document
   private readonly runtime: typeof chrome.runtime
@@ -66,9 +82,8 @@ export class RuntimeController {
   private translating = false
   private manualTranslating = false
   private dynamicTranslationEnabled = false
-  private pendingDynamicScan = false
   private started = false
-  private pendingIncremental: PageTranslationOverrides | null = null
+  private pendingIncremental: PendingIncrementalRequest | null = null
   private latestDiagnostics: PageDiagnostics | null = null
   private latestCollectionDiagnostics: CollectionDiagnostics | null = null
   private latestTerminology: NonNullable<PageDiagnostics['terminology']> = {
@@ -81,6 +96,7 @@ export class RuntimeController {
   private indexeddbCacheHits = 0
   private providerRequestedCount = 0
   private pageTargetLangOverride: string | undefined = undefined
+  private activeSession: TranslationSession | null = null
 
   constructor(deps: ControllerDependencies) {
     this.root = deps.document ?? document
@@ -113,18 +129,26 @@ export class RuntimeController {
   }
 
   async translatePage(overrides: PageTranslationOverrides = {}): Promise<PageTranslationProgress> {
-    if (this.translating) return this.progress
+    if (this.translating && this.activeSession && !this.activeSession.cancelled) {
+      void this.cancelTranslation()
+    }
+
+    const session = this.createTranslationSession()
+    this.activeSession = session
     this.translating = true
     this.manualTranslating = true
 
     this.progress = {
       status: 'translating',
+      sessionId: session.id,
       sourceLang: overrides.sourceLang ?? this.progress.sourceLang,
       targetLang: overrides.targetLang ?? this.progress.targetLang,
       totalBlocks: 0,
       translatedBlocks: 0,
       cacheHits: 0,
       failedBlocks: 0,
+      cancelledBlocks: 0,
+      retryableBlocks: 0,
     }
     this.emitProgressUpdate()
 
@@ -135,8 +159,12 @@ export class RuntimeController {
 
     try {
       const settings = await this.sendRuntimeMessage<PublicRuntimeSettings>({ type: 'settings/getRuntime' })
+      if (!this.isCurrentSession(session)) return this.progress
+
       this.hoverTranslation.dismiss()
       this.clearGeneratedNodes()
+      this.store.clear()
+      this.queue.clear()
       const sourceLang = this.resolveLanguage(overrides.sourceLang, settings.sourceLang, getSourceLanguageOptions())
       const targetLang = this.resolveLanguage(overrides.targetLang, settings.targetLang, getTargetLanguageOptions())
       const effectiveSettings = { ...settings, sourceLang, targetLang }
@@ -156,15 +184,21 @@ export class RuntimeController {
         pageUrl,
         domain,
       })
+      session.context = context
+      session.settings = effectiveSettings
       this.lastResolvedRule = context.pageRule
 
       const scanOutput = await collectScanResults(this.root, context)
+      if (!this.isCurrentSession(session)) return this.progress
+
       this.latestCollectionDiagnostics = scanOutput.diagnostics
 
       this.materializeBlocks(scanOutput.blocks, context)
       const tasks = this.createTasks(scanOutput.blocks, context)
+      this.registerSessionTasks(session, tasks)
       this.latestTerminology = summarizeTerminology(tasks)
       this.progress.totalBlocks = tasks.length
+      this.progress.retryableBlocks = tasks.length
       this.emitProgressUpdate()
 
       if (tasks.length === 0) {
@@ -176,26 +210,34 @@ export class RuntimeController {
         return this.progress
       }
 
-      await this.translateTasks(tasks, context, settings)
+      await this.translateTasks(tasks, context, effectiveSettings, session)
+      if (!this.isCurrentSession(session)) return this.progress
 
+      this.finalizeIncompleteSession(session)
       this.progress.status = this.deriveProgressStatus({
         translated: this.progress.translatedBlocks,
         failed: this.progress.failedBlocks,
         total: this.progress.totalBlocks,
       })
+      this.progress.retryableBlocks = this.getRetryableTasks(session).length
       this.updateDiagnosticsSnapshot(context)
       this.emitProgressUpdate()
       return this.progress
     } catch (error) {
+      if (!this.isCurrentSession(session)) return this.progress
+
       this.progress.status = 'failed'
       this.progress.messageCode = 'runtime_error'
       this.progress.message = error instanceof Error ? error.message : String(error)
+      this.progress.retryableBlocks = this.getRetryableTasks(session).length
       this.emitProgressUpdate()
       return this.progress
     } finally {
-      this.translating = false
-      this.manualTranslating = false
-      this.drainPendingDynamicScan()
+      if (this.activeSession?.id === session.id) {
+        this.translating = false
+        this.manualTranslating = false
+        this.drainPendingIncremental()
+      }
     }
   }
 
@@ -230,6 +272,17 @@ export class RuntimeController {
       if (message?.type === 'page/startTranslation') {
         this.dynamicTranslationEnabled = true
         void this.translatePage((message.payload ?? {}) as PageTranslationOverrides)
+        sendResponse({ ok: true, data: this.progress })
+        return false
+      }
+
+      if (message?.type === 'page/cancelTranslation') {
+        sendResponse({ ok: true, data: this.cancelTranslation() })
+        return false
+      }
+
+      if (message?.type === 'page/retryFailedTranslation') {
+        void this.retryFailedTranslation()
         sendResponse({ ok: true, data: this.progress })
         return false
       }
@@ -318,14 +371,136 @@ export class RuntimeController {
     return this.progress
   }
 
+  cancelTranslation(): PageTranslationProgress {
+    const session = this.activeSession
+    if (!session || session.cancelled || (!this.translating && this.progress.status !== 'translating')) {
+      return this.progress
+    }
+
+    session.cancelled = true
+    this.progress = {
+      ...this.progress,
+      status: 'cancelling',
+    }
+    this.emitProgressUpdate()
+
+    this.dynamicTranslationEnabled = false
+    this.pendingIncremental = null
+    this.queue.clear()
+
+    for (const task of session.tasks.values()) {
+      if (session.successfulBlockIds.has(task.blockId)) continue
+
+      const block = this.store.get(task.blockId)
+      if (!block) continue
+      if (['pending', 'queued', 'loading', 'translating', 'cache-hit'].includes(block.state)) {
+        this.store.dispatch(task.blockId, 'CANCEL')
+        session.cancelledBlockIds.add(task.blockId)
+        this.bindings.removeRenderedNodes(task.blockId)
+      }
+    }
+
+    this.translating = false
+    this.manualTranslating = false
+    this.progress = {
+      ...this.progress,
+      status: 'cancelled',
+      cancelledBlocks: session.cancelledBlockIds.size,
+      retryableBlocks: this.getRetryableTasks(session).length,
+    }
+    this.emitProgressUpdate()
+    void this.notifySessionCancellation(session.id)
+    return this.progress
+  }
+
+  async retryFailedTranslation(): Promise<PageTranslationProgress> {
+    const previous = this.activeSession
+    if (this.translating || !previous?.context || !previous.settings) return this.progress
+
+    const retryable = this.getRetryableTasks(previous)
+    if (retryable.length === 0) return this.progress
+
+    const session = this.createTranslationSession()
+    const runId = this.version.beginRun()
+    const context: RuntimeContext = Object.freeze({
+      ...previous.context,
+      runId,
+      rootGeneration: this.version.currentRootGeneration(),
+    })
+
+    for (const task of previous.tasks.values()) {
+      const nextTask = this.withTaskRunId(task, runId, context.rootGeneration)
+      session.tasks.set(nextTask.blockId, nextTask)
+    }
+    for (const blockId of previous.successfulBlockIds) {
+      if (this.store.get(blockId) && this.bindings.get(blockId)) {
+        session.successfulBlockIds.add(blockId)
+      }
+    }
+    const retryTasks = retryable
+      .map(task => session.tasks.get(task.blockId))
+      .filter((task): task is TranslationTask => Boolean(task))
+
+    session.context = context
+    session.settings = previous.settings
+    this.activeSession = session
+    this.translating = true
+    this.manualTranslating = true
+    this.progress = {
+      status: 'translating',
+      sessionId: session.id,
+      sourceLang: context.sourceLang,
+      targetLang: context.targetLang,
+      totalBlocks: session.tasks.size,
+      translatedBlocks: session.successfulBlockIds.size,
+      cacheHits: 0,
+      failedBlocks: 0,
+      cancelledBlocks: 0,
+      retryableBlocks: retryTasks.length,
+    }
+    this.emitProgressUpdate()
+
+    try {
+      await this.translateTasks(retryTasks, context, previous.settings, session)
+      if (!this.isCurrentSession(session)) return this.progress
+
+      this.finalizeIncompleteSession(session)
+      this.progress.status = this.deriveProgressStatus({
+        translated: this.progress.translatedBlocks,
+        failed: this.progress.failedBlocks,
+        total: this.progress.totalBlocks,
+      })
+      this.progress.retryableBlocks = this.getRetryableTasks(session).length
+      this.updateDiagnosticsSnapshot(context)
+      this.emitProgressUpdate()
+      return this.progress
+    } catch (error) {
+      if (!this.isCurrentSession(session)) return this.progress
+
+      this.progress.status = 'failed'
+      this.progress.messageCode = 'runtime_error'
+      this.progress.message = error instanceof Error ? error.message : String(error)
+      this.progress.retryableBlocks = this.getRetryableTasks(session).length
+      this.emitProgressUpdate()
+      return this.progress
+    } finally {
+      if (this.activeSession?.id === session.id) {
+        this.translating = false
+        this.manualTranslating = false
+        this.drainPendingIncremental()
+      }
+    }
+  }
+
   clearPage(): void {
+    this.invalidateActiveSession()
     this.observer.stop()
     this.hoverTranslation.dismiss()
     this.clearGeneratedNodes()
     this.bindings.clear()
     this.store.clear()
     this.queue.clear()
-    this.pendingDynamicScan = false
+    this.pendingIncremental = null
     this.memoryCache.clear()
     this.eventRingBuffer.clear()
     this.latestDiagnostics = null
@@ -333,6 +508,7 @@ export class RuntimeController {
     this.lastResolvedRule = null
     this.latestUserRules = []
     this.pageTargetLangOverride = undefined
+    this.dynamicTranslationEnabled = false
     this.coordinator.resetRenderSkipCount()
     this.progress = this.idleProgress()
     this.observer.start()
@@ -348,7 +524,7 @@ export class RuntimeController {
 
   enableDynamicTranslation(): void {
     this.dynamicTranslationEnabled = true
-    this.drainPendingDynamicScan()
+    this.drainPendingIncremental()
   }
 
   disableDynamicTranslation(): void {
@@ -357,13 +533,20 @@ export class RuntimeController {
 
   async translateIncremental(overrides: PageTranslationOverrides = {}): Promise<PageTranslationProgress> {
     if (this.translating) {
-      this.pendingIncremental = overrides
+      this.queueIncremental(overrides, false)
       return this.progress
     }
+
+    const session = this.activeSession && !this.activeSession.cancelled
+      ? this.activeSession
+      : this.createTranslationSession()
+    this.activeSession = session
     this.translating = true
 
     try {
       const settings = await this.sendRuntimeMessage<PublicRuntimeSettings>({ type: 'settings/getRuntime' })
+      if (!this.isCurrentSession(session)) return this.progress
+
       const sourceLang = this.resolveLanguage(overrides.sourceLang, settings.sourceLang, getSourceLanguageOptions())
       const targetLang = this.resolveLanguage(overrides.targetLang ?? this.pageTargetLangOverride, settings.targetLang, getTargetLanguageOptions())
       const effectiveSettings = { ...settings, sourceLang, targetLang }
@@ -380,39 +563,47 @@ export class RuntimeController {
         pageUrl,
         domain,
       })
+      session.context = context
+      session.settings = effectiveSettings
       const scanOutput = await collectScanResults(this.root, context)
+      if (!this.isCurrentSession(session)) return this.progress
       if (scanOutput.blocks.length === 0) return this.progress
 
       this.materializeBlocks(scanOutput.blocks, context)
       const tasks = this.createTasks(scanOutput.blocks, context)
+      this.registerSessionTasks(session, tasks)
       this.progress = {
         ...this.progress,
         status: 'translating',
+        sessionId: session.id,
         sourceLang,
         targetLang,
         totalBlocks: this.progress.totalBlocks + tasks.length,
+        retryableBlocks: (this.progress.retryableBlocks ?? 0) + tasks.length,
       }
       this.emitProgressUpdate()
 
-      await this.translateTasks(tasks, context, effectiveSettings)
+      await this.translateTasks(tasks, context, effectiveSettings, session)
+      if (!this.isCurrentSession(session)) return this.progress
+
+      this.finalizeIncompleteSession(session)
       this.progress.status = this.deriveProgressStatus({
         translated: this.progress.translatedBlocks,
         failed: this.progress.failedBlocks,
         total: this.progress.totalBlocks,
       })
+      this.progress.retryableBlocks = this.getRetryableTasks(session).length
       this.emitProgressUpdate()
       return this.progress
     } catch (error) {
+      if (!this.isCurrentSession(session)) return this.progress
       console.warn('[LingoFlow] Incremental translation failed', error)
       return this.progress
     } finally {
-      this.translating = false
-      const pending = this.pendingIncremental
-      this.pendingIncremental = null
-      if (pending) {
-        await this.translateIncremental(pending)
+      if (this.activeSession?.id === session.id) {
+        this.translating = false
+        this.drainPendingIncremental()
       }
-      this.drainPendingDynamicScan()
     }
   }
 
@@ -437,6 +628,13 @@ export class RuntimeController {
       }
       if (block?.state === 'failed' && this.progress.failedBlocks > 0) {
         this.progress.failedBlocks -= 1
+      }
+      this.activeSession?.tasks.delete(blockId)
+      this.activeSession?.successfulBlockIds.delete(blockId)
+      this.activeSession?.failedBlockIds.delete(blockId)
+      this.activeSession?.cancelledBlockIds.delete(blockId)
+      if (this.activeSession) {
+        this.progress.retryableBlocks = this.getRetryableTasks(this.activeSession).length
       }
 
       this.version.removeBlock(blockId)
@@ -464,22 +662,42 @@ export class RuntimeController {
   }
 
   private requestDynamicScan(): void {
-    this.pendingDynamicScan = true
-    this.drainPendingDynamicScan()
+    this.queueIncremental({}, true)
   }
 
-  private drainPendingDynamicScan(): void {
+  private queueIncremental(
+    overrides: PageTranslationOverrides,
+    requiresDynamicTranslation: boolean,
+  ): void {
+    if (this.pendingIncremental) {
+      if (!requiresDynamicTranslation) {
+        this.pendingIncremental = {
+          overrides,
+          requiresDynamicTranslation: false,
+        }
+      }
+    } else {
+      this.pendingIncremental = {
+        overrides,
+        requiresDynamicTranslation,
+      }
+    }
+    this.drainPendingIncremental()
+  }
+
+  private drainPendingIncremental(): void {
+    const pending = this.pendingIncremental
     if (
-      !this.pendingDynamicScan ||
-      !this.dynamicTranslationEnabled ||
+      !pending ||
+      (pending.requiresDynamicTranslation && !this.dynamicTranslationEnabled) ||
       this.translating ||
       this.manualTranslating
     ) {
       return
     }
 
-    this.pendingDynamicScan = false
-    void this.translateIncremental().catch(error => {
+    this.pendingIncremental = null
+    void this.translateIncremental(pending.overrides).catch(error => {
       console.warn('[LingoFlow] Dynamic translation failed', error)
     })
   }
@@ -494,6 +712,7 @@ export class RuntimeController {
   }
 
   private handleRouteChange(): void {
+    this.invalidateActiveSession()
     this.hoverTranslation.dismiss()
     for (const block of this.store.all()) {
       if (block.state === 'rendered' || block.state === 'translated' || block.state === 'cache-hit') {
@@ -505,6 +724,17 @@ export class RuntimeController {
     this.queue.clear()
     this.store.clear()
     this.bindings.clear()
+    this.progress = {
+      ...this.progress,
+      status: 'idle',
+      sessionId: undefined,
+      totalBlocks: 0,
+      translatedBlocks: 0,
+      cacheHits: 0,
+      failedBlocks: 0,
+      cancelledBlocks: 0,
+      retryableBlocks: 0,
+    }
     const newRootGeneration = this.version.nextRootGeneration()
 
     this.lastResolvedRule = resolvePageRule(this.root, this.root.location.href, { siteRules: this.siteRules, userRules: this.latestUserRules })
@@ -532,9 +762,7 @@ export class RuntimeController {
     }
 
     if (this.dynamicTranslationEnabled) {
-      this.translateIncremental().catch(error => {
-        console.warn('[LingoFlow] Dynamic route translation failed', error)
-      })
+      this.requestDynamicScan()
     }
   }
 
@@ -651,23 +879,21 @@ export class RuntimeController {
     tasks: TranslationTask[],
     context: RuntimeContext,
     settings: PublicRuntimeSettings,
+    session: TranslationSession,
   ): Promise<void> {
+    if (!this.isCurrentSession(session)) return
+    this.prepareTasksForAttempt(tasks)
+
     const { hits: memoryHits, misses: memoryMisses } = this.resolveMemoryCache(tasks)
 
     for (const hit of memoryHits) {
-      this.store.dispatch(hit.blockId, 'LOADING_START')
       this.store.dispatch(hit.blockId, 'CACHE_HIT')
     }
-    const renderedMemoryHits = this.renderResults(memoryHits, context)
+    const renderedMemoryHits = this.renderResults(memoryHits, context, session)
     this.memoryCacheHits += renderedMemoryHits.size
     this.progress.cacheHits += renderedMemoryHits.size
-    this.progress.translatedBlocks += renderedMemoryHits.size
 
     let misses = memoryMisses
-    for (const task of misses) {
-      this.store.dispatch(task.blockId, 'ENQUEUE')
-      this.store.dispatch(task.blockId, 'LOADING_START')
-    }
 
     if (settings.cacheEnabled && misses.length > 0) {
       try {
@@ -678,22 +904,24 @@ export class RuntimeController {
           type: 'translation-cache/resolve',
           payload: { tasks: misses },
         })
+        if (!this.isCurrentSession(session)) return
 
         for (const hit of cache.hits) {
           this.store.dispatch(hit.blockId, 'CACHE_HIT')
         }
-        const renderedCacheHits = this.renderResults(cache.hits, context)
+        const renderedCacheHits = this.renderResults(cache.hits, context, session)
         for (const hit of cache.hits) this.memoryCache.set(hit.cacheKey, hit)
         this.evictOldestCacheEntries()
         this.indexeddbCacheHits += renderedCacheHits.size
         this.progress.cacheHits += renderedCacheHits.size
-        this.progress.translatedBlocks += renderedCacheHits.size
         misses = cache.misses
       } catch (error) {
+        if (!this.isCurrentSession(session)) return
         console.warn('[LingoFlow] Cache resolve degraded to misses', error)
       }
     }
 
+    if (!this.isCurrentSession(session)) return
     this.providerRequestedCount += misses.length
 
     const batches = createBatches(misses, {
@@ -701,60 +929,82 @@ export class RuntimeController {
       maxChars: DEFAULT_MAX_BATCH_CHARS,
     })
     for (const task of misses) {
+      if (!this.isCurrentSession(session)) return
       this.coordinator.renderLoading(task.blockId)
     }
 
     await processBatchesWithConcurrency(batches, settings.translationConcurrency, async batch => {
+      if (!this.isCurrentSession(session)) return
+
       for (const task of batch) {
         this.store.dispatch(task.blockId, 'TRANSLATE_START')
       }
       try {
         const response = await this.sendRuntimeMessage<{ results: TranslationResult[] }>({
           type: 'translation/translateBatch',
-          payload: { tasks: batch },
+          payload: {
+            tasks: batch,
+            sessionId: session.id,
+          },
         })
+        if (!this.isCurrentSession(session)) return
 
-        const renderedResults = this.renderResults(response.results, context)
+        const renderedResults = this.renderResults(response.results, context, session)
         for (const result of response.results) {
           if (result.status === 'success') {
             this.memoryCache.set(result.cacheKey, result)
             this.evictOldestCacheEntries()
-            if (renderedResults.has(result.blockId)) {
-              this.progress.translatedBlocks += 1
-            }
           } else if (this.store.get(result.blockId)) {
             this.store.dispatch(result.blockId, 'TRANSLATE_FAIL')
-            this.progress.failedBlocks += 1
+            if (!session.failedBlockIds.has(result.blockId)) {
+              session.failedBlockIds.add(result.blockId)
+              session.cancelledBlockIds.delete(result.blockId)
+              this.progress.failedBlocks += 1
+            }
             this.coordinator.renderError(result.blockId, result.error.message)
           }
         }
+        for (const blockId of renderedResults) {
+          session.failedBlockIds.delete(blockId)
+        }
       } catch (error) {
+        if (!this.isCurrentSession(session)) return
+
         const message = error instanceof Error ? error.message : String(error)
         for (const task of batch) {
           if (!this.store.get(task.blockId)) continue
           this.store.dispatch(task.blockId, 'TRANSLATE_FAIL')
-          this.progress.failedBlocks += 1
+          if (!session.failedBlockIds.has(task.blockId)) {
+            session.failedBlockIds.add(task.blockId)
+            session.cancelledBlockIds.delete(task.blockId)
+            this.progress.failedBlocks += 1
+          }
           this.coordinator.renderError(task.blockId, message)
         }
         console.warn('[LingoFlow] Batch translation failed', error)
       }
 
-      this.runtime.sendMessage({
-        type: 'page/progressUpdate',
-        payload: { ...this.progress },
-      }).catch(() => {})
+      this.progress.retryableBlocks = this.getRetryableTasks(session).length
+      this.emitProgressUpdate()
     })
   }
 
-  private renderResults(results: TranslationResult[], context: RuntimeContext): Set<string> {
+  private renderResults(
+    results: TranslationResult[],
+    context: RuntimeContext,
+    session: TranslationSession,
+  ): Set<string> {
     const rendered = new Set<string>()
     for (const result of results) {
+      if (!this.isCurrentSession(session)) break
       if (result.status !== 'success') continue
 
       const block = this.store.get(result.blockId)
       if (!block) continue
 
-      this.store.dispatch(result.blockId, 'TRANSLATE_SUCCESS')
+      if (block.state === 'translating') {
+        this.store.dispatch(result.blockId, 'TRANSLATE_SUCCESS')
+      }
 
       const renderResult = this.coordinator.renderTranslation({
         blockId: result.blockId,
@@ -764,9 +1014,123 @@ export class RuntimeController {
         textHash: block.textHash,
         sourceSignature: this.bindings.get(result.blockId)?.sourceSignature ?? '',
       })
-      if (renderResult.ok) rendered.add(result.blockId)
+      if (renderResult.ok || renderResult.reason === 'same-text') {
+        if (!renderResult.ok) {
+          this.bindings.removeRenderedNodes(result.blockId)
+        }
+        rendered.add(result.blockId)
+        if (!session.successfulBlockIds.has(result.blockId)) {
+          session.successfulBlockIds.add(result.blockId)
+          session.failedBlockIds.delete(result.blockId)
+          session.cancelledBlockIds.delete(result.blockId)
+          this.progress.translatedBlocks += 1
+        }
+      }
     }
     return rendered
+  }
+
+  private createTranslationSession(): TranslationSession {
+    return {
+      id: `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+      tasks: new Map(),
+      successfulBlockIds: new Set(),
+      failedBlockIds: new Set(),
+      cancelledBlockIds: new Set(),
+      context: null,
+      settings: null,
+      cancelled: false,
+    }
+  }
+
+  private registerSessionTasks(session: TranslationSession, tasks: TranslationTask[]): void {
+    for (const task of tasks) {
+      session.tasks.set(task.blockId, task)
+      session.failedBlockIds.delete(task.blockId)
+      session.cancelledBlockIds.delete(task.blockId)
+    }
+  }
+
+  private prepareTasksForAttempt(tasks: TranslationTask[]): void {
+    for (const task of tasks) {
+      const state = this.store.get(task.blockId)?.state
+      if (state === 'pending') {
+        this.store.dispatch(task.blockId, 'ENQUEUE')
+      } else if (state === 'failed' || state === 'cancelled' || state === 'dirty') {
+        this.store.dispatch(task.blockId, 'REQUEUE')
+      }
+
+      if (this.store.get(task.blockId)?.state === 'queued') {
+        this.store.dispatch(task.blockId, 'LOADING_START')
+      }
+    }
+  }
+
+  private finalizeIncompleteSession(session: TranslationSession): void {
+    for (const task of this.getRetryableTasks(session)) {
+      const block = this.store.get(task.blockId)
+      if (!block || block.state === 'failed') continue
+
+      if (['pending', 'queued', 'loading', 'translating', 'translated', 'cache-hit', 'rendering'].includes(block.state)) {
+        this.store.dispatch(task.blockId, 'CANCEL')
+        session.cancelledBlockIds.add(task.blockId)
+        this.bindings.removeRenderedNodes(task.blockId)
+      }
+    }
+    this.progress.cancelledBlocks = session.cancelledBlockIds.size
+    this.progress.retryableBlocks = this.getRetryableTasks(session).length
+  }
+
+  private getRetryableTasks(session: TranslationSession): TranslationTask[] {
+    return [...session.tasks.values()].filter(task => (
+      !session.successfulBlockIds.has(task.blockId) &&
+      Boolean(this.store.get(task.blockId)) &&
+      Boolean(this.bindings.get(task.blockId))
+    ))
+  }
+
+  private withTaskRunId(
+    task: TranslationTask,
+    runId: string,
+    rootGeneration: number,
+  ): TranslationTask {
+    return {
+      ...task,
+      meta: {
+        ...task.meta,
+        runId,
+        rootGeneration,
+      },
+    }
+  }
+
+  private isCurrentSession(session: TranslationSession): boolean {
+    return this.activeSession?.id === session.id && !session.cancelled
+  }
+
+  private async notifySessionCancellation(sessionId: string): Promise<void> {
+    try {
+      await this.runtime.sendMessage({
+        type: 'translation/cancelSession',
+        payload: { sessionId },
+      })
+    } catch {
+      // The background may already be gone while the page is unloading.
+    }
+  }
+
+  private invalidateActiveSession(): void {
+    const session = this.activeSession
+    if (!session) return
+
+    const shouldNotify = this.translating && !session.cancelled
+    session.cancelled = true
+    if (shouldNotify) void this.notifySessionCancellation(session.id)
+    this.version.beginRun()
+    this.activeSession = null
+    this.translating = false
+    this.manualTranslating = false
+    this.pendingIncremental = null
   }
 
   private resolveMemoryCache(tasks: TranslationTask[]) {
@@ -1101,6 +1465,8 @@ export class RuntimeController {
       translatedBlocks: 0,
       cacheHits: 0,
       failedBlocks: 0,
+      cancelledBlocks: 0,
+      retryableBlocks: 0,
     }
   }
 

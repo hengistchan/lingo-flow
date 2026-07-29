@@ -4,7 +4,9 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:f
 import path from 'node:path'
 import os from 'node:os'
 
-const builtExtensionPath = path.resolve('apps/extension/output/chrome-mv3')
+const builtExtensionPath = path.resolve(
+  process.env.PLAYWRIGHT_EXTENSION_DIR ?? 'apps/extension/output/chrome-mv3',
+)
 
 test('article fixture: translate, no duplicates on re-translate, clear restores DOM', async () => {
   const server = await startFixtureServer()
@@ -652,14 +654,32 @@ async function launchExtension(options: ExtensionOptions = {}) {
     : builtExtensionPath
 
   const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'lingoflow-fixture-e2e-'))
+  const executablePath = process.env.PLAYWRIGHT_EXTENSION_EXECUTABLE_PATH
+  const brandedBrowser = Boolean(executablePath)
   const context = await chromium.launchPersistentContext(userDataDir, {
-    channel: process.env.PLAYWRIGHT_EXTENSION_CHANNEL ?? 'chromium',
+    ...(executablePath
+      ? { executablePath }
+      : { channel: process.env.PLAYWRIGHT_EXTENSION_CHANNEL ?? 'chromium' }),
     headless: true,
-    args: [
-      `--disable-extensions-except=${extensionDir}`,
-      `--load-extension=${extensionDir}`,
-    ],
+    ignoreDefaultArgs: brandedBrowser ? ['--disable-extensions'] : undefined,
+    args: brandedBrowser
+      ? ['--enable-unsafe-extension-debugging']
+      : [
+          `--disable-extensions-except=${extensionDir}`,
+          `--load-extension=${extensionDir}`,
+        ],
   })
+
+  if (brandedBrowser) {
+    const browser = context.browser()
+    if (!browser) throw new Error('Branded browser instance is unavailable.')
+    const session = await browser.newBrowserCDPSession()
+    try {
+      await session.send('Extensions.loadUnpacked', { path: extensionDir })
+    } finally {
+      await session.detach()
+    }
+  }
 
   let [worker] = context.serviceWorkers()
   if (!worker) {

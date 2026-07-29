@@ -53,12 +53,16 @@ export type TranslateOutput = {
   }
 }
 
+export type TranslateOptions = {
+  signal?: AbortSignal
+}
+
 export interface TranslationProvider {
   id: string
   name: string
   type: ProviderType
   capabilities: ProviderCapability
-  translate(input: TranslateInput, config: unknown): Promise<TranslateOutput>
+  translate(input: TranslateInput, config: unknown, options?: TranslateOptions): Promise<TranslateOutput>
   validateConfig?(config: unknown): Promise<boolean>
 }
 
@@ -327,6 +331,7 @@ export type PageRunState =
   | 'partial'
   | 'failed'
   | 'clearing'
+  | 'cancelling'
   | 'cancelled'
 
 export type PageDisplayMode = 'original' | 'dual' | 'translation'
@@ -746,16 +751,26 @@ export type PublicRuntimeSettings = {
   glossaries?: Glossary[]
 }
 
-export type PageTranslationStatus = 'idle' | 'translating' | 'done' | 'partial' | 'failed'
+export type PageTranslationStatus =
+  | 'idle'
+  | 'translating'
+  | 'cancelling'
+  | 'cancelled'
+  | 'done'
+  | 'partial'
+  | 'failed'
 
 export type PageTranslationProgress = {
   status: PageTranslationStatus
+  sessionId?: string
   sourceLang: 'auto' | string
   targetLang: string
   totalBlocks: number
   translatedBlocks: number
   cacheHits: number
   failedBlocks: number
+  cancelledBlocks?: number
+  retryableBlocks?: number
   messageCode?: 'no_readable_text' | 'runtime_error'
   message?: string
 }
@@ -771,6 +786,14 @@ export type TranslateBatchMessage = {
   type: 'translation/translateBatch'
   payload: {
     tasks: TranslationTask[]
+    sessionId?: string
+  }
+}
+
+export type TranslationCancelSessionMessage = {
+  type: 'translation/cancelSession'
+  payload: {
+    sessionId: string
   }
 }
 
@@ -833,6 +856,14 @@ export type PageStartTranslationMessage = {
     sourceLang?: 'auto' | string
     targetLang?: string
   }
+}
+
+export type PageCancelTranslationMessage = {
+  type: 'page/cancelTranslation'
+}
+
+export type PageRetryFailedTranslationMessage = {
+  type: 'page/retryFailedTranslation'
 }
 
 export type PageTranslateHoveredTextMessage = {
@@ -948,6 +979,7 @@ export type UserRulesExportMessage = {
 export type LingoFlowMessage =
   | ResolveCacheMessage
   | TranslateBatchMessage
+  | TranslationCancelSessionMessage
   | GetSettingsMessage
   | GetRuntimeSettingsMessage
   | GetSettingsSummaryMessage
@@ -958,6 +990,8 @@ export type LingoFlowMessage =
   | ClearAllCacheMessage
   | PageTranslateMessage
   | PageStartTranslationMessage
+  | PageCancelTranslationMessage
+  | PageRetryFailedTranslationMessage
   | PageTranslateHoveredTextMessage
   | PageClearMessage
   | PageClearCacheMessage

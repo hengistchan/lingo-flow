@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Chrome%20MV3-Extension-blue?logo=googlechrome" alt="Chrome MV3">
+  <img src="https://img.shields.io/badge/Chrome%20%2F%20Edge-MV3-blue?logo=googlechrome" alt="Chrome and Edge MV3">
   <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License">
   <img src="https://img.shields.io/badge/TypeScript-5.8-blue?logo=typescript" alt="TypeScript">
   <img src="https://img.shields.io/badge/Vue-3-42b883?logo=vuedotjs" alt="Vue 3">
@@ -27,7 +27,7 @@ LingoFlow is a **local-first**, **BYOK** (Bring Your Own Key), **provider-agnost
 ## Features
 
 - **Local-first** — Settings, cache, and runtime state stay in your browser
-- **BYOK** — Use your own Azure Translator, OpenAI, or any OpenAI-compatible API key
+- **BYOK** — Provider credentials stay in extension storage and are sent only to the provider selected for a translation request
 - **Built-in provider presets** — Azure Translator, OpenAI-compatible (OpenAI / DeepSeek / Qwen / Ollama / LM Studio), and experimental Google Translate Free
 - **No-key default** — New installs use experimental Google Translate Free by default, works out of the box
 - **Custom providers** — Add any OpenAI-compatible endpoint with a custom name
@@ -37,10 +37,11 @@ LingoFlow is a **local-first**, **BYOK** (Bring Your Own Key), **provider-agnost
 - **Inline token protection** — Code, links, and URLs are preserved during translation
 - **Shadow DOM support** — Works inside open Shadow DOM trees
 - **Dark mode** — Automatic dark theme via `prefers-color-scheme`
-- **Privacy-focused** — API keys never leave your browser, no tracking, no analytics
+- **Privacy-focused** — No LingoFlow backend, tracking, analytics, or advertising; credentials go only to the selected provider
 - **User rules** — Define per-site rules for content roots, exclusions, and behavior
 - **Diagnostics** — Inspect rule matching, block collection, skip reasons, and translation status
 - **Dynamic translation** — Optionally translate new content as it appears (SPA navigation, infinite scroll)
+- **Session control** — Stop long translations, preserve completed results, and retry failed blocks without accepting late stale output
 - **Pointer sentence translation** — Point to a sentence and press `Alt/Option + Shift + L` to insert its translation directly below the source block
 
 ## Installation
@@ -60,15 +61,21 @@ Load `apps/extension/output/chrome-mv3` as an unpacked extension in Chrome:
 2. Enable **Developer mode**
 3. Click **Load unpacked** and select the `apps/extension/output/chrome-mv3` directory
 
-### Packaged ZIP
+### Packaged ZIPs
 
 ```bash
 pnpm package
 ```
 
-Output: `apps/extension/output/lingoflowextension-<version>-chrome.zip`
+Outputs:
 
-Extract and load as unpacked, or upload to the Chrome Web Store.
+- `apps/extension/output/lingoflow-<version>-chrome-mv3.zip`
+- `apps/extension/output/lingoflow-<version>-edge-mv3.zip`
+- `apps/extension/output/SHA256SUMS`
+
+The archives are assembled with sorted entries and fixed ZIP metadata, so the
+same source tree produces byte-identical packages. Extract the matching archive
+and load it as unpacked, or upload it to the corresponding browser store.
 
 ## Quick start
 
@@ -86,8 +93,10 @@ the browser's extension shortcut manager.
 | Command | Description |
 |---|---|
 | `pnpm dev` | Start dev server with hot reload |
-| `pnpm build` | Production build |
-| `pnpm package` | Build + package as distributable ZIP |
+| `pnpm build` | Chrome MV3 production build |
+| `pnpm build:browsers` | Chrome and Edge MV3 production builds |
+| `pnpm package` | Clean, build, package, and verify both RC archives |
+| `pnpm verify:release` | Verify versions, manifests, permissions, archive contents, secrets, and reproducibility |
 | `pnpm test` | Run unit tests (Vitest) |
 | `pnpm test:e2e` | Build + run E2E browser tests (Playwright) |
 | `pnpm typecheck` | Type check all packages |
@@ -155,10 +164,14 @@ Access diagnostics via:
 
 LingoFlow is local-first:
 
-- API keys are stored in `chrome.storage.local` and never leave your browser
+- Provider credentials are stored in `chrome.storage.local` and sent only to
+  the selected translation endpoint as authentication
 - No backend service, no analytics, no tracking
-- Translation requests go only to your configured provider
-- Cache and rules are stored locally
+- Translation requests contain page text and language instructions and go only
+  to the selected provider; OpenAI-compatible requests also include the current
+  page URL and domain as translation context
+- Source text, translations, page URL metadata, settings, terminology, and
+  rules are stored locally until cleared, pruned, or the extension is removed
 
 See [docs/PRIVACY.md](docs/PRIVACY.md) and [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -195,7 +208,31 @@ See [docs/01-architecture.md](docs/01-architecture.md) for the architecture over
 | [Vitest](https://vitest.dev) | Unit testing |
 | [Playwright](https://playwright.dev) | E2E browser testing |
 
-## Roadmap / Non-goals
+## Release status
+
+`0.1.0-rc.1` is the first release-candidate line. It is not a stable release.
+Final engineering gates passed: 498/498 unit tests, type checking, final ZIP
+packaging and verification, and 48 passed tests with one optional public-page
+acceptance test skipped in each of bundled Chromium, Chrome 150.0.7871.187, and
+Microsoft Edge 150.0.4078.105. Clean-profile package acceptance also passed in
+Chrome and Edge, and GitHub private vulnerability reporting is enabled.
+
+The candidate is ready for an approved tag and GitHub prerelease, but neither
+has been created yet. Chrome Web Store and Microsoft Edge Add-ons submissions
+have not started; their media, dashboard disclosures, publisher details, and
+the non-loopback HTTP custom-provider decision remain store-specific work.
+
+See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the current RC evidence and
+[docs/RELEASE.md](docs/RELEASE.md) for the operator procedure.
+
+## Roadmap
+
+After the v0.1 release candidate:
+
+- Harden compatibility against more real-world reading sites
+- Improve rule portability and compatibility diagnostics
+- Expand accessibility and performance profiling for very long pages
+- Evaluate Firefox packaging after the Chromium MV3 release is stable
 
 Current non-goals:
 
@@ -203,8 +240,7 @@ Current non-goals:
 - User accounts or authentication
 - Analytics or telemetry
 - Remote rule distribution
-- Glossary or terminology system
-- Adaptive batching or cost analytics
+- Automatic cost analytics
 
 ## Contributing
 

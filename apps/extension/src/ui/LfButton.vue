@@ -1,7 +1,7 @@
 <script setup lang="ts">
 defineProps<{
   label: string
-  variant?: 'primary' | 'ghost' | 'danger' | 'danger-confirm' | 'test'
+  variant?: 'primary' | 'ghost' | 'danger' | 'danger-confirm' | 'stop' | 'test'
   disabled?: boolean
 }>()
 
@@ -90,6 +90,18 @@ defineEmits<{
   border-color: var(--lf-danger-confirm);
   background: var(--lf-danger-confirm);
   color: var(--lf-on-accent);
+}
+
+/* Stop an active translation without discarding completed results. */
+.lf-btn--stop {
+  width: 100%;
+  border-color: var(--lf-danger-confirm);
+  background: transparent;
+  color: var(--lf-danger-confirm);
+}
+
+.lf-btn--stop:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--lf-danger-confirm) 9%, transparent);
 }
 
 /* Test */

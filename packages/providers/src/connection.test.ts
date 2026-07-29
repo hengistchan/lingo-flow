@@ -1,6 +1,8 @@
 import {
   GOOGLE_FREE_MAX_IN_FLIGHT,
+  azureTranslatorProvider,
   googleFreeTranslateProvider,
+  openAICompatibleProvider,
   testProviderConnection,
 } from './index'
 
@@ -243,6 +245,97 @@ describe('testProviderConnection', () => {
       providerId: 'openai-compatible',
       messageCode: 'network_failed',
     })
+  })
+
+  it.each([
+    ['Azure Translator', azureTranslatorProvider, azureValues],
+    ['Google Translate Free', googleFreeTranslateProvider, {}],
+    ['OpenAI-compatible', openAICompatibleProvider, openAIValues],
+  ])('aborts an in-flight %s request when its translation session is cancelled', async (
+    _name,
+    provider,
+    config,
+  ) => {
+    const observedSignals: AbortSignal[] = []
+    const fetchMock = vi.fn().mockImplementation((_url: string, init?: { signal?: AbortSignal }) => {
+      if (init?.signal) observedSignals.push(init.signal)
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          reject(new DOMException('The operation was aborted.', 'AbortError'))
+        }, { once: true })
+      }) as Promise<Response>
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const session = new AbortController()
+
+    const request = provider.translate(
+      {
+        sourceLang: 'en',
+        targetLang: 'zh-Hans',
+        texts: ['Cancel this translation request.'],
+      },
+      config,
+      { signal: session.signal },
+    )
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    session.abort()
+
+    await expect(request).rejects.toMatchObject({
+      name: 'AbortError',
+      code: 'translation_session_cancelled',
+    })
+    expect(observedSignals.length).toBeGreaterThan(0)
+    expect(observedSignals.every(signal => signal.aborted)).toBe(true)
+  })
+
+  it.each([
+    ['Azure Translator', azureTranslatorProvider, azureValues],
+    ['Google Translate Free', googleFreeTranslateProvider, {}],
+    ['OpenAI-compatible', openAICompatibleProvider, openAIValues],
+  ])('keeps %s response-body consumption abortable after headers arrive', async (
+    _name,
+    provider,
+    config,
+  ) => {
+    let bodyAbortObserved = false
+    const fetchMock = vi.fn().mockImplementation((_url: string, init?: { signal?: AbortSignal }) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{'))
+          init?.signal?.addEventListener('abort', () => {
+            bodyAbortObserved = true
+            controller.error(new DOMException('The response body was aborted.', 'AbortError'))
+          }, { once: true })
+        },
+      })
+      return Promise.resolve(new Response(body, {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const session = new AbortController()
+
+    const request = provider.translate(
+      {
+        sourceLang: 'en',
+        targetLang: 'zh-Hans',
+        texts: ['Cancel while the response body is still pending.'],
+      },
+      config,
+      { signal: session.signal },
+    )
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    await Promise.resolve()
+    session.abort()
+
+    await expect(request).rejects.toMatchObject({
+      name: 'AbortError',
+      code: 'translation_session_cancelled',
+    })
+    expect(bodyAbortObserved).toBe(true)
   })
 })
 

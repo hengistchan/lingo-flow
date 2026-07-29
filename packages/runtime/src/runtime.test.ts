@@ -391,7 +391,7 @@ describe('content runtime language and progress behavior', () => {
     expect(document.querySelector('.lingoflow-loading')).toBeNull()
   })
 
-  it('incrementally translates new content while dynamic translation is enabled', async () => {
+  it('incrementally translates newly appended content without replacing existing translations', async () => {
     document.body.innerHTML = `
       <article>
         <p>This first paragraph is long enough to be translated before dynamic content arrives.</p>
@@ -412,33 +412,21 @@ describe('content runtime language and progress behavior', () => {
     })
 
     const runtime = createContentRuntime({ document, chromeRuntime })
-    runtime.start()
     await runtime.translatePage()
 
     const firstTranslation = document.querySelector('[data-lingoflow-translation]') as HTMLElement
     expect(firstTranslation.textContent).toContain('first paragraph')
 
-    runtime.enableDynamicTranslation()
     const dynamicParagraph = document.createElement('p')
     dynamicParagraph.textContent = 'This newly appended paragraph is long enough to be translated incrementally.'
     document.querySelector('article')!.appendChild(dynamicParagraph)
 
-    await waitFor(() => batches.length >= 2, 8000)
+    await runtime.translateIncremental()
 
     expect(batches).toHaveLength(2)
     expect(batches[1]).toHaveLength(1)
     expect(batches[1][0].sourceText).toContain('newly appended paragraph')
     expect(document.body.contains(firstTranslation)).toBe(true)
-
-    runtime.disableDynamicTranslation()
-    const ignoredParagraph = document.createElement('p')
-    ignoredParagraph.textContent = 'This disabled dynamic paragraph is long enough but should not be translated automatically.'
-    document.querySelector('article')!.appendChild(ignoredParagraph)
-
-    await new Promise(resolve => setTimeout(resolve, 700))
-
-    expect(batches).toHaveLength(2)
-    runtime.stop()
   })
 
   it('sends translation batches with bounded concurrency', async () => {

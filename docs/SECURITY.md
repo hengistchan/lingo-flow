@@ -1,82 +1,123 @@
 # Security
 
-## Threat Model
+## Threat model
 
-LingoFlow is a BYOK (Bring Your Own Key) browser extension. The primary security concerns are:
+LingoFlow is a BYOK browser extension. Its primary security boundaries are:
 
-1. **API key exposure** — keys must not leak to page scripts, other extensions, or network requests other than the intended provider.
-2. **XSS via provider output** — translated text from a provider must not execute as HTML/JS.
-3. **Content script isolation** — page content must not access extension APIs or storage directly.
-4. **Permission scope** — the extension must request only the permissions it needs.
+1. Provider credentials must not reach page scripts or content scripts.
+2. Provider output must not execute as HTML or JavaScript.
+3. Page scripts must not gain access to extension storage or privileged APIs.
+4. Permissions and network destinations must remain limited to translation
+   functionality.
+5. Release archives must not contain credentials, development files, remote
+   executable code, or unexpected permissions.
 
-## API Key Handling
+## Provider credentials
 
-- API keys are stored in `chrome.storage.local`, accessible only to the extension's background service worker.
-- API keys are **never** passed to content scripts.
-- The background service worker reads provider config and performs all provider API calls.
-- Provider connection tests are performed in the background service worker.
-- The settings summary exposed to the popup (`getSettingsSummary()`) deliberately excludes API keys.
+- Provider credentials are stored in `chrome.storage.local`.
+- The Options extension page can read credentials so the user can edit provider
+  configuration; the background service worker reads them to make requests.
+- Credentials are not sent to the toolbar popup, content scripts, diagnostics,
+  or page scripts.
+- A credential is sent only as authentication for the provider endpoint the
+  user selected.
+- OpenAI-compatible translation requests include the current page URL and
+  domain as model context; Azure and Google requests do not include that
+  context field.
+- Settings summaries exposed outside the Options page deliberately omit
+  credentials.
 
-## Provider Output Rendering
+The extension cannot protect data from a compromised provider endpoint or a
+compromised browser profile.
 
-- All provider output is rendered using `textContent` or `innerText`, never `innerHTML`.
-- Translated text cannot execute as scripts or inject DOM elements.
-- Inline tokens (code, links, URLs) are protected with `⟦LF:N⟧` placeholders during translation and restored after, preventing provider interference with structured content.
+## Provider output
 
-## Extension Permissions
+- Translation output is rendered with `textContent` or `innerText`, not
+  `innerHTML`.
+- Provider output therefore cannot directly create elements or execute scripts.
+- Inline code, links, URLs, and terminology constraints use placeholders that
+  are validated before restoration.
+- Results that no longer belong to the current source revision are discarded.
 
-LingoFlow requests minimal permissions:
+## Permissions
+
+Required permissions:
 
 | Permission | Purpose |
 |---|---|
-| `activeTab` | Access the current tab when the user activates the extension |
-| `scripting` | Inject content scripts for translation |
-| `storage` | Store settings, API keys, and cache locally |
+| `activeTab` | Access the active page after the user invokes LingoFlow |
+| `scripting` | Inject the isolated content runtime when needed |
+| `storage` | Store settings, credentials, rules, terminology, and cache locally |
 
-**Host permissions** (default):
+Default provider hosts:
 
-- `https://api.cognitive.microsofttranslator.com/*` — Azure Translator
-- `https://api.openai.com/*` — OpenAI API
-- `https://translate.googleapis.com/*` — Google Translate Free
+- `https://api.cognitive.microsofttranslator.com/*`
+- `https://api.openai.com/*`
+- `https://translate.googleapis.com/*`
 
-**Optional host permissions** (`https://*/*`, `http://*/*`):
+Optional `https://*/*` and `http://*/*` patterns allow the extension to request
+the exact custom-provider origin chosen by the user. They are not granted at
+installation. HTTP does not provide transport encryption and should be limited
+to trusted local endpoints; remote providers should use HTTPS. Allowing a
+non-loopback HTTP custom endpoint is a documented RC limitation. It does not
+block the GitHub prerelease, but whether to block it remains a browser-store
+policy and product decision.
 
-- Not granted at install time.
-- Requested only when the user saves or tests a custom provider endpoint.
-- The extension requests the exact origin of the custom endpoint, not `<all_urls>`.
+## Content-script boundary
 
-## Content Script Security
+- Content scripts run in an isolated world and do not receive credentials.
+- Page content cannot call extension APIs directly.
+- The inspector bridge exposes read-only DOM and diagnostics data for
+  troubleshooting. It does not expose provider credentials.
+- Diagnostics can contain page structure and text-derived metadata and should
+  be reviewed before sharing.
 
-- Content scripts run in an isolated world and cannot access the page's JavaScript context.
-- Content scripts do not receive API keys.
-- The dev inspector bridge exposes DOM inspection functions (`__lingoflowInspectDom`, `__lingoflowInspectHtml`) for debugging. These are read-only and do not expose provider secrets.
+## Local cache
 
-## Local Cache Considerations
+The IndexedDB cache can contain raw source text, translated text, page URL and
+domain metadata, and provider/language metadata. Cache keys use content hashes,
+but cache values are not encrypted separately from the browser profile. Users
+sharing an OS/browser profile should treat that profile as trusted.
 
-- Translation cache is stored in IndexedDB, scoped to the extension.
-- Cache keys are based on content hashes, not raw text.
-- Cache entries do not include API keys or provider credentials.
-- Users can clear cache per-domain or globally.
+## Remote code and dependencies
 
-## Known Limitations
+LingoFlow does not download or execute remote JavaScript, WebAssembly, or
+configuration as code. Provider responses are data. Release packaging bundles
+the extension's executable code and rejects source maps, source files,
+development fixtures, common credential formats, and Unicode noncharacters.
 
-- Provider endpoints (Azure, OpenAI, Google) are third-party services. LingoFlow cannot guarantee the security or privacy practices of these services.
-- The experimental Google Translate Free provider uses an undocumented API endpoint and may change behavior without notice.
-- If a provider endpoint is compromised, translated text returned to the extension could contain adversarial content, but rendering is limited to `textContent`/`innerText`, which mitigates script injection.
+Dependencies are locked in `pnpm-lock.yaml`; CI installs them with
+`--frozen-lockfile`.
 
-## Reporting Vulnerabilities
+## Release verification
 
-If you discover a security vulnerability in LingoFlow:
+Before a release:
 
-1. Do **not** open a public GitHub issue.
-2. Report the vulnerability privately via email (see repository for contact).
-3. Include a description, reproduction steps, and potential impact.
-4. Do not include API keys, tokens, or secrets in your report.
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+pnpm package
+```
 
-## Secrets in Bug Reports
+`pnpm package` builds Chrome and Edge independently and verifies:
 
-When filing bug reports or sharing diagnostics:
+- Package, display, and numeric manifest versions.
+- Required and optional permissions.
+- Required entrypoints and icons.
+- Absence of source, test, environment, and source-map files.
+- Absence of several high-confidence credential formats.
+- Archive contents and byte-for-byte reproducibility.
 
-- **Never** include API keys, provider credentials, or tokens.
-- Diagnostics output from the inspector does not include provider secrets by design.
-- If sharing screenshots, verify that no API keys or sensitive URLs are visible.
+Automated scanning reduces risk but does not replace manual review.
+
+## Reporting vulnerabilities
+
+Do not include credentials, private page content, or unreleased exploit details
+in a public issue.
+
+GitHub private vulnerability reporting is enabled and verified. Sensitive
+reports can be submitted through
+<https://github.com/hengistchan/lingo-flow/security/advisories/new>.
+Non-sensitive security hardening suggestions may be filed in the repository
+issue tracker.

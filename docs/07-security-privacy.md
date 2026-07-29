@@ -4,7 +4,8 @@
 
 1. LingoFlow does not operate a translation proxy service in MVP.
 2. Webpage text is sent only to the provider selected by the user.
-3. API keys are stored locally.
+3. API keys are stored locally and sent only to the selected provider endpoint
+   as authentication.
 4. API keys are not exposed to content scripts.
 5. Translation cache is local.
 6. Default permission mode is low-permission.
@@ -17,6 +18,10 @@ Do not pass API keys to content script.
 
 Background service worker reads provider config and performs provider requests.
 
+The Options extension page can read provider config so the user can edit it.
+Credentials are not sent to the toolbar popup, page content, content scripts,
+or diagnostics.
+
 ## Page Content Handling
 
 Content runtime extracts text blocks from the current page after user action.
@@ -24,6 +29,13 @@ Content runtime extracts text blocks from the current page after user action.
 Text blocks are sent to background.
 
 Background sends text to the configured provider.
+
+OpenAI-compatible requests also send the current page URL and domain as model
+context. Azure and Google requests do not add that context field. Google
+Translate Free includes source text in the HTTPS request URL query.
+
+The local IndexedDB cache can retain raw source and translated text, page URL
+and domain metadata, and provider/language metadata until cleared or pruned.
 
 ## DOM Safety
 
@@ -47,7 +59,8 @@ MVP permissions:
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [
     "https://api.cognitive.microsofttranslator.com/*",
-    "https://api.openai.com/*"
+    "https://api.openai.com/*",
+    "https://translate.googleapis.com/*"
   ],
   "optional_host_permissions": [
     "https://*/*",
@@ -62,11 +75,10 @@ The optional patterns are not granted at installation. When a user explicitly
 saves or tests a custom provider endpoint, LingoFlow requests only that
 endpoint's exact origin through `chrome.permissions.request`.
 
-## Future Optional Permissions
+An `http://` custom provider does not encrypt page text or credentials. It
+should be used only for a trusted local endpoint; remote endpoints should use
+HTTPS.
 
-If implementing automatic site translation later:
-
-- use optional host permissions
-- request explicit site authorization
-- maintain site whitelist
-- provide clear revoke controls
+The detailed user-facing policy and release disclosures are maintained in
+[PRIVACY.md](./PRIVACY.md), [SECURITY.md](./SECURITY.md), and
+[STORE_LISTING.md](./STORE_LISTING.md).

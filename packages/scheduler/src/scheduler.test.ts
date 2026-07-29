@@ -114,6 +114,37 @@ describe('scheduler', () => {
     vi.useRealTimers()
   })
 
+  it('aborts a pending retry delay without starting another provider attempt', async () => {
+    vi.useFakeTimers()
+    const session = new AbortController()
+    const operation = vi.fn(async () => {
+      const error = new Error('rate limited') as Error & { status?: number }
+      error.status = 429
+      throw error
+    })
+
+    const result = retry(operation, {
+      attempts: 3,
+      delayMs: 5_000,
+      signal: session.signal,
+    })
+
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(operation).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(1)
+
+    session.abort()
+
+    await expect(result).rejects.toMatchObject({
+      name: 'AbortError',
+      code: 'translation_session_cancelled',
+    })
+    expect(operation).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+    vi.useRealTimers()
+  })
+
   it('splits failed batches and marks single task failure while continuing', async () => {
     const tasks = [task('1'), task('2'), task('3')]
 
@@ -137,6 +168,18 @@ describe('scheduler', () => {
     })
 
     expect(results.map(result => result.status)).toEqual(['success', 'failed', 'success'])
+  })
+
+  it('does not split a cancelled translation session into more provider calls', async () => {
+    const tasks = [task('1'), task('2'), task('3')]
+    const cancelled = Object.assign(new Error('Translation session cancelled'), {
+      code: 'translation_session_cancelled',
+    })
+    const translate = vi.fn().mockRejectedValue(cancelled)
+
+    await expect(translateBatchWithDegrade(tasks, translate)).rejects.toBe(cancelled)
+    expect(translate).toHaveBeenCalledTimes(1)
+    expect(translate).toHaveBeenCalledWith(tasks)
   })
 })
 

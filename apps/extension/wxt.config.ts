@@ -3,6 +3,34 @@ import { join } from 'node:path'
 import { defineConfig } from 'wxt'
 import { fileURLToPath } from 'node:url'
 
+const extensionPackage = JSON.parse(
+  readFileSync(fileURLToPath(new URL('./package.json', import.meta.url)), 'utf8'),
+) as { version: string }
+
+function manifestVersion(versionName: string): string {
+  const match =
+    /^(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})(?:-rc\.([1-9][0-9]*))?$/.exec(
+      versionName,
+    )
+  if (!match) {
+    throw new Error(`Unsupported extension version: ${versionName}`)
+  }
+
+  const [, major, minor, patch, releaseCandidate] = match
+  if ([major, minor, patch].some(value => Number(value) > 65_535)) {
+    throw new Error(`Extension version component exceeds 65535: ${versionName}`)
+  }
+  if (
+    releaseCandidate !== undefined &&
+    (Number(releaseCandidate) < 1 || Number(releaseCandidate) > 99)
+  ) {
+    throw new Error(`Release candidate number must be between 1 and 99: ${versionName}`)
+  }
+  return releaseCandidate
+    ? `${major}.${minor}.${patch}.${releaseCandidate}`
+    : `${major}.${minor}.${patch}.100`
+}
+
 const alias = {
   '@lingoflow/cache': fileURLToPath(new URL('../../packages/cache/src/index.ts', import.meta.url)),
   '@lingoflow/dom': fileURLToPath(new URL('../../packages/dom/src/index.ts', import.meta.url)),
@@ -26,34 +54,47 @@ const alias = {
 // (used by Dexie) into the raw U+FFFF byte sequence. Chrome's extension script
 // loader rejects files containing Unicode noncharacters.
 //
-// This plugin strips U+FFFF from output .js files after the build completes.
+// This plugin rewrites raw U+FFFF as the equivalent ASCII source escape after
+// the build completes, preserving Dexie's range-sentinel semantics.
 // See: https://github.com/nicedoc/wxt/issues (charset gap for rolldown)
-const STRIP_NONCHAR = /￿/g
+const UNICODE_NONCHARACTER = /￿/g
 
-function stripUnicodeNoncharacters() {
+function escapeUnicodeNoncharacters(browser: string) {
+  function escapeDirectory(directory: string): void {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const filePath = join(directory, entry.name)
+      if (entry.isDirectory()) {
+        escapeDirectory(filePath)
+        continue
+      }
+      if (!entry.isFile() || !entry.name.endsWith('.js')) continue
+
+      const content = readFileSync(filePath, 'utf-8')
+      if (content.includes('\uffff')) {
+        writeFileSync(filePath, content.replace(UNICODE_NONCHARACTER, '\\uffff'))
+      }
+    }
+  }
+
   return {
-    name: 'strip-unicode-noncharacters',
+    name: 'escape-unicode-noncharacters',
     closeBundle() {
       // Vite's outDir is not directly available here; walk the known output path.
-      const outDir = join(fileURLToPath(new URL('.', import.meta.url)), 'output', 'chrome-mv3')
-      for (const entry of readdirSync(outDir)) {
-        if (!entry.endsWith('.js')) continue
-        const filePath = join(outDir, entry)
-        const content = readFileSync(filePath, 'utf-8')
-        if (STRIP_NONCHAR.test(content)) {
-          writeFileSync(filePath, content.replace(STRIP_NONCHAR, ''))
-        }
-      }
+      const outDir = join(fileURLToPath(new URL('.', import.meta.url)), 'output', `${browser}-mv3`)
+      escapeDirectory(outDir)
     },
   }
 }
 
 export default defineConfig({
   manifestVersion: 3,
+  targetBrowsers: ['chrome', 'edge'],
   modules: ['@wxt-dev/module-vue'],
   manifest: {
     name: 'LingoFlow',
-    description: 'AI-powered Translation for the Open Web',
+    description: 'Translate web pages inline with local-first provider controls.',
+    version: manifestVersion(extensionPackage.version),
+    version_name: extensionPackage.version,
     permissions: ['activeTab', 'scripting', 'storage'],
     host_permissions: [
       'https://api.cognitive.microsofttranslator.com/*',
@@ -85,10 +126,10 @@ export default defineConfig({
     },
   },
   outDir: 'output',
-  vite: () => ({
+  vite: env => ({
     resolve: {
       alias,
     },
-    plugins: [stripUnicodeNoncharacters()],
+    plugins: [escapeUnicodeNoncharacters(env.browser)],
   }),
 })

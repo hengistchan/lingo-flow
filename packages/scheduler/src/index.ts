@@ -8,6 +8,7 @@ export type BatchOptions = {
 export type RetryOptions = {
   attempts: number
   delayMs: number
+  signal?: AbortSignal
 }
 
 export function createBatches(tasks: TranslationTask[], options: BatchOptions): TranslationTask[][] {
@@ -55,13 +56,15 @@ export async function retry<T>(operation: () => Promise<T>, options: RetryOption
   let lastError: unknown
 
   for (let attempt = 1; attempt <= options.attempts; attempt += 1) {
+    throwIfRetryCancelled(options.signal)
     try {
       return await operation()
     } catch (error) {
+      throwIfRetryCancelled(options.signal)
       lastError = error
       if (attempt >= options.attempts || !isRetryableProviderError(error)) break
       const backoffMs = Math.min(options.delayMs * Math.pow(2, attempt - 1), 10000)
-      if (backoffMs > 0) await sleep(backoffMs)
+      if (backoffMs > 0) await sleep(backoffMs, options.signal)
     }
   }
 
@@ -75,6 +78,8 @@ export async function translateBatchWithDegrade(
   try {
     return await translateBatch(tasks)
   } catch (error) {
+    if (isTranslationSessionCancelled(error)) throw error
+
     if (tasks.length === 1) {
       const task = tasks[0]
       return [
@@ -129,6 +134,10 @@ export function isFallbackEligible(error: unknown): boolean {
   )
 }
 
+export function isTranslationSessionCancelled(error: unknown): boolean {
+  return getCode(error) === 'translation_session_cancelled'
+}
+
 export function normalizeError(error: unknown): { message: string; reason?: DegradeReason } {
   const message = error instanceof Error ? error.message : String(error)
   const status = getStatus(error)
@@ -157,6 +166,30 @@ function getCode(error: unknown): string | undefined {
     : undefined
 }
 
-function sleep(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms))
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(translationSessionCancelledError())
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    const onAbort = () => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
+      reject(translationSessionCancelledError())
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+function throwIfRetryCancelled(signal?: AbortSignal): void {
+  if (signal?.aborted) throw translationSessionCancelledError()
+}
+
+function translationSessionCancelledError(): Error & { code: string } {
+  const error = new Error('Translation session cancelled') as Error & { code: string }
+  error.name = 'AbortError'
+  error.code = 'translation_session_cancelled'
+  return error
 }

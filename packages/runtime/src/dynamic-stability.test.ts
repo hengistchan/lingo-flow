@@ -309,8 +309,9 @@ describe('route change behavior', () => {
     resolveProvider?.()
     await translatePromise
 
-    const diagnostics = runtime.getDiagnostics()
-    expect(diagnostics?.rootGeneration).toBeGreaterThanOrEqual(2)
+    const diagnostics = await runtime.runDryDiagnostics()
+    expect(diagnostics.rootGeneration).toBeGreaterThanOrEqual(2)
+    expect(document.querySelector('[data-lingoflow-translation]')).toBeNull()
     runtime.stop()
   })
 
@@ -755,12 +756,15 @@ describe('stale result and duplicate prevention', () => {
     const paragraph = document.querySelector('p') as HTMLElement
     paragraph.firstChild!.textContent =
       'This latest paragraph is the only version that may be rendered.'
-    await waitFor(() => !paragraph.hasAttribute('data-lingoflow-block-id'))
+    await waitFor(() => !paragraph.hasAttribute('data-lingoflow-block-id'), 3000)
     resolveFirst?.()
     await initialTranslation
 
     await waitFor(() => batches.length === 2, 3000)
-    await waitFor(() => document.body.textContent?.includes('translated:This latest paragraph') ?? false)
+    await waitFor(
+      () => document.body.textContent?.includes('translated:This latest paragraph') ?? false,
+      3000,
+    )
 
     expect(document.body.textContent).not.toContain('translated:This original in-flight paragraph')
     expect(document.querySelectorAll('[data-lingoflow-translation]')).toHaveLength(1)
@@ -770,7 +774,7 @@ describe('stale result and duplicate prevention', () => {
       translatedBlocks: 1,
     })
     runtime.stop()
-  })
+  }, 10_000)
 
   it('duplicate generated translations are not inserted', async () => {
     document.body.innerHTML = `

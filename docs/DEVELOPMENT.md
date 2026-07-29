@@ -29,8 +29,14 @@ Load `apps/extension/output/chrome-mv3` as an unpacked extension.
 | Command | Description |
 |---|---|
 | `pnpm dev` | Start WXT dev server with hot reload |
-| `pnpm build` | Production build |
-| `pnpm package` | Production build + ZIP for distribution |
+| `pnpm build` | Chrome MV3 production build |
+| `pnpm build:chrome` | Chrome MV3 production build |
+| `pnpm build:edge` | Edge MV3 production build |
+| `pnpm build:browsers` | Chrome and Edge MV3 production builds |
+| `pnpm package` | Clean, package, and verify both RC archives |
+| `pnpm package:chrome` | Build and deterministically package Chrome |
+| `pnpm package:edge` | Build and deterministically package Edge |
+| `pnpm verify:release` | Verify release metadata, contents, and reproducibility |
 | `pnpm test` | Unit tests (Vitest) |
 | `pnpm test:e2e` | Build + E2E tests (Playwright + Chromium) |
 | `pnpm typecheck` | Type check all packages |
@@ -117,6 +123,20 @@ E2E tests load the real extension in Chromium. They cover:
 - Dynamic translation
 - Invalid provider output handling
 
+To run the same suite against a branded Chromium browser and an extracted
+release package, provide both paths. The harness uses the browser's DevTools
+`Extensions.loadUnpacked` command because current Chrome and Edge no longer
+honor the old `--load-extension` switch:
+
+```bash
+PLAYWRIGHT_EXTENSION_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+PLAYWRIGHT_EXTENSION_DIR="/absolute/path/to/extracted/chrome-package" \
+pnpm exec playwright test
+```
+
+For Edge, point the two variables at the Edge executable and extracted Edge
+package. Every run creates a fresh temporary profile.
+
 ### Running Specific Tests
 
 ```bash
@@ -189,20 +209,38 @@ This starts the WXT dev server. Reload the extension from `chrome://extensions` 
 pnpm package
 ```
 
-Output: `apps/extension/output/lingoflowextension-<version>-chrome.zip`
+Outputs:
 
-This ZIP can be:
-- Loaded as an unpacked extension (extract first)
-- Uploaded to the Chrome Web Store
-- Shared as a distributable artifact
+- `apps/extension/output/lingoflow-<version>-chrome-mv3.zip`
+- `apps/extension/output/lingoflow-<version>-edge-mv3.zip`
+- `apps/extension/output/SHA256SUMS`
+
+`pnpm package` first removes old WXT output, builds each browser target, creates
+archives with sorted entries and fixed timestamps, and runs the release
+verifier. The verifier checks package and manifest versions, permissions,
+required files, forbidden source/test files, likely credentials, Unicode
+noncharacters, ZIP contents, and byte-for-byte reproducibility.
 
 ## Version Management
 
-The extension version is defined in `apps/extension/package.json`. WXT reads this value and writes it into the generated `manifest.json`. The root `package.json` version should match.
+The user-facing extension version is defined in
+`apps/extension/package.json`. The root `package.json` version must match.
+
+Chrome and Edge require one to four numeric version components and use that
+value for update ordering. WXT writes the SemVer value to `version_name`, while
+LingoFlow maps it to a monotonically increasing four-part manifest version:
+
+- `X.Y.Z-rc.N` → `X.Y.Z.N`, where `N` is 1–99
+- `X.Y.Z` → `X.Y.Z.100`
+
+This reserves the stable build after the RC sequence while keeping the
+user-facing version conventional.
 
 To bump the version:
 
 1. Update `version` in `apps/extension/package.json`.
 2. Update `version` in root `package.json` to match.
 3. Update `CHANGELOG.md`.
-4. Run `pnpm package` to verify.
+4. Run `pnpm package` to produce and verify both browser archives.
+
+See [RELEASE.md](./RELEASE.md) for the complete release procedure.

@@ -1,73 +1,75 @@
 # Changelog
 
-## [1.0.0] - 2026-06-20
+All notable changes to LingoFlow are documented here. The project has not
+published a stable release yet.
+
+## [0.1.0-rc.1] - 2026-07-29
+
+The final engineering and packaged-browser gates for this release candidate
+have passed. The candidate is ready for an approved tag and GitHub prerelease;
+neither that publication action nor any browser-store submission is implied by
+this entry.
+
+The packaged candidate passed clean-profile smoke acceptance in Google Chrome
+150.0.7871.187 and Microsoft Edge 150.0.4078.105. This is release evidence, not
+a claim that a GitHub prerelease or browser-store listing has been published.
+
+Final verification included 498/498 unit tests, type checking, deterministic
+ZIP packaging and release verification, plus 48 passed tests and one optional
+public-page acceptance test skipped in each of bundled Chromium, Google Chrome
+150.0.7871.187, and Microsoft Edge 150.0.4078.105. GitHub private vulnerability
+reporting is enabled.
 
 ### Added
 
-**Core**
-- Chrome/Edge Manifest V3 browser extension for bilingual web reading
-- Popup UI with language-first interaction design
-- Options page with Languages, Providers, Storage, and Advanced sections
-- Bilingual UI (Simplified Chinese and English)
-- Dark mode support via `prefers-color-scheme`
+- Chrome and Edge Manifest V3 builds for inline bilingual web reading.
+- Azure Translator, OpenAI-compatible, custom OpenAI-compatible, and
+  experimental Google Translate Free providers.
+- Local translation cache with provider, language, model, prompt, and
+  terminology-aware cache keys.
+- Page rules with interactive content-root capture, exclusions, import/export,
+  compatibility checks, and diagnostics.
+- Scoped terminology management with import/export and protected inline tokens.
+- Dynamic translation for newly visible or newly inserted readable content,
+  including open Shadow DOM trees.
+- Pointer sentence translation through `Alt/Option + Shift + L`.
+- Session-scoped page translation with Stop, cancelled/partial status,
+  successful-result retention, and retry of failed blocks only.
+- Resumable first-run onboarding, bilingual settings, dark mode, and display
+  modes for original, bilingual, or translated reading.
+- Deterministic Chrome/Edge packaging and automated checks for manifest
+  metadata, permissions, archive contents, credentials, and reproducibility.
 
-**Providers**
-- Azure Translator provider (REST API v3)
-- OpenAI-compatible provider supporting OpenAI, DeepSeek, Qwen, Ollama, LM Studio
-- Google Translate Free provider (no API key required)
-- Custom OpenAI-compatible provider support
-- LLM reasoning effort controls (auto/none/minimal/low/medium/high)
-- Provider connection testing without exposing API keys
-- Provider presets with dynamic field rendering
+### Changed
 
-**Translation Engine**
-- DOM text block collector with content root discovery
-- Smart content root scoring for generic pages
-- Inline token protection (code, links, URLs preserved during translation)
-- 5 insertion strategies: linebreak-inside, inline-inside, inside-container, before-nested-structure, after-block
-- Shadow DOM content support
-- Text carrier resolution (heading links as translation targets)
-- Structural boundary protection (avoid duplicate collection)
-- Bounded concurrent batch translation
+- Page translation now closes the toolbar popup immediately; reopening shows
+  the current page state and can stop the active tab's session.
+- Provider requests are abortable; cancelled or superseded sessions cannot
+  render late results, and cancelling one tab does not affect another.
+- Completed translations offer a direct path into page-rule capture.
+- Google Translate Free defaults to four concurrent batches and uses a shared
+  ceiling of 40 in-flight requests across tabs.
+- Translation placeholders and single-line results use reduced-motion-aware
+  loading and reveal states.
+- Rule and provider removal require a second confirmation.
 
-**Cache**
-- Two-tier translation cache (in-memory + IndexedDB)
-- Composite cache key (text hash + languages + provider + model + prompt version + normalization version)
-- Cache management (clear by domain, clear all, LRU pruning)
+### Fixed
 
-**Resilience**
-- Automatic retry with exponential backoff (429, 5xx, timeout, network errors)
-- Batch split degradation (recursive binary split on failure)
-- Optional fallback provider with eligibility-based switching
-- Cache read/write failure degradation
-- Concurrency protection for simultaneous translations
-- Request timeouts (30s) for all provider API calls
+- Vue reactive page-rule values are detached before browser serialization,
+  preventing clone failures during add, edit, copy, and delete operations.
+- Generated translation nodes are excluded from diagnostics, rule capture, and
+  content-root scoring.
+- Hidden content is deferred until visible, and changed source text invalidates
+  stale translation results before rendering.
+- OpenAI-compatible connection failures retain actionable provider errors
+  instead of reporting a false success.
 
-**Settings**
-- Settings migration versioning (v0 → v1 → v2)
-- Current-page target language override without changing saved defaults
-- Key-free settings summary for popup
-- Translation concurrency setting
+### Security and privacy
 
-**Testing**
-- 107 unit tests across 18 test files
-- 19 E2E browser tests with real Chromium extension loading
-- Public page acceptance tests (Wikipedia, MDN, GitHub, Guardian, WebKit, Chinese Wikipedia, Python docs)
-- DOM inspection testkit
-- Production build validation (manifest permissions, Unicode noncharacters, inspector bridge)
-
-### Security
-- API keys stored only in `chrome.storage.local`
-- API keys never sent to content scripts
-- Provider output rendered with `textContent` (XSS prevention)
-- Minimal permissions: `activeTab`, `scripting`, `storage`
-- No `<all_urls>` in default permissions
-- Optional host permissions requested only for custom provider endpoints
-
-## [0.1.0] - 2026-06-15
-
-### Added
-- Initial MVP with Azure Translator and OpenAI-compatible providers
-- Basic popup and options UI
-- Translation cache with IndexedDB
-- Batch translation with retry and fallback
+- Required permissions remain limited to `activeTab`, `scripting`, and
+  `storage`.
+- Provider output is rendered as text rather than executable HTML.
+- Provider credentials remain in extension storage and are sent only to the
+  selected translation endpoint for authentication.
+- The extension has no LingoFlow-operated backend, analytics, telemetry, ads,
+  or remote executable code.

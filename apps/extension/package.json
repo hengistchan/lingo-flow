@@ -1,13 +1,18 @@
 {
   "name": "@lingoflow/extension",
-  "version": "0.1.0",
+  "version": "0.1.0-rc.1",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "wxt build --mv3",
+    "build": "pnpm build:chrome",
+    "build:chrome": "wxt build --browser chrome --mv3",
+    "build:edge": "wxt build --browser edge --mv3",
+    "clean": "wxt clean",
     "compile": "vue-tsc --noEmit -p tsconfig.json",
     "dev": "wxt --mv3",
-    "package": "wxt zip --mv3"
+    "package": "pnpm package:chrome",
+    "package:chrome": "pnpm build:chrome && node ../../scripts/package-extension.mjs chrome",
+    "package:edge": "pnpm build:edge && node ../../scripts/package-extension.mjs edge"
   },
   "dependencies": {
     "dexie": "^4.0.11",

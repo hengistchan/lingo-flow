@@ -15,7 +15,11 @@ import type {
   SettingsSummary,
   UiLocale,
 } from '@lingoflow/types'
-import { shouldSuggestPageRule } from './popup-state'
+import {
+  isTranslationSessionActive,
+  shouldRetryFailedBlocks,
+  shouldSuggestPageRule,
+} from './popup-state'
 
 const extensionApiAvailable = ref(hasExtensionPageApi())
 const uiLocale = ref<UiLocale>(resolveUiLocale(globalThis.navigator?.language))
@@ -31,7 +35,7 @@ const summary = ref<SettingsSummary>({
 const progress = ref<PageTranslationProgress>(idleProgress())
 const pendingTargetLang = ref(summary.value.targetLang)
 const targetSelectionTouched = ref(false)
-const busyAction = ref<'starting' | 'clearing' | 'cache' | null>(null)
+const busyAction = ref<'starting' | 'stopping' | 'retrying' | 'clearing' | 'cache' | null>(null)
 const initializing = ref(extensionApiAvailable.value)
 const actionFailed = ref(false)
 const contentInjected = ref(false)
@@ -42,18 +46,26 @@ let pollTimer: number | undefined
 
 const targetLanguages = getTargetLanguageOptions()
 const busy = computed(() => busyAction.value !== null)
+const sessionActive = computed(() => isTranslationSessionActive(progress.value))
+const shouldRetryFailed = computed(() => (
+  shouldRetryFailedBlocks(progress.value, pendingTargetLang.value)
+))
 const targetLanguageName = computed(() => getLanguageLabel(pendingTargetLang.value, uiLocale.value))
 const hasTranslations = computed(() => progress.value.translatedBlocks > 0)
 const showRuleSuggestion = computed(() => shouldSuggestPageRule(progress.value))
 const statusLabel = computed(() => {
   if (!summary.value.providerConfigured) return copy('popup.providerNotConfigured')
   if (progress.value.status === 'translating') return copy('popup.translating')
+  if (progress.value.status === 'cancelling') return copy('popup.cancelling')
+  if (progress.value.status === 'cancelled') return copy('popup.cancelled')
   if (progress.value.status === 'done') return copy('popup.complete')
   if (progress.value.status === 'partial') return copy('popup.partial')
   if (progress.value.status === 'failed') return copy('popup.failed')
   return copy('popup.ready')
 })
 const primaryActionLabel = computed(() => {
+  if (busyAction.value === 'retrying') return copy('popup.retryingFailed')
+  if (shouldRetryFailed.value) return copy('popup.retryFailed')
   if (busyAction.value === 'starting' || progress.value.status === 'translating') {
     return copy('popup.translatingTo', { language: targetLanguageName.value })
   }
@@ -153,6 +165,45 @@ async function translatePage() {
   } catch {
     actionFailed.value = true
     progress.value.status = 'failed'
+  } finally {
+    busyAction.value = null
+  }
+}
+
+async function stopTranslation() {
+  if (!extensionApiAvailable.value || !sessionActive.value) return
+
+  busyAction.value = 'stopping'
+  actionFailed.value = false
+  progress.value.status = 'cancelling'
+
+  try {
+    const tab = await getActiveTab()
+    progress.value = await sendTabMessage<PageTranslationProgress>(tab.id, {
+      type: 'page/cancelTranslation',
+    })
+  } catch {
+    actionFailed.value = true
+    await refreshStatus()
+  } finally {
+    busyAction.value = null
+  }
+}
+
+async function retryFailedTranslation() {
+  if (!extensionApiAvailable.value || !shouldRetryFailed.value) return
+
+  busyAction.value = 'retrying'
+  actionFailed.value = false
+
+  try {
+    const tab = await getActiveTab()
+    progress.value = await sendTabMessage<PageTranslationProgress>(tab.id, {
+      type: 'page/retryFailedTranslation',
+    })
+    closePopupWindow()
+  } catch {
+    actionFailed.value = true
   } finally {
     busyAction.value = null
   }
@@ -353,6 +404,8 @@ function idleProgress(): PageTranslationProgress {
     translatedBlocks: 0,
     cacheHits: 0,
     failedBlocks: 0,
+    cancelledBlocks: 0,
+    retryableBlocks: 0,
   }
 }
 
@@ -434,15 +487,18 @@ function getPreviewSafeChrome() {
       :target-select-label="copy('popup.targetLanguage')"
       :current-target="pendingTargetLang"
       :options="targetLanguages.map(l => ({ value: l.code, label: getLanguageLabel(l.code, uiLocale) }))"
-      :disabled="busy || progress.status === 'translating'"
+      :disabled="busy || sessionActive"
       @update:target="onTargetChange"
     />
 
-    <div v-if="progress.status === 'translating'" class="progress-line">
+    <div
+      v-if="sessionActive"
+      :class="['progress-line', progress.status === 'cancelling' && 'progress-line--cancelling']"
+    >
       <div class="progress-fill" :style="{ width: `${completion}%` }" />
     </div>
 
-    <div class="progress-stats" v-if="progress.status === 'translating'">
+    <div class="progress-stats" v-if="sessionActive">
       <span>{{ copy('popup.progress') }} {{ progress.translatedBlocks + progress.failedBlocks }}/{{ progress.totalBlocks }}</span>
       <span>{{ completion }}%</span>
     </div>
@@ -470,11 +526,18 @@ function getPreviewSafeChrome() {
 
     <div class="actions">
       <lf-button
-        v-if="summary.providerConfigured"
+        v-if="sessionActive"
+        variant="stop"
+        :label="progress.status === 'cancelling' ? copy('popup.cancelling') : copy('popup.stopTranslation')"
+        :disabled="progress.status === 'cancelling' || busyAction === 'stopping'"
+        @click="stopTranslation"
+      />
+      <lf-button
+        v-else-if="summary.providerConfigured"
         variant="primary"
         :label="primaryActionLabel"
-        :disabled="busy || progress.status === 'translating'"
-        @click="translatePage"
+        :disabled="busy"
+        @click="shouldRetryFailed ? retryFailedTranslation() : translatePage()"
       />
       <lf-button
         v-else
@@ -561,6 +624,12 @@ h1 {
   height: 100%;
   background: var(--lf-accent);
   transition: width 0.3s ease;
+}
+
+.progress-line--cancelling .progress-fill {
+  background: var(--lf-danger-confirm);
+  opacity: 0.72;
+  transition: none;
 }
 
 .progress-stats {

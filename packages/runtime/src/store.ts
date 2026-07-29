@@ -32,7 +32,11 @@ const TRANSITIONS: Record<BlockEvent, Transition[]> = {
   RENDER_COMMIT: [{ from: 'rendering', to: 'rendered' }],
   RENDER_SKIP: [{ from: 'rendering', to: 'translated' }],
   DOM_MUTATED: [{ from: 'rendered', to: 'dirty' }],
-  REQUEUE: [{ from: 'dirty', to: 'queued' }, { from: 'failed', to: 'queued' }],
+  REQUEUE: [
+    { from: 'dirty', to: 'queued' },
+    { from: 'failed', to: 'queued' },
+    { from: 'cancelled', to: 'queued' },
+  ],
   MARK_STALE: [
     { from: 'rendered', to: 'stale' },
     { from: 'translated', to: 'stale' },
@@ -52,7 +56,9 @@ const TRANSITIONS: Record<BlockEvent, Transition[]> = {
     { from: 'queued', to: 'cancelled' },
     { from: 'loading', to: 'cancelled' },
     { from: 'translating', to: 'cancelled' },
+    { from: 'translated', to: 'cancelled' },
     { from: 'cache-hit', to: 'cancelled' },
+    { from: 'rendering', to: 'cancelled' },
   ],
 }
 

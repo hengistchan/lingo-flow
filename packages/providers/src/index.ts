@@ -6,6 +6,7 @@ import type {
   ProviderConnectionResult,
   ProviderId,
   TranslateInput,
+  TranslateOptions,
   TranslateOutput,
   TranslationProvider,
 } from '@lingoflow/types'
@@ -17,7 +18,20 @@ export const GOOGLE_FREE_TRANSLATE_ENDPOINT = 'https://translate.googleapis.com/
 export const GOOGLE_FREE_MAX_IN_FLIGHT = 40
 
 let googleFreeInFlight = 0
-const googleFreeWaiters: Array<() => void> = []
+const googleFreeWaiters: GoogleFreeWaiter[] = []
+
+type GoogleFreeWaiter = {
+  resolve: () => void
+  reject: (error: Error) => void
+  signal?: AbortSignal
+  onAbort?: () => void
+}
+
+type RequestAbortScope = {
+  signal: AbortSignal
+  timedOut: () => boolean
+  dispose: () => void
+}
 
 export async function mapWithConcurrency<T, R>(
   items: T[],
@@ -148,7 +162,11 @@ export const azureTranslatorProvider: TranslationProvider = {
     maxCharsPerRequest: 50000,
     maxItemsPerRequest: 100,
   },
-  async translate(input: TranslateInput, config: unknown): Promise<TranslateOutput> {
+  async translate(
+    input: TranslateInput,
+    config: unknown,
+    options: TranslateOptions = {},
+  ): Promise<TranslateOutput> {
     const providerConfig = assertAzureConfig(config)
     const endpoint = providerConfig.endpoint.replace(/\/+$/, '')
     const search = new URLSearchParams({
@@ -160,11 +178,9 @@ export const azureTranslatorProvider: TranslationProvider = {
       search.set('from', input.sourceLang)
     }
 
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
-    let response: Response
+    const abortScope = createRequestAbortScope(options.signal)
     try {
-      response = await fetch(`${endpoint}/translate?${search.toString()}`, {
+      const response = await fetch(`${endpoint}/translate?${search.toString()}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -172,29 +188,36 @@ export const azureTranslatorProvider: TranslationProvider = {
           'Ocp-Apim-Subscription-Region': providerConfig.region,
         },
         body: JSON.stringify(input.texts.map(text => ({ text }))),
-        signal: controller.signal,
+        signal: abortScope.signal,
       })
-    } catch (error: unknown) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('Azure Translator request timed out after 30 seconds')
+
+      if (!response.ok) {
+        throw providerHttpError(response.status, `Azure Translator failed with HTTP ${response.status}`)
       }
-      throw error
+
+      const raw = (await response.json()) as Array<{ translations?: Array<{ text?: string }> }>
+      throwIfRequestAborted(
+        abortScope,
+        options.signal,
+        'Azure Translator request timed out after 30 seconds',
+      )
+      const texts = raw.map(item => item.translations?.[0]?.text ?? '')
+
+      if (texts.length !== input.texts.length || texts.some(text => text.length === 0)) {
+        throw providerInvalidOutputError('Azure Translator returned an invalid translation payload')
+      }
+
+      return { texts, raw, usage: { characters: input.texts.join('').length } }
+    } catch (error: unknown) {
+      throwRequestError(
+        error,
+        abortScope,
+        options.signal,
+        'Azure Translator request timed out after 30 seconds',
+      )
     } finally {
-      clearTimeout(timer)
+      abortScope.dispose()
     }
-
-    if (!response.ok) {
-      throw providerHttpError(response.status, `Azure Translator failed with HTTP ${response.status}`)
-    }
-
-    const raw = (await response.json()) as Array<{ translations?: Array<{ text?: string }> }>
-    const texts = raw.map(item => item.translations?.[0]?.text ?? '')
-
-    if (texts.length !== input.texts.length || texts.some(text => text.length === 0)) {
-      throw providerInvalidOutputError('Azure Translator returned an invalid translation payload')
-    }
-
-    return { texts, raw, usage: { characters: input.texts.join('').length } }
   },
   async validateConfig(config: unknown) {
     assertAzureConfig(config)
@@ -214,8 +237,16 @@ export const googleFreeTranslateProvider: TranslationProvider = {
     supportsStreaming: false,
     maxItemsPerRequest: 20,
   },
-  async translate(input: TranslateInput, _config: unknown): Promise<TranslateOutput> {
-    const texts = await mapWithConcurrency(input.texts, 10, text => translateGoogleFreeText(text, input))
+  async translate(
+    input: TranslateInput,
+    _config: unknown,
+    options: TranslateOptions = {},
+  ): Promise<TranslateOutput> {
+    const texts = await mapWithConcurrency(
+      input.texts,
+      10,
+      text => translateGoogleFreeText(text, input, options.signal),
+    )
     return {
       texts,
       usage: { characters: input.texts.join('').length },
@@ -238,46 +269,55 @@ export const openAICompatibleProvider: TranslationProvider = {
     supportsStreaming: false,
     maxItemsPerRequest: 40,
   },
-  async translate(input: TranslateInput, config: unknown): Promise<TranslateOutput> {
+  async translate(
+    input: TranslateInput,
+    config: unknown,
+    options: TranslateOptions = {},
+  ): Promise<TranslateOutput> {
     const providerConfig = assertOpenAIConfig(config)
     const baseUrl = providerConfig.baseUrl.replace(/\/+$/, '')
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
-    let response: Response
+    const abortScope = createRequestAbortScope(options.signal)
     try {
-      response = await fetch(`${baseUrl}/chat/completions`, {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${providerConfig.apiKey}`,
         },
         body: JSON.stringify(createOpenAICompatibleRequestBody(input, providerConfig)),
-        signal: controller.signal,
+        signal: abortScope.signal,
       })
-    } catch (error: unknown) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('OpenAI-compatible request timed out after 30 seconds')
+
+      if (!response.ok) {
+        throw providerHttpError(response.status, `OpenAI-compatible provider failed with HTTP ${response.status}`)
       }
-      throw error
+
+      const raw = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>
+        usage?: TranslateOutput['usage']
+      }
+      throwIfRequestAborted(
+        abortScope,
+        options.signal,
+        'OpenAI-compatible request timed out after 30 seconds',
+      )
+      const content = raw.choices?.[0]?.message?.content
+      if (!content) throw providerInvalidOutputError('OpenAI-compatible provider returned no message content')
+
+      return {
+        texts: parseOpenAIJsonResult(content, input.texts.length),
+        raw,
+        usage: raw.usage,
+      }
+    } catch (error: unknown) {
+      throwRequestError(
+        error,
+        abortScope,
+        options.signal,
+        'OpenAI-compatible request timed out after 30 seconds',
+      )
     } finally {
-      clearTimeout(timer)
-    }
-
-    if (!response.ok) {
-      throw providerHttpError(response.status, `OpenAI-compatible provider failed with HTTP ${response.status}`)
-    }
-
-    const raw = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>
-      usage?: TranslateOutput['usage']
-    }
-    const content = raw.choices?.[0]?.message?.content
-    if (!content) throw providerInvalidOutputError('OpenAI-compatible provider returned no message content')
-
-    return {
-      texts: parseOpenAIJsonResult(content, input.texts.length),
-      raw,
-      usage: raw.usage,
+      abortScope.dispose()
     }
   },
   async validateConfig(config: unknown) {
@@ -362,46 +402,70 @@ function assertOpenAIConfig(config: unknown): OpenAICompatibleConfig {
   return value as OpenAICompatibleConfig
 }
 
-async function translateGoogleFreeText(text: string, input: TranslateInput): Promise<string> {
-  await acquireGoogleFreePermit()
+async function translateGoogleFreeText(
+  text: string,
+  input: TranslateInput,
+  externalSignal?: AbortSignal,
+): Promise<string> {
+  await acquireGoogleFreePermit(externalSignal)
   try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
-    let response: Response
+    const abortScope = createRequestAbortScope(externalSignal)
     try {
-      response = await fetch(createGoogleFreeTranslateUrl(text, input), {
+      const response = await fetch(createGoogleFreeTranslateUrl(text, input), {
         method: 'GET',
         headers: { Accept: 'application/json' },
-        signal: controller.signal,
+        signal: abortScope.signal,
       })
-    } catch (error: unknown) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('Google Translate Free request timed out after 30 seconds')
+
+      if (!response.ok) {
+        throw providerHttpError(response.status, `Google Translate Free failed with HTTP ${response.status}`)
       }
-      throw error
+
+      const raw = await response.json()
+      throwIfRequestAborted(
+        abortScope,
+        externalSignal,
+        'Google Translate Free request timed out after 30 seconds',
+      )
+      return parseGoogleFreeTranslateResponse(raw)
+    } catch (error: unknown) {
+      throwRequestError(
+        error,
+        abortScope,
+        externalSignal,
+        'Google Translate Free request timed out after 30 seconds',
+      )
     } finally {
-      clearTimeout(timer)
+      abortScope.dispose()
     }
-
-    if (!response.ok) {
-      throw providerHttpError(response.status, `Google Translate Free failed with HTTP ${response.status}`)
-    }
-
-    const raw = await response.json()
-    return parseGoogleFreeTranslateResponse(raw)
   } finally {
     releaseGoogleFreePermit()
   }
 }
 
-async function acquireGoogleFreePermit(): Promise<void> {
+async function acquireGoogleFreePermit(signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) throw translationSessionCancelledError()
+
   if (googleFreeInFlight < GOOGLE_FREE_MAX_IN_FLIGHT) {
     googleFreeInFlight += 1
     return
   }
 
-  await new Promise<void>(resolve => {
-    googleFreeWaiters.push(resolve)
+  await new Promise<void>((resolve, reject) => {
+    const waiter: GoogleFreeWaiter = {
+      resolve,
+      reject,
+      signal,
+    }
+    if (signal) {
+      waiter.onAbort = () => {
+        const index = googleFreeWaiters.indexOf(waiter)
+        if (index >= 0) googleFreeWaiters.splice(index, 1)
+        reject(translationSessionCancelledError())
+      }
+      signal.addEventListener('abort', waiter.onAbort, { once: true })
+    }
+    googleFreeWaiters.push(waiter)
   })
 }
 
@@ -410,11 +474,75 @@ function releaseGoogleFreePermit(): void {
   if (next) {
     // Transfer the released permit directly to the oldest waiter. Keeping the
     // counter unchanged prevents a new request from overtaking that waiter.
-    next()
+    if (next.signal && next.onAbort) {
+      next.signal.removeEventListener('abort', next.onAbort)
+    }
+    next.resolve()
     return
   }
 
   googleFreeInFlight -= 1
+}
+
+function createRequestAbortScope(externalSignal?: AbortSignal): RequestAbortScope {
+  const controller = new AbortController()
+  let didTimeOut = false
+  const onExternalAbort = () => controller.abort(externalSignal?.reason)
+
+  if (externalSignal?.aborted) {
+    onExternalAbort()
+  } else {
+    externalSignal?.addEventListener('abort', onExternalAbort, { once: true })
+  }
+
+  const timer = setTimeout(() => {
+    didTimeOut = true
+    controller.abort()
+  }, REQUEST_TIMEOUT_MS)
+
+  return {
+    signal: controller.signal,
+    timedOut: () => didTimeOut,
+    dispose: () => {
+      clearTimeout(timer)
+      externalSignal?.removeEventListener('abort', onExternalAbort)
+    },
+  }
+}
+
+function throwIfRequestAborted(
+  scope: RequestAbortScope,
+  externalSignal: AbortSignal | undefined,
+  timeoutMessage: string,
+): void {
+  if (externalSignal?.aborted) throw translationSessionCancelledError()
+  if (scope.timedOut()) throw new Error(timeoutMessage)
+}
+
+function throwRequestError(
+  error: unknown,
+  scope: RequestAbortScope,
+  externalSignal: AbortSignal | undefined,
+  timeoutMessage: string,
+): never {
+  throwIfRequestAborted(scope, externalSignal, timeoutMessage)
+  throw error
+}
+
+export function translationSessionCancelledError(): Error & { code: string } {
+  const error = new Error('Translation session cancelled') as Error & { code: string }
+  error.name = 'AbortError'
+  error.code = 'translation_session_cancelled'
+  return error
+}
+
+export function isTranslationSessionCancelled(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 'translation_session_cancelled'
+  )
 }
 
 function createGoogleFreeTranslateUrl(text: string, input: TranslateInput): string {
