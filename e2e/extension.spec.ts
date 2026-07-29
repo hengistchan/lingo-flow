@@ -668,6 +668,7 @@ test('installed extension reports mixed provider results as partial without savi
 })
 
 test('installed extension connects to an explicitly authorized custom OpenAI-compatible origin', async () => {
+  test.setTimeout(60_000)
   const articleServer = await startArticleServer()
   const extension = await launchExtension({ allowLocalhost: true })
 

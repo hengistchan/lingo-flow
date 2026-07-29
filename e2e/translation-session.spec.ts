@@ -48,12 +48,41 @@ test('a translation session survives popup close and cancels without rendering l
     await expect(resumedPopup.locator('.status')).toHaveText('Translating')
     await expect(resumedPopup.getByRole('button', { name: 'Stop translation' })).toBeVisible()
 
-    const cancelStartedAt = performance.now()
-    await resumedPopup.getByRole('button', { name: 'Stop translation' }).click()
-    await expect(resumedPopup.locator('.status')).toHaveText('Translation cancelled', {
-      timeout: 300,
-    })
-    expect(performance.now() - cancelStartedAt).toBeLessThanOrEqual(300)
+    const stopButton = resumedPopup.getByRole('button', { name: 'Stop translation' })
+    const status = resumedPopup.locator('.status')
+    await stopButton.evaluate((button, expectedStatus) => {
+      const statusElement = document.querySelector<HTMLElement>('.status')
+      if (!statusElement) throw new Error('Popup status element is unavailable.')
+
+      let clickStartedAt: number | undefined
+      const recordLatency = () => {
+        if (
+          clickStartedAt === undefined ||
+          statusElement.textContent?.trim() !== expectedStatus
+        ) {
+          return
+        }
+        statusElement.dataset.cancelLatencyMs = String(performance.now() - clickStartedAt)
+        observer.disconnect()
+      }
+      const observer = new MutationObserver(recordLatency)
+      observer.observe(statusElement, {
+        characterData: true,
+        childList: true,
+        subtree: true,
+      })
+      button.addEventListener('click', () => {
+        clickStartedAt = performance.now()
+        recordLatency()
+      }, { capture: true, once: true })
+    }, 'Translation cancelled')
+
+    await stopButton.click()
+    await expect(status).toHaveText('Translation cancelled')
+    await expect(status).toHaveAttribute('data-cancel-latency-ms', /^\d+(?:\.\d+)?$/)
+    const cancelLatencyMs = Number(await status.getAttribute('data-cancel-latency-ms'))
+    expect(cancelLatencyMs).toBeGreaterThanOrEqual(0)
+    expect(cancelLatencyMs).toBeLessThanOrEqual(300)
 
     const cancelled = await pageStatus(extension.worker, fixture.cancelArticleUrl)
     expect(cancelled).toMatchObject({
