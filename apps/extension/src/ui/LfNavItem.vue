@@ -25,34 +25,52 @@ defineEmits<{
 .lf-nav-item {
   display: block;
   width: 100%;
-  padding: 8px 24px;
+  min-height: 40px;
+  padding: 9px 12px;
   border: none;
   border-radius: var(--lf-radius);
   background: transparent;
-  color: var(--lf-whisper);
+  color: var(--lf-ghost);
   font-family: var(--lf-font-sans);
   font-size: 13px;
+  font-weight: 520;
+  line-height: 1.35;
   text-align: left;
   cursor: pointer;
   position: relative;
-  transition: color 0.15s;
+  transition:
+    color 0.16s ease,
+    background-color 0.16s ease,
+    transform 0.16s ease;
 }
 
 .lf-nav-item:hover {
-  color: var(--lf-ghost);
-}
-
-.lf-nav-item--active {
+  background: var(--lf-margin);
   color: var(--lf-ink);
 }
 
-.lf-nav-item--active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 4px;
-  bottom: 4px;
-  width: 2px;
-  background: var(--lf-accent);
+.lf-nav-item:active {
+  transform: translateY(1px);
+}
+
+.lf-nav-item:focus-visible {
+  outline: 2px solid var(--lf-accent);
+  outline-offset: 2px;
+}
+
+.lf-nav-item--active {
+  background: color-mix(in srgb, var(--lf-accent) 11%, var(--lf-paper));
+  color: var(--lf-accent);
+  font-weight: 650;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lf-nav-item {
+    transition: none;
+  }
+
+  .lf-nav-item:active {
+    transform: none;
+  }
 }
 </style>

@@ -133,6 +133,11 @@ const COPY = {
     principleInline: 'Inline, not a popup',
     principleLocal: 'Local rules and terminology',
     principleChoice: 'Provider choice stays yours',
+    previewLabel: 'Inline translation preview',
+    previewOriginalLabel: 'Original',
+    previewTranslationLabel: 'Translation',
+    previewOriginal: 'Good tools should disappear into the reading flow.',
+    previewTranslation: '好的工具，应该融入阅读过程。',
     languageTitle: 'Choose your reading languages',
     languageBody: 'Automatic source detection works for most pages. Your target language controls page, hover, and dynamic translations.',
     target: 'Translate into',
@@ -181,6 +186,11 @@ const COPY = {
     principleInline: '原文下方呈现，不弹窗',
     principleLocal: '规则与术语保存在本地',
     principleChoice: 'Provider 选择由你决定',
+    previewLabel: '行内翻译预览',
+    previewOriginalLabel: '原文',
+    previewTranslationLabel: '译文',
+    previewOriginal: 'Good tools should disappear into the reading flow.',
+    previewTranslation: '好的工具，应该融入阅读过程。',
     languageTitle: '选择阅读语言',
     languageBody: '自动识别适用于大多数网页。目标语言会同时用于整页、指针句子和动态内容翻译。',
     target: '翻译为',
@@ -225,8 +235,11 @@ const COPY = {
 <template>
   <main class="onboarding-page">
     <header class="onboarding-masthead">
-      <div class="brand-mark" aria-hidden="true">L<span>F</span></div>
-      <div>
+      <div class="brand-mark" aria-hidden="true">
+        <span></span>
+        <span></span>
+      </div>
+      <div class="brand-copy">
         <strong>{{ copy('brand') }}</strong>
         <span>{{ copy('progress') }}</span>
       </div>
@@ -243,111 +256,133 @@ const COPY = {
           :data-active="item === step"
           :data-complete="index < stepIndex || step === 'complete'"
         >
-          <span>{{ index + 1 }}</span>
-          {{ stepLabel(item) }}
+          <span class="step-index">{{ index < stepIndex || step === 'complete' ? '✓' : index + 1 }}</span>
+          <span class="step-label">{{ stepLabel(item) }}</span>
         </li>
       </ol>
 
       <section class="onboarding-card">
-        <div v-if="message" class="onboarding-error" role="alert">{{ message }}</div>
+        <div :key="step" class="onboarding-content">
+          <div v-if="message" class="onboarding-error" role="alert">{{ message }}</div>
 
-        <template v-if="step === 'welcome'">
-          <p class="eyebrow">Original + translation</p>
-          <h1>{{ copy('welcomeTitle') }}</h1>
-          <p class="lead">{{ copy('welcomeBody') }}</p>
-          <div class="principle-grid">
-            <div><strong>01</strong><span>{{ copy('principleInline') }}</span></div>
-            <div><strong>02</strong><span>{{ copy('principleLocal') }}</span></div>
-            <div><strong>03</strong><span>{{ copy('principleChoice') }}</span></div>
-          </div>
-          <p class="privacy-note">{{ copy('privacy') }}</p>
-        </template>
+          <template v-if="step === 'welcome'">
+            <div class="welcome-layout">
+              <div class="welcome-copy">
+                <p class="eyebrow">{{ stepLabel(step) }}</p>
+                <h1>{{ copy('welcomeTitle') }}</h1>
+                <p class="lead">{{ copy('welcomeBody') }}</p>
+                <div class="principle-list">
+                  <div><span aria-hidden="true">✓</span>{{ copy('principleInline') }}</div>
+                  <div><span aria-hidden="true">✓</span>{{ copy('principleLocal') }}</div>
+                  <div><span aria-hidden="true">✓</span>{{ copy('principleChoice') }}</div>
+                </div>
+                <p class="privacy-note">{{ copy('privacy') }}</p>
+              </div>
 
-        <template v-else-if="step === 'reading-language'">
-          <p class="eyebrow">Reading policy</p>
-          <h1>{{ copy('languageTitle') }}</h1>
-          <p class="lead">{{ copy('languageBody') }}</p>
-          <div class="language-grid">
-            <lf-form-field
-              :label="copy('target')"
-              type="select"
-              :model-value="settings.targetLang"
-              :options="targetLanguages.map(item => ({ value: item.code, label: getLanguageLabel(item.code, locale) }))"
-              @update:model-value="settings.targetLang = String($event); persist()"
-            />
-            <lf-form-field
-              :label="copy('source')"
-              type="select"
-              :model-value="settings.sourceLang"
-              :options="sourceLanguages.map(item => ({ value: item.code, label: item.code === 'auto' ? copy('auto') : getLanguageLabel(item.code, locale) }))"
-              @update:model-value="settings.sourceLang = String($event); persist()"
-            />
-          </div>
-        </template>
+              <aside class="reading-preview" :aria-label="copy('previewLabel')">
+                <div class="preview-toolbar" aria-hidden="true">
+                  <span></span><span></span><span></span>
+                  <i>article.example</i>
+                </div>
+                <div class="preview-body">
+                  <span class="preview-label">{{ copy('previewOriginalLabel') }}</span>
+                  <p class="preview-original">{{ copy('previewOriginal') }}</p>
+                  <div class="preview-translation">
+                    <span class="preview-label">{{ copy('previewTranslationLabel') }}</span>
+                    <p>{{ copy('previewTranslation') }}</p>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </template>
 
-        <template v-else-if="step === 'provider-choice'">
-          <p class="eyebrow">Translation service</p>
-          <h1>{{ copy('providerTitle') }}</h1>
-          <p class="lead">{{ copy('providerBody') }}</p>
-          <div class="provider-choices">
-            <button
-              v-for="choice in [
-                { id: 'google-free-translate', name: copy('googleName'), body: copy('googleBody'), mark: 'G' },
-                { id: 'openai-compatible', name: copy('openAIName'), body: copy('openAIBody'), mark: 'AI' },
-                { id: 'azure-translator', name: copy('azureName'), body: copy('azureBody'), mark: 'Az' },
-              ]"
-              :key="choice.id"
-              type="button"
-              :aria-pressed="settings.defaultProviderId === choice.id"
-              @click="chooseProvider(choice.id)"
+          <template v-else-if="step === 'reading-language'">
+            <p class="eyebrow">{{ stepLabel(step) }}</p>
+            <h1>{{ copy('languageTitle') }}</h1>
+            <p class="lead">{{ copy('languageBody') }}</p>
+            <div class="language-grid">
+              <lf-form-field
+                :label="copy('target')"
+                type="select"
+                :model-value="settings.targetLang"
+                :options="targetLanguages.map(item => ({ value: item.code, label: getLanguageLabel(item.code, locale) }))"
+                @update:model-value="settings.targetLang = String($event); persist()"
+              />
+              <lf-form-field
+                :label="copy('source')"
+                type="select"
+                :model-value="settings.sourceLang"
+                :options="sourceLanguages.map(item => ({ value: item.code, label: item.code === 'auto' ? copy('auto') : getLanguageLabel(item.code, locale) }))"
+                @update:model-value="settings.sourceLang = String($event); persist()"
+              />
+            </div>
+          </template>
+
+          <template v-else-if="step === 'provider-choice'">
+            <p class="eyebrow">{{ stepLabel(step) }}</p>
+            <h1>{{ copy('providerTitle') }}</h1>
+            <p class="lead">{{ copy('providerBody') }}</p>
+            <div class="provider-choices">
+              <button
+                v-for="choice in [
+                  { id: 'google-free-translate', name: copy('googleName'), body: copy('googleBody'), mark: 'G' },
+                  { id: 'openai-compatible', name: copy('openAIName'), body: copy('openAIBody'), mark: 'AI' },
+                  { id: 'azure-translator', name: copy('azureName'), body: copy('azureBody'), mark: 'Az' },
+                ]"
+                :key="choice.id"
+                type="button"
+                :aria-pressed="settings.defaultProviderId === choice.id"
+                @click="chooseProvider(choice.id)"
+              >
+                <span class="provider-mark">{{ choice.mark }}</span>
+                <strong>{{ choice.name }}</strong>
+                <small>{{ choice.body }}</small>
+                <span class="provider-selected" aria-hidden="true">✓</span>
+              </button>
+            </div>
+          </template>
+
+          <template v-else-if="step === 'provider-configuration' || step === 'connection-test'">
+            <p class="eyebrow">{{ stepLabel(step) }}</p>
+            <h1>{{ step === 'connection-test' ? copy('connectionTitle') : copy('configureTitle') }}</h1>
+            <p class="lead">
+              {{ step === 'connection-test' ? copy('connectionBody') : copy('configureBody') }}
+            </p>
+            <p
+              v-if="step === 'connection-test'"
+              class="connection-summary"
+              :data-success="connectionResult?.ok"
             >
-              <span>{{ choice.mark }}</span>
-              <strong>{{ choice.name }}</strong>
-              <small>{{ choice.body }}</small>
-            </button>
-          </div>
-        </template>
+              {{ connectionResult?.ok ? copy('connectionPassed') : copy('connectionPending') }}
+            </p>
+            <provider-configuration
+              :model-value="settings"
+              :locale="locale"
+              :show-fallback="false"
+              :show-performance="false"
+              @update:model-value="updateSettings"
+              @connection-tested="recordConnection"
+            />
+          </template>
 
-        <template v-else-if="step === 'provider-configuration' || step === 'connection-test'">
-          <p class="eyebrow">Provider contract</p>
-          <h1>{{ step === 'connection-test' ? copy('connectionTitle') : copy('configureTitle') }}</h1>
-          <p class="lead">
-            {{ step === 'connection-test' ? copy('connectionBody') : copy('configureBody') }}
-          </p>
-          <p
-            v-if="step === 'connection-test'"
-            class="connection-summary"
-            :data-success="connectionResult?.ok"
-          >
-            {{ connectionResult?.ok ? copy('connectionPassed') : copy('connectionPending') }}
-          </p>
-          <provider-configuration
-            :model-value="settings"
-            :locale="locale"
-            :show-fallback="false"
-            :show-performance="false"
-            @update:model-value="updateSettings"
-            @connection-tested="recordConnection"
-          />
-        </template>
+          <template v-else-if="step === 'first-page-guide'">
+            <p class="eyebrow">{{ stepLabel(step) }}</p>
+            <h1>{{ copy('firstPageTitle') }}</h1>
+            <p class="lead">{{ copy('firstPageBody') }}</p>
+            <div class="guide-steps">
+              <div><span>1</span><p>{{ copy('firstPageBody') }}</p></div>
+              <div><span>2</span><p>{{ copy('hoverGuide') }}</p></div>
+              <div><span>3</span><p>{{ copy('dynamicGuide') }}</p></div>
+            </div>
+          </template>
 
-        <template v-else-if="step === 'first-page-guide'">
-          <p class="eyebrow">One minute to value</p>
-          <h1>{{ copy('firstPageTitle') }}</h1>
-          <p class="lead">{{ copy('firstPageBody') }}</p>
-          <div class="guide-steps">
-            <div><span>1</span><p>{{ copy('firstPageBody') }}</p></div>
-            <div><span>2</span><p>{{ copy('hoverGuide') }}</p></div>
-            <div><span>3</span><p>{{ copy('dynamicGuide') }}</p></div>
-          </div>
-        </template>
-
-        <template v-else>
-          <p class="eyebrow">Ready</p>
-          <h1>{{ copy('completeTitle') }}</h1>
-          <p class="lead">{{ copy('completeBody') }}</p>
-          <div class="complete-mark" aria-hidden="true">✓</div>
-        </template>
+          <template v-else>
+            <p class="eyebrow">{{ stepLabel(step) }}</p>
+            <h1>{{ copy('completeTitle') }}</h1>
+            <p class="lead">{{ copy('completeBody') }}</p>
+            <div class="complete-mark" aria-hidden="true">✓</div>
+          </template>
+        </div>
 
         <footer class="onboarding-footer">
           <lf-button
@@ -357,7 +392,6 @@ const COPY = {
             :disabled="saving"
             @click="back"
           />
-          <span v-else></span>
           <lf-button
             v-if="step !== 'complete'"
             variant="primary"
@@ -380,28 +414,6 @@ const COPY = {
 <style>
 :root {
   color-scheme: light dark;
-  --lf-paper: #fbfaf7;
-  --lf-margin: #f2eee7;
-  --lf-ink: #211e1a;
-  --lf-muted: #746f67;
-  --lf-whisper: #999188;
-  --lf-rule: #dcd5ca;
-  --lf-accent: #c7562e;
-  --lf-success: #397651;
-  --lf-danger: #a33a2b;
-  --lf-font-serif: Georgia, 'Times New Roman', serif;
-  --lf-font-sans: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --lf-paper: #201e1b;
-    --lf-margin: #292622;
-    --lf-ink: #f2ede5;
-    --lf-muted: #b8afa4;
-    --lf-whisper: #938a80;
-    --lf-rule: #49433c;
-  }
 }
 
 * {
@@ -411,7 +423,7 @@ const COPY = {
 body {
   margin: 0;
   background:
-    linear-gradient(90deg, transparent 0 79px, color-mix(in srgb, var(--lf-accent) 18%, transparent) 80px, transparent 81px),
+    radial-gradient(circle at 12% -10%, color-mix(in srgb, var(--lf-accent) 12%, transparent), transparent 34%),
     var(--lf-margin);
   color: var(--lf-ink);
   font-family: var(--lf-font-sans);
@@ -422,214 +434,446 @@ button {
 }
 
 .onboarding-page {
-  width: min(1120px, calc(100% - 40px));
+  width: min(1000px, calc(100% - 48px));
   min-height: 100vh;
   margin: 0 auto;
-  padding: 28px 0 50px;
+  padding: 24px 0 56px;
 }
 
 .onboarding-masthead {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 52px;
+  gap: 11px;
+  min-height: 44px;
 }
 
 .brand-mark {
-  display: grid;
-  width: 42px;
-  height: 42px;
-  place-items: center;
-  border: 1px solid var(--lf-ink);
-  font-family: var(--lf-font-serif);
-  font-size: 20px;
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border: 1px solid color-mix(in srgb, var(--lf-accent) 18%, var(--lf-rule));
+  border-radius: 12px;
+  background: var(--lf-accent-soft);
 }
 
 .brand-mark span {
-  color: var(--lf-accent);
+  position: absolute;
+  width: 14px;
+  height: 18px;
+  border: 2px solid var(--lf-accent);
+  border-radius: 3px;
+  background: var(--lf-paper);
 }
 
-.onboarding-masthead strong,
-.onboarding-masthead span {
+.brand-mark span:first-child {
+  top: 9px;
+  left: 10px;
+}
+
+.brand-mark span:last-child {
+  right: 9px;
+  bottom: 8px;
+  background: var(--lf-accent);
+}
+
+.brand-copy strong,
+.brand-copy span {
   display: block;
 }
 
-.onboarding-masthead span {
+.brand-copy strong {
+  font-size: 14px;
+  letter-spacing: -.01em;
+}
+
+.brand-copy span {
   margin-top: 2px;
   color: var(--lf-muted);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .skip-button {
   margin-left: auto;
-  border: 0;
+  min-height: 36px;
+  border: 1px solid transparent;
+  border-radius: var(--lf-radius-sm);
+  padding: 0 12px;
   background: transparent;
   color: var(--lf-muted);
   cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  font-size: 12px;
+  transition: background .15s ease, color .15s ease;
+}
+
+.skip-button:hover {
+  background: color-mix(in srgb, var(--lf-accent) 7%, transparent);
+  color: var(--lf-ink);
 }
 
 .onboarding-shell {
-  display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
-  gap: 28px;
-  margin-top: 34px;
+  margin-top: 28px;
 }
 
 .step-rail {
-  margin: 0;
-  padding: 6px 0;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  width: min(880px, 100%);
+  margin: 0 auto 18px;
+  padding: 0 22px;
   list-style: none;
 }
 
-.step-rail li {
-  display: grid;
-  grid-template-columns: 28px 1fr;
-  align-items: center;
-  gap: 9px;
-  min-height: 48px;
-  color: var(--lf-whisper);
-  font-size: 12px;
+.step-rail::before {
+  position: absolute;
+  top: 16px;
+  right: calc(8.333% + 22px);
+  left: calc(8.333% + 22px);
+  height: 1px;
+  background: var(--lf-rule);
+  content: '';
 }
 
-.step-rail li span {
+.step-rail li {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  color: var(--lf-whisper);
+  font-size: 11px;
+  text-align: center;
+}
+
+.step-index {
   display: grid;
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   place-items: center;
   border: 1px solid var(--lf-rule);
   border-radius: 50%;
+  background: var(--lf-margin);
+  color: var(--lf-whisper);
+  font-size: 11px;
+  font-weight: 700;
+  transition: border-color .15s ease, background .15s ease, color .15s ease;
+}
+
+.step-label {
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .step-rail li[data-active="true"] {
-  color: var(--lf-ink);
+  color: var(--lf-accent);
   font-weight: 700;
 }
 
-.step-rail li[data-active="true"] span {
+.step-rail li[data-active="true"] .step-index {
   border-color: var(--lf-accent);
   background: var(--lf-accent);
-  color: #fff;
+  color: var(--lf-on-accent);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--lf-accent) 10%, transparent);
 }
 
-.step-rail li[data-complete="true"] span {
-  border-color: var(--lf-success);
+.step-rail li[data-complete="true"] .step-index {
+  border-color: color-mix(in srgb, var(--lf-success) 55%, var(--lf-rule));
+  background: color-mix(in srgb, var(--lf-success) 10%, var(--lf-margin));
   color: var(--lf-success);
 }
 
 .onboarding-card {
-  min-height: 620px;
-  padding: clamp(28px, 5vw, 58px);
+  min-height: 520px;
+  padding: clamp(30px, 5vw, 52px);
   border: 1px solid var(--lf-rule);
-  background:
-    linear-gradient(90deg, color-mix(in srgb, var(--lf-accent) 7%, transparent) 1px, transparent 1px) 0 0 / 32px 100%,
-    var(--lf-paper);
-  box-shadow: 0 18px 54px rgba(35, 29, 23, .08);
+  border-radius: 18px;
+  background: var(--lf-paper);
+  box-shadow: var(--lf-shadow-soft);
+}
+
+.onboarding-content {
+  min-height: 350px;
+  animation: step-enter .18s ease-out both;
+}
+
+@keyframes step-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .eyebrow {
-  margin: 0 0 12px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  margin: 0 0 14px;
+  border-radius: 999px;
+  padding: 0 10px;
+  background: var(--lf-accent-soft);
   color: var(--lf-accent);
   font-size: 11px;
-  font-weight: 800;
-  letter-spacing: .14em;
-  text-transform: uppercase;
+  font-weight: 700;
 }
 
 h1 {
-  max-width: 700px;
+  max-width: 680px;
   margin: 0;
-  font-family: var(--lf-font-serif);
-  font-size: clamp(34px, 5vw, 58px);
-  font-weight: 400;
-  letter-spacing: -.035em;
-  line-height: 1.02;
+  font-size: clamp(30px, 4vw, 40px);
+  font-weight: 680;
+  letter-spacing: -.04em;
+  line-height: 1.15;
 }
 
 .lead {
   max-width: 680px;
-  margin: 20px 0 30px;
+  margin: 16px 0 28px;
   color: var(--lf-muted);
-  font-size: 16px;
-  line-height: 1.7;
+  font-size: 15px;
+  line-height: 1.65;
 }
 
-.principle-grid,
-.provider-choices {
+.welcome-layout {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: minmax(0, 1.12fr) minmax(280px, .88fr);
+  align-items: center;
+  gap: clamp(32px, 5vw, 52px);
 }
 
-.principle-grid div,
-.provider-choices button {
-  min-height: 130px;
-  padding: 18px;
-  border: 1px solid var(--lf-rule);
-  background: color-mix(in srgb, var(--lf-paper) 93%, transparent);
+.principle-list {
+  display: grid;
+  gap: 10px;
 }
 
-.principle-grid strong,
-.principle-grid span,
-.provider-choices span,
-.provider-choices strong,
-.provider-choices small {
-  display: block;
+.principle-list div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--lf-ghost);
+  font-size: 13px;
 }
 
-.principle-grid strong,
-.provider-choices span {
+.principle-list span {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--lf-accent-soft);
   color: var(--lf-accent);
-  font-family: var(--lf-font-serif);
-  font-size: 22px;
+  font-size: 11px;
+  font-weight: 800;
 }
 
-.principle-grid span,
-.provider-choices small {
-  margin-top: 26px;
-  color: var(--lf-muted);
-  line-height: 1.45;
+.reading-preview {
+  overflow: hidden;
+  border: 1px solid var(--lf-rule);
+  border-radius: var(--lf-radius-lg);
+  background: color-mix(in srgb, var(--lf-paper) 96%, var(--lf-margin));
+  box-shadow: 0 18px 36px rgb(23 32 51 / 10%);
+  transform: rotate(1deg);
+}
+
+.preview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 38px;
+  border-bottom: 1px solid var(--lf-rule);
+  padding: 0 13px;
+  background: color-mix(in srgb, var(--lf-margin) 65%, var(--lf-paper));
+}
+
+.preview-toolbar span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--lf-rule);
+}
+
+.preview-toolbar span:first-child {
+  background: color-mix(in srgb, var(--lf-danger) 68%, var(--lf-rule));
+}
+
+.preview-toolbar span:nth-child(2) {
+  background: color-mix(in srgb, #d6a31f 70%, var(--lf-rule));
+}
+
+.preview-toolbar span:nth-child(3) {
+  background: color-mix(in srgb, var(--lf-success) 68%, var(--lf-rule));
+}
+
+.preview-toolbar i {
+  overflow: hidden;
+  margin-left: 8px;
+  color: var(--lf-whisper);
+  font-size: 10px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-body {
+  padding: 24px 24px 26px;
+}
+
+.preview-label {
+  display: block;
+  color: var(--lf-whisper);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.preview-original {
+  margin: 8px 0 18px;
+  color: var(--lf-ink);
+  font-family: var(--lf-font-serif);
+  font-size: 18px;
+  line-height: 1.6;
+}
+
+.preview-translation {
+  border-left: 2px solid var(--lf-accent);
+  border-radius: 0 var(--lf-radius) var(--lf-radius) 0;
+  padding: 13px 14px;
+  background: var(--lf-accent-soft);
+}
+
+.preview-translation .preview-label {
+  color: var(--lf-accent);
+}
+
+.preview-translation p {
+  margin: 7px 0 0;
+  color: var(--lf-ink);
+  font-size: 15px;
+  font-weight: 560;
+  line-height: 1.55;
 }
 
 .privacy-note,
 .connection-summary {
-  margin-top: 24px;
-  padding: 14px 16px;
-  border-left: 3px solid var(--lf-accent);
-  background: color-mix(in srgb, var(--lf-accent) 6%, var(--lf-paper));
+  margin: 22px 0 0;
+  border: 1px solid color-mix(in srgb, var(--lf-accent) 12%, var(--lf-rule));
+  border-radius: var(--lf-radius);
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--lf-accent) 4%, var(--lf-paper));
   color: var(--lf-muted);
-  line-height: 1.55;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .language-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
-  max-width: 720px;
+  max-width: 680px;
+}
+
+.provider-choices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .provider-choices button {
+  position: relative;
+  min-height: 168px;
+  border: 1px solid var(--lf-rule);
+  border-radius: 13px;
+  padding: 18px;
+  background: color-mix(in srgb, var(--lf-paper) 96%, var(--lf-margin));
   color: var(--lf-ink);
   cursor: pointer;
   text-align: left;
+  transition:
+    transform .15s ease,
+    border-color .15s ease,
+    background .15s ease,
+    box-shadow .15s ease;
+}
+
+.provider-choices button:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--lf-accent) 35%, var(--lf-rule));
+  box-shadow: 0 10px 24px rgb(23 32 51 / 7%);
 }
 
 .provider-choices button[aria-pressed="true"] {
   border-color: var(--lf-accent);
-  box-shadow: inset 0 -4px 0 var(--lf-accent);
+  background: color-mix(in srgb, var(--lf-accent) 6%, var(--lf-paper));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lf-accent) 10%, transparent);
+}
+
+.provider-choices strong,
+.provider-choices small {
+  display: block;
+}
+
+.provider-mark {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--lf-accent-soft);
+  color: var(--lf-accent);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .provider-choices strong {
-  margin-top: 15px;
+  margin-top: 18px;
+  font-size: 14px;
+  line-height: 1.35;
 }
 
 .provider-choices small {
-  margin-top: 7px;
+  margin-top: 8px;
+  color: var(--lf-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.provider-selected {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--lf-accent);
+  color: var(--lf-on-accent);
+  font-size: 11px;
+  font-weight: 800;
+  opacity: 0;
+  transform: scale(.8);
+  transition: opacity .15s ease, transform .15s ease;
+}
+
+.provider-choices button[aria-pressed="true"] .provider-selected {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .connection-summary[data-success="true"] {
-  border-color: var(--lf-success);
+  border-color: color-mix(in srgb, var(--lf-success) 50%, var(--lf-rule));
+  background: color-mix(in srgb, var(--lf-success) 6%, var(--lf-paper));
 }
 
 .guide-steps {
@@ -642,8 +886,10 @@ h1 {
   grid-template-columns: 36px 1fr;
   align-items: start;
   gap: 14px;
-  padding: 16px 0;
-  border-top: 1px solid var(--lf-rule);
+  border: 1px solid var(--lf-rule);
+  border-radius: 12px;
+  padding: 15px 16px;
+  background: color-mix(in srgb, var(--lf-margin) 48%, var(--lf-paper));
 }
 
 .guide-steps span {
@@ -651,9 +897,11 @@ h1 {
   width: 30px;
   height: 30px;
   place-items: center;
-  border: 1px solid var(--lf-accent);
   border-radius: 50%;
+  background: var(--lf-accent-soft);
   color: var(--lf-accent);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .guide-steps p {
@@ -664,75 +912,168 @@ h1 {
 
 .complete-mark {
   display: grid;
-  width: 96px;
-  height: 96px;
-  margin-top: 54px;
+  width: 84px;
+  height: 84px;
+  margin-top: 42px;
   place-items: center;
-  border: 1px solid var(--lf-success);
+  border: 1px solid color-mix(in srgb, var(--lf-success) 30%, var(--lf-rule));
   border-radius: 50%;
+  background: color-mix(in srgb, var(--lf-success) 8%, var(--lf-paper));
   color: var(--lf-success);
-  font-size: 44px;
+  font-size: 34px;
 }
 
 .onboarding-footer {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: flex-end;
   gap: 12px;
-  margin-top: 42px;
-  padding-top: 22px;
+  margin-top: 32px;
+  padding-top: 20px;
   border-top: 1px solid var(--lf-rule);
+}
+
+.onboarding-footer .lf-btn--ghost {
+  margin-right: auto;
 }
 
 .onboarding-error {
   margin-bottom: 20px;
-  padding: 12px;
-  border: 1px solid var(--lf-danger);
+  border: 1px solid color-mix(in srgb, var(--lf-danger) 48%, var(--lf-rule));
+  border-radius: var(--lf-radius);
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--lf-danger) 6%, var(--lf-paper));
   color: var(--lf-danger);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .loading {
-  padding: 80px;
+  margin-top: 64px;
+  border: 1px solid var(--lf-rule);
+  border-radius: var(--lf-radius-lg);
+  padding: 80px 24px;
+  background: var(--lf-paper);
+  color: var(--lf-muted);
   text-align: center;
+  box-shadow: var(--lf-shadow-soft);
 }
 
 button:focus-visible,
 select:focus-visible {
-  outline: 2px solid var(--lf-accent);
-  outline-offset: 3px;
+  outline: 3px solid color-mix(in srgb, var(--lf-accent) 25%, transparent);
+  outline-offset: 2px;
 }
 
-@media (max-width: 780px) {
-  body {
-    background: var(--lf-margin);
-  }
-
-  .onboarding-shell {
+@media (max-width: 800px) {
+  .welcome-layout {
     grid-template-columns: 1fr;
   }
 
+  .reading-preview {
+    width: min(480px, 100%);
+    transform: none;
+  }
+
+  .provider-choices {
+    grid-template-columns: 1fr;
+  }
+
+  .provider-choices button {
+    min-height: 128px;
+  }
+}
+
+@media (max-width: 640px) {
+  .onboarding-page {
+    width: min(100% - 28px, 1000px);
+    padding-top: 16px;
+  }
+
+  .brand-copy span {
+    display: none;
+  }
+
+  .onboarding-shell {
+    margin-top: 22px;
+  }
+
   .step-rail {
-    display: flex;
-    overflow-x: auto;
+    margin-bottom: 14px;
+    padding: 0 0 22px;
   }
 
-  .step-rail li {
-    min-width: 120px;
+  .step-rail::before {
+    right: 8.333%;
+    left: 8.333%;
   }
 
-  .principle-grid,
-  .provider-choices,
+  .step-label {
+    display: none;
+  }
+
+  .step-rail li[data-active="true"] .step-label {
+    position: absolute;
+    top: 40px;
+    left: 50%;
+    display: block;
+    overflow: visible;
+    max-width: 90px;
+    transform: translateX(-50%);
+  }
+
+  .onboarding-card {
+    min-height: 0;
+    border-radius: 15px;
+    padding: 28px 22px;
+  }
+
+  .onboarding-content {
+    min-height: 0;
+  }
+
+  h1 {
+    font-size: clamp(28px, 9vw, 34px);
+  }
+
+  .lead {
+    margin-bottom: 24px;
+    font-size: 14px;
+  }
+
   .language-grid {
     grid-template-columns: 1fr;
   }
 
-  .onboarding-card {
-    padding: 28px 22px;
+  .onboarding-footer {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .onboarding-footer .lf-btn--ghost {
+    margin-right: 0;
+  }
+
+  .onboarding-footer .lf-btn--primary {
+    width: 100%;
+  }
+
+  .onboarding-footer .lf-btn--primary:only-child {
+    grid-column: 1 / -1;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   * {
     scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
+
+  .provider-choices button:hover,
+  .provider-selected,
+  .provider-choices button[aria-pressed="true"] .provider-selected {
+    transform: none;
   }
 }
 </style>

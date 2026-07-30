@@ -20,7 +20,24 @@ test('fresh install opens resumable onboarding and persists the completed setup'
 
     await expect(onboarding).toHaveTitle('Welcome to LingoFlow')
     await expect(onboarding.getByRole('heading', { name: 'Read the web in your language' })).toBeVisible()
-    await onboarding.getByRole('button', { name: 'Continue' }).click()
+    const firstContinue = onboarding.getByRole('button', { name: 'Continue' })
+    const desktopContinueBox = await firstContinue.boundingBox()
+    expect(desktopContinueBox?.height).toBeGreaterThanOrEqual(42)
+    expect(desktopContinueBox?.width).toBeGreaterThanOrEqual(112)
+    expect(desktopContinueBox?.width).toBeLessThanOrEqual(180)
+
+    await onboarding.setViewportSize({ width: 390, height: 844 })
+    const mobileLayout = await onboarding.evaluate(() => ({
+      viewportWidth: window.innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+    }))
+    expect(mobileLayout.documentWidth).toBeLessThanOrEqual(mobileLayout.viewportWidth)
+    const mobileContinueBox = await firstContinue.boundingBox()
+    expect(mobileContinueBox?.height).toBeGreaterThanOrEqual(42)
+    expect(mobileContinueBox?.width).toBeGreaterThan(250)
+    await onboarding.setViewportSize({ width: 1280, height: 720 })
+
+    await firstContinue.click()
     await expect(onboarding.getByRole('heading', { name: 'Choose your reading languages' })).toBeVisible()
     await onboarding.getByLabel('Translate into').selectOption('ja')
     await onboarding.getByRole('button', { name: 'Continue' }).click()
@@ -71,7 +88,13 @@ test('installed extension renders popup and options with real extension APIs', a
     await expect(popup.getByRole('heading', { name: 'LingoFlow' })).toBeVisible()
     await expect(popup.getByText('Ready to translate')).toBeVisible()
     await expect(popup.getByLabel('Target language')).toHaveValue('zh-Hans')
-    await expect(popup.getByRole('button', { name: 'Translate to Simplified Chinese' })).toBeVisible()
+    const translateButton = popup.getByRole('button', { name: 'Translate to Simplified Chinese' })
+    await expect(translateButton).toBeVisible()
+    const popupActionWidths = await translateButton.evaluate((button) => ({
+      button: button.getBoundingClientRect().width,
+      actions: button.parentElement?.getBoundingClientRect().width ?? 0,
+    }))
+    expect(Math.abs(popupActionWidths.button - popupActionWidths.actions)).toBeLessThanOrEqual(1)
     await expect(popup.getByText('Translation service is not configured')).toHaveCount(0)
     await expect(popup.getByText(undefinedError)).toHaveCount(0)
     expect(popupErrors()).toEqual([])
@@ -82,6 +105,9 @@ test('installed extension renders popup and options with real extension APIs', a
     await options.goto(extension.url('options.html'))
     await expect(options).toHaveTitle('LingoFlow Settings')
     await expect(options.getByRole('heading', { name: 'General' })).toBeVisible()
+    const saveButtonBox = await options.getByRole('button', { name: 'Save settings' }).boundingBox()
+    expect(saveButtonBox?.height).toBeGreaterThanOrEqual(42)
+    expect(saveButtonBox?.width).toBeLessThanOrEqual(180)
     const commandShortcut = await options.evaluate(async () => {
       const command = (await chrome.commands.getAll()).find(entry => entry.name === 'translate-hovered-text')
       return command?.shortcut ?? ''
@@ -829,6 +855,13 @@ test('durable rule and provider removals require an explicit second action', asy
   try {
     const options = await extension.context.newPage()
     await options.goto(extension.url('options.html'))
+    await options.getByRole('button', { name: 'Site rules' }).click()
+    await options.getByRole('button', { name: 'Create rule' }).click()
+    const ruleEditorSaveBox = await options.getByRole('button', { name: 'Save rule' }).boundingBox()
+    expect(ruleEditorSaveBox?.height).toBeGreaterThanOrEqual(42)
+    expect(ruleEditorSaveBox?.width).toBeLessThanOrEqual(180)
+    await options.getByRole('button', { name: 'Cancel' }).click()
+
     const seeded = await options.evaluate(async () => {
       const now = new Date().toISOString()
       return chrome.runtime.sendMessage({

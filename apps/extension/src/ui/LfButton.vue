@@ -3,6 +3,7 @@ defineProps<{
   label: string
   variant?: 'primary' | 'ghost' | 'danger' | 'danger-confirm' | 'stop' | 'test'
   disabled?: boolean
+  fullWidth?: boolean
 }>()
 
 defineEmits<{
@@ -12,7 +13,7 @@ defineEmits<{
 
 <template>
   <button
-    :class="['lf-btn', variant && `lf-btn--${variant}`]"
+    :class="['lf-btn', variant && `lf-btn--${variant}`, fullWidth && 'lf-btn--full']"
     :disabled="disabled"
     @click="$emit('click')"
   >
@@ -25,64 +26,88 @@ defineEmits<{
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: var(--lf-btn-h-primary);
+  min-height: var(--lf-btn-h-primary);
   border: 1px solid var(--lf-rule);
   border-radius: var(--lf-radius);
-  padding: 0 14px;
+  padding: 0 18px;
   background: transparent;
   color: var(--lf-ink);
   font-family: var(--lf-font-sans);
   font-size: 13px;
   font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
-  letter-spacing: 0.02em;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.lf-btn:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--lf-accent) 24%, transparent);
+  outline-offset: 2px;
+}
+
+.lf-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.lf-btn:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .lf-btn:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: 0.48;
+}
+
+.lf-btn--full {
+  width: 100%;
 }
 
 /* Primary */
 .lf-btn--primary {
-  height: var(--lf-btn-h-primary);
-  width: 100%;
+  min-width: 120px;
   border-color: var(--lf-accent);
   background: var(--lf-accent);
   color: var(--lf-on-accent);
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--lf-accent) 20%, transparent);
 }
 
 .lf-btn--primary:hover:not(:disabled) {
   background: var(--lf-accent-hover);
   border-color: var(--lf-accent-hover);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--lf-accent) 25%, transparent);
 }
 
 /* Ghost */
 .lf-btn--ghost {
-  height: var(--lf-btn-h-secondary);
-  flex: 1;
+  min-height: var(--lf-btn-h-secondary);
   border-color: var(--lf-rule);
-  background: transparent;
+  background: var(--lf-paper);
   color: var(--lf-ghost);
   font-size: 12px;
 }
 
 .lf-btn--ghost:hover:not(:disabled) {
-  border-color: var(--lf-whisper);
+  border-color: color-mix(in srgb, var(--lf-accent) 38%, var(--lf-rule));
+  background: color-mix(in srgb, var(--lf-accent) 5%, var(--lf-paper));
   color: var(--lf-ink);
 }
 
 /* Danger */
 .lf-btn--danger {
-  border-color: var(--lf-accent);
-  background: var(--lf-accent);
+  border-color: var(--lf-danger);
+  background: var(--lf-danger);
   color: var(--lf-on-accent);
 }
 
 .lf-btn--danger:hover:not(:disabled) {
-  background: var(--lf-accent-hover);
-  border-color: var(--lf-accent-hover);
+  background: var(--lf-danger-confirm);
+  border-color: var(--lf-danger-confirm);
 }
 
 /* Danger Confirm */
@@ -94,7 +119,6 @@ defineEmits<{
 
 /* Stop an active translation without discarding completed results. */
 .lf-btn--stop {
-  width: 100%;
   border-color: var(--lf-danger-confirm);
   background: transparent;
   color: var(--lf-danger-confirm);
@@ -106,18 +130,28 @@ defineEmits<{
 
 /* Test */
 .lf-btn--test {
-  height: var(--lf-btn-h-small);
+  min-height: var(--lf-btn-h-small);
   padding: 0 14px;
   border-color: var(--lf-rule);
-  background: transparent;
+  background: var(--lf-paper);
   color: var(--lf-ghost);
   font-size: 12px;
   flex-shrink: 0;
-  margin-left: auto;
 }
 
 .lf-btn--test:hover:not(:disabled) {
   border-color: var(--lf-whisper);
   color: var(--lf-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lf-btn {
+    transition: none;
+  }
+
+  .lf-btn:hover:not(:disabled),
+  .lf-btn:active:not(:disabled) {
+    transform: none;
+  }
 }
 </style>

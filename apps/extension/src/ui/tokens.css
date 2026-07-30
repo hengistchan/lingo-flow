@@ -2,60 +2,74 @@
 
 :root {
   /* ── Colors: Light Mode ── */
-  --lf-ink: #1a1a1a;
-  --lf-paper: #faf8f5;
-  --lf-margin: #f2efeb;
-  --lf-accent: #c05a2e;
-  --lf-accent-hover: #a84d27;
-  --lf-whisper: #b8b2a6;
-  --lf-rule: #e0dbd3;
-  --lf-ghost: #6b6560;
-  --lf-success: #4a7c59;
+  --lf-ink: #172033;
+  --lf-paper: #ffffff;
+  --lf-margin: #f4f6fa;
+  --lf-accent: #4f46e5;
+  --lf-accent-hover: #4338ca;
+  --lf-accent-soft: #eef2ff;
+  --lf-muted: #667085;
+  --lf-whisper: #7b8799;
+  --lf-rule: #dde3ec;
+  --lf-ghost: #5f6b7c;
+  --lf-success: #21875b;
   --lf-on-accent: #ffffff;
-  --lf-danger-confirm: #991b1b;
+  --lf-danger: #c43d4b;
+  --lf-danger-confirm: #b42332;
 
   /* ── Typography ── */
-  --lf-font-serif: Georgia, "Noto Serif", "Source Han Serif SC", "Songti SC", serif;
+  --lf-font-serif: "Iowan Old Style", "Noto Serif", "Source Han Serif SC", "Songti SC", serif;
   --lf-font-sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 
-  /* ── Spacing ── */
-  --lf-radius: 0px;
-  --lf-btn-h-primary: 40px;
-  --lf-btn-h-secondary: 36px;
+  /* ── Shape, spacing, and elevation ── */
+  --lf-radius: 10px;
+  --lf-radius-sm: 8px;
+  --lf-radius-lg: 16px;
+  --lf-shadow-soft: 0 18px 50px rgb(23 32 51 / 8%);
+  --lf-btn-h-primary: 44px;
+  --lf-btn-h-secondary: 38px;
   --lf-btn-h-small: 34px;
-  --lf-input-h: 38px;
+  --lf-input-h: 42px;
   --lf-gap-form: 16px;
   --lf-gap-section: 20px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not(.light) {
-    --lf-ink: #e8e4de;
-    --lf-paper: #1c1b19;
-    --lf-margin: #252420;
-    --lf-accent: #d4764e;
-    --lf-accent-hover: #c06840;
-    --lf-whisper: #7a756b;
-    --lf-rule: #3a3830;
-    --lf-ghost: #9e978c;
-    --lf-success: #5a9c69;
-    --lf-on-accent: #ffffff;
-    --lf-danger-confirm: #7a1515;
+    --lf-ink: #f2f4f8;
+    --lf-paper: #151a24;
+    --lf-margin: #0e131c;
+    --lf-accent: #7c83ff;
+    --lf-accent-hover: #9197ff;
+    --lf-accent-soft: #23284a;
+    --lf-muted: #a7b0bf;
+    --lf-whisper: #8994a6;
+    --lf-rule: #30394a;
+    --lf-ghost: #bac2cf;
+    --lf-success: #4cc38a;
+    --lf-on-accent: #0d1220;
+    --lf-danger: #ff7b86;
+    --lf-danger-confirm: #ff6b78;
+    --lf-shadow-soft: 0 22px 60px rgb(0 0 0 / 28%);
   }
 }
 
 :root.dark {
-  --lf-ink: #e8e4de;
-  --lf-paper: #1c1b19;
-  --lf-margin: #252420;
-  --lf-accent: #d4764e;
-  --lf-accent-hover: #c06840;
-  --lf-whisper: #7a756b;
-  --lf-rule: #3a3830;
-  --lf-ghost: #9e978c;
-  --lf-success: #5a9c69;
-  --lf-on-accent: #ffffff;
-  --lf-danger-confirm: #7a1515;
+  --lf-ink: #f2f4f8;
+  --lf-paper: #151a24;
+  --lf-margin: #0e131c;
+  --lf-accent: #7c83ff;
+  --lf-accent-hover: #9197ff;
+  --lf-accent-soft: #23284a;
+  --lf-muted: #a7b0bf;
+  --lf-whisper: #8994a6;
+  --lf-rule: #30394a;
+  --lf-ghost: #bac2cf;
+  --lf-success: #4cc38a;
+  --lf-on-accent: #0d1220;
+  --lf-danger: #ff7b86;
+  --lf-danger-confirm: #ff6b78;
+  --lf-shadow-soft: 0 22px 60px rgb(0 0 0 / 28%);
 }
 
 /* ── Global Reset ── */

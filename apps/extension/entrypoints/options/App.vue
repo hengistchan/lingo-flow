@@ -928,18 +928,22 @@ async function testOnCurrentPage() {
 </template>
 
 <style scoped>
+:global(body) {
+  background: var(--lf-margin);
+}
+
 .page {
-  width: min(960px, calc(100vw - 40px));
+  width: min(1040px, calc(100vw - 40px));
   margin: 0 auto;
-  padding: 36px 0 56px;
+  padding: 40px 0 64px;
 }
 
 .masthead {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 18px;
-  margin-bottom: 24px;
+  gap: 24px;
+  margin-bottom: 22px;
 }
 
 .masthead-left {
@@ -950,7 +954,8 @@ async function testOnCurrentPage() {
 .masthead-right {
   display: flex;
   align-items: center;
-  gap: 14px;
+  justify-content: flex-end;
+  gap: 12px;
   flex-shrink: 0;
 }
 
@@ -959,16 +964,18 @@ h1, h2, p {
 }
 
 h1 {
-  font-family: var(--lf-font-serif);
-  font-size: 22px;
-  font-weight: 400;
-  line-height: 1.15;
+  font-family: var(--lf-font-sans);
+  font-size: clamp(24px, 3vw, 30px);
+  font-weight: 720;
+  line-height: 1.18;
+  letter-spacing: -0.025em;
 }
 
 h2 {
-  font-family: var(--lf-font-serif);
-  font-size: 16px;
-  font-weight: 400;
+  font-family: var(--lf-font-sans);
+  font-size: 18px;
+  font-weight: 680;
+  line-height: 1.3;
 }
 
 h3 {
@@ -976,9 +983,11 @@ h3 {
 }
 
 .masthead-sub {
-  margin-top: 4px;
-  color: var(--lf-whisper);
+  max-width: 640px;
+  margin-top: 7px;
+  color: var(--lf-ghost);
   font-size: 13px;
+  line-height: 1.5;
 }
 
 .message {
@@ -990,43 +999,52 @@ h3 {
 
 .settings-shell {
   display: grid;
-  grid-template-columns: 184px minmax(0, 1fr);
-  min-height: 400px;
+  grid-template-columns: 208px minmax(0, 1fr);
+  min-height: 460px;
+  overflow: hidden;
   border: 1px solid var(--lf-rule);
+  border-radius: var(--lf-radius-lg);
   background: var(--lf-paper);
+  box-shadow: var(--lf-shadow-soft);
 }
 
 .settings-nav {
   display: grid;
   align-content: start;
-  padding: 20px 0;
+  gap: 4px;
+  padding: 18px 14px;
   border-right: 1px solid var(--lf-rule);
+  background: color-mix(in srgb, var(--lf-margin) 72%, var(--lf-paper));
 }
 
 .settings-content {
-  padding: 24px 28px;
+  min-width: 0;
+  padding: 32px 36px 38px;
 }
 
 section {
   display: grid;
-  gap: 20px;
+  gap: 24px;
 }
 
 .section-heading {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
 .section-intro {
-  color: var(--lf-whisper);
+  color: var(--lf-ghost);
   font-size: 13px;
+  line-height: 1.5;
 }
 
 .settings-group {
   display: grid;
-  gap: 16px;
-  padding-top: 20px;
+  gap: 18px;
+  padding-top: 24px;
   border-top: 1px solid var(--lf-rule);
 }
 
@@ -1036,17 +1054,18 @@ section {
 }
 
 .settings-group__intro h3 {
-  font-family: var(--lf-font-serif);
+  font-family: var(--lf-font-sans);
   font-size: 14px;
-  font-weight: 400;
+  font-weight: 650;
+  line-height: 1.4;
 }
 
 .settings-group__intro p {
   max-width: 620px;
-  margin: 5px 0 0;
-  color: var(--lf-whisper);
+  margin: 6px 0 0;
+  color: var(--lf-ghost);
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.6;
 }
 
 .form-grid {
@@ -1070,28 +1089,45 @@ section {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 20px;
-  padding-top: 20px;
+  padding-top: 24px;
   border-top: 1px solid var(--lf-rule);
 }
 
 .danger-zone strong {
-  font-family: var(--lf-font-serif);
+  font-family: var(--lf-font-sans);
   font-size: 14px;
-  font-weight: 400;
+  font-weight: 650;
 }
 
 .danger-zone p {
-  margin: 5px 0 0;
-  color: var(--lf-whisper);
+  margin: 6px 0 0;
+  color: var(--lf-ghost);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
 /* ── Responsive ── */
 @media (max-width: 640px) {
   .page {
-    width: min(100% - 24px, 960px);
-    padding-top: 20px;
+    width: calc(100% - 24px);
+    padding: 20px 0 36px;
+  }
+
+  .masthead {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 18px;
+  }
+
+  .masthead-right {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .message {
+    min-width: 0;
+    white-space: normal;
   }
 
   .settings-shell,
@@ -1102,11 +1138,41 @@ section {
 
   .settings-nav {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0;
+    gap: 4px;
+    overflow-x: auto;
     border-right: none;
     border-bottom: 1px solid var(--lf-rule);
-    padding: 12px 0;
+    padding: 10px 12px;
+    scrollbar-width: none;
+  }
+
+  .settings-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .settings-nav :deep(.lf-nav-item) {
+    flex: 0 0 auto;
+    width: auto;
+    min-height: 38px;
+    white-space: nowrap;
+  }
+
+  .settings-content {
+    padding: 24px 18px 28px;
+  }
+
+  .section-heading {
+    align-items: flex-start;
+  }
+
+  .user-rules-actions {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .rule-card-badges {
+    flex-wrap: wrap;
   }
 }
 
@@ -1119,9 +1185,19 @@ section {
 
 .builtin-rule-card,
 .user-rule-card {
-  padding: 14px 16px;
+  padding: 16px;
   border: 1px solid var(--lf-rule);
-  background: var(--lf-paper);
+  border-radius: var(--lf-radius);
+  background: color-mix(in srgb, var(--lf-margin) 42%, var(--lf-paper));
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.builtin-rule-card:hover,
+.user-rule-card:hover {
+  border-color: color-mix(in srgb, var(--lf-accent) 25%, var(--lf-rule));
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
 }
 
 .user-rule-card[data-disabled="true"] {
@@ -1150,7 +1226,7 @@ section {
 .rule-badge {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 3px;
+  border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
   background: var(--lf-margin);
@@ -1176,14 +1252,14 @@ section {
 .rule-card-desc {
   margin: 0;
   font-size: 12px;
-  color: var(--lf-whisper);
+  color: var(--lf-ghost);
 }
 
 .rule-card-evidence {
   margin: 6px 0 0;
   overflow-wrap: anywhere;
   font-size: 11px;
-  color: var(--lf-whisper);
+  color: var(--lf-ghost);
 }
 
 .rule-card-warnings {
@@ -1202,6 +1278,7 @@ section {
 
 .user-rules-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -1217,16 +1294,17 @@ section {
 }
 
 .diagnostics-report {
-  padding: 16px;
+  padding: 18px;
   border: 1px solid var(--lf-rule);
-  background: var(--lf-margin);
+  border-radius: var(--lf-radius);
+  background: color-mix(in srgb, var(--lf-margin) 70%, var(--lf-paper));
 }
 
 .diagnostics-report h3 {
   margin: 0 0 12px;
-  font-family: var(--lf-font-serif);
+  font-family: var(--lf-font-sans);
   font-size: 15px;
-  font-weight: 400;
+  font-weight: 650;
 }
 
 .diagnostics-grid {
@@ -1272,7 +1350,9 @@ section {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1280,19 +1360,22 @@ section {
 }
 
 .modal-content {
-  width: min(640px, calc(100vw - 40px));
+  width: min(640px, 100%);
   max-height: calc(100vh - 40px);
   overflow-y: auto;
   padding: 28px;
   background: var(--lf-paper);
   border: 1px solid var(--lf-rule);
+  border-radius: var(--lf-radius-lg);
+  box-shadow: 0 24px 72px rgba(15, 23, 42, 0.22);
+  box-sizing: border-box;
 }
 
 .modal-content h3 {
   margin: 0 0 20px;
-  font-family: var(--lf-font-serif);
-  font-size: 16px;
-  font-weight: 400;
+  font-family: var(--lf-font-sans);
+  font-size: 18px;
+  font-weight: 680;
 }
 
 .modal-actions {
@@ -1306,6 +1389,7 @@ section {
   padding: 10px 14px;
   margin-bottom: 16px;
   border: 1px solid var(--lf-accent);
+  border-radius: var(--lf-radius);
   background: rgba(220, 80, 60, 0.06);
 }
 
@@ -1333,7 +1417,7 @@ section {
   padding: 12px;
   border: 1px solid var(--lf-rule);
   border-radius: var(--lf-radius);
-  background: var(--lf-paper);
+  background: var(--lf-margin);
   color: var(--lf-ink);
   font-family: monospace;
   font-size: 12px;
@@ -1358,5 +1442,33 @@ section {
 .lf-field__textarea:focus {
   outline: none;
   border-color: var(--lf-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lf-accent) 16%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .builtin-rule-card,
+  .user-rule-card {
+    transition: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .test-on-page,
+  .diagnostics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .rule-card-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .diagnostics-grid {
+    gap: 2px;
+  }
+
+  .diagnostics-grid dd + dt {
+    margin-top: 8px;
+  }
 }
 </style>

@@ -68,7 +68,7 @@ defineEmits<{
 .lf-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 7px;
 }
 
 .lf-field--check {
@@ -80,7 +80,7 @@ defineEmits<{
 .lf-field__label {
   color: var(--lf-ghost);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 650;
 }
 
 .lf-field__input,
@@ -90,23 +90,46 @@ defineEmits<{
   width: 100%;
   border: 1px solid var(--lf-rule);
   border-radius: var(--lf-radius);
-  padding: 0 11px;
-  background: var(--lf-paper);
+  padding: 0 12px;
+  background: color-mix(in srgb, var(--lf-paper) 96%, var(--lf-margin));
   color: var(--lf-ink);
   font-family: var(--lf-font-sans);
   font-size: 13px;
-  transition: border-color 0.15s;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
-.lf-field__input:focus,
-.lf-field__select:focus {
+.lf-field__input:hover:not(:disabled),
+.lf-field__select:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--lf-accent) 28%, var(--lf-rule));
+}
+
+.lf-field__input:focus-visible,
+.lf-field__select:focus-visible {
   outline: none;
   border-color: var(--lf-accent);
+  background: var(--lf-paper);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lf-accent) 16%, transparent);
+}
+
+.lf-field__input:disabled,
+.lf-field__select:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
 }
 
 .lf-field__checkbox {
-  width: 16px;
-  height: 16px;
+  width: 17px;
+  height: 17px;
   accent-color: var(--lf-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lf-field__input,
+  .lf-field__select {
+    transition: none;
+  }
 }
 </style>

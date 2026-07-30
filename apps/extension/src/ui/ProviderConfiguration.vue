@@ -463,10 +463,13 @@ const LOCAL_COPY = {
   height: 24px;
   place-items: center;
   border: 1px solid var(--lf-rule);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--lf-danger) 6%, var(--lf-paper));
   color: var(--lf-danger, #a33a2b);
 }
 
 .status-mark[data-ready="true"] {
+  background: color-mix(in srgb, var(--lf-success) 7%, var(--lf-paper));
   color: var(--lf-success, #357a52);
 }
 
@@ -480,9 +483,10 @@ const LOCAL_COPY = {
 
 .provider-guide {
   margin: 20px 0;
+  border: 1px solid color-mix(in srgb, var(--lf-accent) 14%, var(--lf-rule));
+  border-radius: var(--lf-radius);
   padding: 14px 16px;
-  border-left: 3px solid var(--lf-accent);
-  background: color-mix(in srgb, var(--lf-accent) 7%, var(--lf-paper));
+  background: color-mix(in srgb, var(--lf-accent) 5%, var(--lf-paper));
 }
 
 .provider-guide p {
@@ -518,8 +522,9 @@ const LOCAL_COPY = {
   min-width: 220px;
   padding: 6px;
   border: 1px solid var(--lf-rule);
+  border-radius: var(--lf-radius);
   background: var(--lf-paper);
-  box-shadow: 0 12px 30px rgba(20, 18, 16, .12);
+  box-shadow: 0 14px 34px rgb(23 32 51 / 14%);
 }
 
 .menu-item {
@@ -529,6 +534,7 @@ const LOCAL_COPY = {
   background: transparent;
   color: var(--lf-ink);
   cursor: pointer;
+  border-radius: var(--lf-radius-sm);
   padding: 9px 10px;
   text-align: left;
 }
@@ -542,6 +548,8 @@ const LOCAL_COPY = {
   margin-top: 20px;
   padding: 18px;
   border: 1px solid var(--lf-rule);
+  border-radius: var(--lf-radius);
+  background: color-mix(in srgb, var(--lf-margin) 42%, var(--lf-paper));
 }
 
 .custom-provider-form h3 {

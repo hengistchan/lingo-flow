@@ -528,6 +528,7 @@ function getPreviewSafeChrome() {
       <lf-button
         v-if="sessionActive"
         variant="stop"
+        full-width
         :label="progress.status === 'cancelling' ? copy('popup.cancelling') : copy('popup.stopTranslation')"
         :disabled="progress.status === 'cancelling' || busyAction === 'stopping'"
         @click="stopTranslation"
@@ -535,6 +536,7 @@ function getPreviewSafeChrome() {
       <lf-button
         v-else-if="summary.providerConfigured"
         variant="primary"
+        full-width
         :label="primaryActionLabel"
         :disabled="busy"
         @click="shouldRetryFailed ? retryFailedTranslation() : translatePage()"
@@ -542,6 +544,7 @@ function getPreviewSafeChrome() {
       <lf-button
         v-else
         variant="primary"
+        full-width
         :label="copy('popup.configureProvider')"
         @click="openSettings"
       />
@@ -666,6 +669,14 @@ h1 {
   display: flex;
   gap: 12px;
   margin-top: 12px;
+}
+
+.secondary-actions :deep(.lf-btn) {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-inline: 10px;
+  line-height: 1.25;
+  white-space: normal;
 }
 
 .loading-indicator {
